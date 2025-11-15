@@ -1,0 +1,288 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { useCreateRoom, useUpdateRoom } from '@/hooks/use-rooms';
+import { Room } from '@/lib/api/rooms';
+
+const roomTypes = [
+  { value: 'HALL', label: 'Зал' },
+  { value: 'CLASS', label: 'Класс' },
+  { value: 'STUDIO', label: 'Студия' },
+  { value: 'CONFERENCE', label: 'Конференц-зал' },
+] as const;
+
+const formSchema = z.object({
+  name: z.string().min(1, 'Введите название'),
+  number: z.string().optional(),
+  capacity: z.coerce.number().min(1, 'Минимум 1 человек'),
+  type: z.enum(['HALL', 'CLASS', 'STUDIO', 'CONFERENCE']),
+  hourlyRate: z.coerce.number().min(0, 'Минимум 0'),
+  dailyRate: z.coerce.number().min(0, 'Минимум 0').optional(),
+  equipment: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof formSchema>;
+
+interface RoomDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  room?: Room;
+}
+
+export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
+  const createRoom = useCreateRoom();
+  const updateRoom = useUpdateRoom();
+
+  const form = useForm<FormValues>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: '',
+      number: '',
+      capacity: 10,
+      type: 'CLASS',
+      hourlyRate: 1000,
+      dailyRate: 7000,
+      equipment: '',
+    },
+  });
+
+  useEffect(() => {
+    if (room) {
+      form.reset({
+        name: room.name,
+        number: room.number || '',
+        capacity: room.capacity || 10,
+        type: room.type,
+        hourlyRate: Number(room.hourlyRate),
+        dailyRate: room.dailyRate ? Number(room.dailyRate) : undefined,
+        equipment: room.equipment || '',
+      });
+    } else {
+      form.reset({
+        name: '',
+        number: '',
+        capacity: 10,
+        type: 'CLASS',
+        hourlyRate: 1000,
+        dailyRate: 7000,
+        equipment: '',
+      });
+    }
+  }, [room, form, open]);
+
+  const onSubmit = async (values: FormValues) => {
+    try {
+      if (room) {
+        await updateRoom.mutateAsync({ id: room.id, data: values });
+      } else {
+        await createRoom.mutateAsync(values);
+      }
+      onOpenChange(false);
+      form.reset();
+    } catch (error) {
+      // Error handling is done in the mutation hooks
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {room ? 'Редактировать помещение' : 'Создать помещение'}
+          </DialogTitle>
+          <DialogDescription>
+            {room
+              ? 'Внесите изменения в данные помещения'
+              : 'Заполните информацию о новом помещении'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Название *</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Большой зал" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="number"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Номер</FormLabel>
+                    <FormControl>
+                      <Input placeholder="101" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Тип *</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Выберите тип" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {roomTypes.map((type) => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="capacity"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Вместимость *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        placeholder="20"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>Человек</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="hourlyRate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Почасовая ставка *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        placeholder="1000"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>Рублей в час</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="dailyRate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Дневная ставка</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        placeholder="7000"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormDescription>Рублей в день</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <FormField
+              control={form.control}
+              name="equipment"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Оборудование</FormLabel>
+                  <FormControl>
+                    <Textarea
+                      placeholder="Проектор, звуковая система, микрофоны..."
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Отмена
+              </Button>
+              <Button
+                type="submit"
+                disabled={createRoom.isPending || updateRoom.isPending}
+              >
+                {room ? 'Сохранить' : 'Создать'}
+              </Button>
+            </div>
+          </form>
+        </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}

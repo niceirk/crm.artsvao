@@ -1,0 +1,32 @@
+{
+  "name": "cultural-center-management",
+  "version": "1.0.0",
+  "description": "Система управления культурным центром",
+  "main": "index.js",
+  "scripts": {
+    "test:db": "node test-db-connection.js",
+    "db:install-extensions": "node scripts/install-extensions.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "prisma:seed": "node prisma/seed.js"
+  },
+  "keywords": [
+    "cultural-center",
+    "crm",
+    "management",
+    "postgresql",
+    "prisma"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "pg": "^8.11.3"
+  },
+  "devDependencies": {
+    "@prisma/client": "^5.20.0",
+    "prisma": "^5.20.0",
+    "shadcn": "^3.5.0"
+  }
+}

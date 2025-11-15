@@ -1,0 +1,584 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+model User {
+  id             String               @id @default(uuid())
+  email          String               @unique
+  passwordHash   String?              @map("password_hash")
+  role           UserRole
+  firstName      String               @map("first_name")
+  lastName       String               @map("last_name")
+  status         UserStatus           @default(BLOCKED)
+  lastLoginAt    DateTime?            @map("last_login_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  auditLogs      AuditLog[]
+  events         Event[]
+  passwordResets PasswordResetToken[]
+  rentals        Rental[]
+  systemSettings SystemSettings[]
+  invitations    UserInvitation[]
+
+  @@map("users")
+}
+
+model UserInvitation {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("user_invitations")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+model LeadSource {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  clients     Client[]
+
+  @@map("lead_sources")
+}
+
+model Client {
+  id            String           @id @default(uuid())
+  firstName     String           @map("first_name")
+  lastName      String           @map("last_name")
+  middleName    String?          @map("middle_name")
+  dateOfBirth   DateTime?        @map("date_of_birth") @db.Date
+  gender        Gender?
+  phone         String
+  email         String?
+  address       String?
+  photoUrl      String?          @map("photo_url")
+  notes         String?
+  status        ClientStatus     @default(ACTIVE)
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  leadSourceId  String?          @map("lead_source_id")
+  attendances   Attendance[]
+  relations     ClientRelation[] @relation("ClientRelations")
+  relatedTo     ClientRelation[] @relation("RelatedClientRelations")
+  leadSource    LeadSource?      @relation(fields: [leadSourceId], references: [id])
+  payments      Payment[]
+  subscriptions Subscription[]
+
+  @@index([phone])
+  @@index([email])
+  @@index([status])
+  @@index([lastName])
+  @@index([firstName])
+  @@index([createdAt])
+  @@index([leadSourceId])
+  @@index([status, createdAt])
+  @@map("clients")
+}
+
+model ClientRelation {
+  id              String       @id @default(uuid())
+  clientId        String       @map("client_id")
+  relatedClientId String       @map("related_client_id")
+  relationType    RelationType @map("relation_type")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  client          Client       @relation("ClientRelations", fields: [clientId], references: [id], onDelete: Cascade)
+  relatedClient   Client       @relation("RelatedClientRelations", fields: [relatedClientId], references: [id], onDelete: Cascade)
+
+  @@map("client_relations")
+}
+
+model Room {
+  id         String     @id @default(uuid())
+  name       String
+  number     String?
+  area       Decimal?   @db.Decimal(10, 2)
+  capacity   Int?
+  type       RoomType
+  equipment  String?
+  hourlyRate Decimal    @map("hourly_rate") @db.Decimal(10, 2)
+  dailyRate  Decimal?   @map("daily_rate") @db.Decimal(10, 2)
+  status     RoomStatus @default(AVAILABLE)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  groups       Group[]
+  rentals      Rental[]
+  reservations Reservation[]
+  schedules    Schedule[]
+  events       Event[]
+
+  @@map("rooms")
+}
+
+model Teacher {
+  id               String        @id @default(uuid())
+  firstName        String        @map("first_name")
+  lastName         String        @map("last_name")
+  middleName       String?       @map("middle_name")
+  phone            String
+  email            String?
+  specialization   String?
+  salaryPercentage Decimal       @map("salary_percentage") @db.Decimal(5, 2)
+  photoUrl         String?       @map("photo_url")
+  status           TeacherStatus @default(ACTIVE)
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+  groups           Group[]
+  schedules        Schedule[]
+
+  @@map("teachers")
+}
+
+model Studio {
+  id          String       @id @default(uuid())
+  name        String
+  description String?
+  type        StudioType
+  category    String?
+  photoUrl    String?      @map("photo_url")
+  status      StudioStatus @default(ACTIVE)
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  groups      Group[]
+
+  @@map("studios")
+}
+
+model Group {
+  id                 String             @id @default(uuid())
+  studioId           String             @map("studio_id")
+  name               String
+  teacherId          String             @map("teacher_id")
+  roomId             String?            @map("room_id")
+  maxParticipants    Int                @map("max_participants")
+  singleSessionPrice Decimal            @map("single_session_price") @db.Decimal(10, 2)
+  ageMin             Int?               @map("age_min")
+  ageMax             Int?               @map("age_max")
+  status             GroupStatus        @default(ACTIVE)
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  room               Room?              @relation(fields: [roomId], references: [id])
+  studio             Studio             @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  teacher            Teacher            @relation(fields: [teacherId], references: [id])
+  schedules          Schedule[]
+  subscriptionTypes  SubscriptionType[]
+  subscriptions      Subscription[]
+
+  @@map("groups")
+}
+
+model Schedule {
+  id             String         @id @default(uuid())
+  groupId        String?        @map("group_id")
+  teacherId      String         @map("teacher_id")
+  roomId         String         @map("room_id")
+  date           DateTime       @db.Date
+  startTime      DateTime       @map("start_time") @db.Time(6)
+  endTime        DateTime       @map("end_time") @db.Time(6)
+  type           ScheduleType
+  isRecurring    Boolean        @default(false) @map("is_recurring")
+  recurrenceRule String?        @map("recurrence_rule")
+  status         ScheduleStatus @default(SCHEDULED)
+  notes          String?
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  attendances    Attendance[]
+  group          Group?         @relation(fields: [groupId], references: [id])
+  room           Room           @relation(fields: [roomId], references: [id])
+  teacher        Teacher        @relation(fields: [teacherId], references: [id])
+
+  @@index([date])
+  @@index([teacherId])
+  @@index([roomId])
+  @@index([groupId])
+  @@index([date, roomId])
+  @@map("schedules")
+}
+
+model Attendance {
+  id                   String           @id @default(uuid())
+  scheduleId           String           @map("schedule_id")
+  clientId             String           @map("client_id")
+  status               AttendanceStatus
+  notes                String?
+  subscriptionDeducted Boolean          @default(false) @map("subscription_deducted")
+  createdAt            DateTime         @default(now()) @map("created_at")
+  client               Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  schedule             Schedule         @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([scheduleId])
+  @@index([createdAt])
+  @@map("attendances")
+}
+
+model SubscriptionType {
+  id            String               @id @default(uuid())
+  name          String
+  description   String?
+  groupId       String               @map("group_id")
+  type          SubscriptionTypeEnum
+  price         Decimal              @db.Decimal(10, 2)
+  isActive      Boolean              @default(true) @map("is_active")
+  createdAt     DateTime             @default(now()) @map("created_at")
+  updatedAt     DateTime             @updatedAt @map("updated_at")
+  group         Group                @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+
+  @@index([groupId])
+  @@map("subscription_types")
+}
+
+model Subscription {
+  id                 String             @id @default(uuid())
+  clientId           String             @map("client_id")
+  subscriptionTypeId String             @map("subscription_type_id")
+  groupId            String             @map("group_id")
+  validMonth         String             @map("valid_month")
+  purchaseDate       DateTime           @map("purchase_date") @db.Date
+  startDate          DateTime           @map("start_date") @db.Date
+  endDate            DateTime           @map("end_date") @db.Date
+  originalPrice      Decimal            @map("original_price") @db.Decimal(10, 2)
+  paidPrice          Decimal            @map("paid_price") @db.Decimal(10, 2)
+  remainingVisits    Int?               @map("remaining_visits")
+  purchasedMonths    Int                @default(1) @map("purchased_months")
+  status             SubscriptionStatus @default(ACTIVE)
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  payments           Payment[]
+  client             Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  group              Group              @relation(fields: [groupId], references: [id])
+  subscriptionType   SubscriptionType   @relation(fields: [subscriptionTypeId], references: [id])
+
+  @@index([clientId])
+  @@index([groupId])
+  @@index([status])
+  @@index([validMonth])
+  @@index([startDate, endDate])
+  @@map("subscriptions")
+}
+
+model Payment {
+  id             String        @id @default(uuid())
+  clientId       String        @map("client_id")
+  amount         Decimal       @db.Decimal(10, 2)
+  paymentMethod  PaymentMethod @map("payment_method")
+  paymentType    PaymentType   @map("payment_type")
+  status         PaymentStatus @default(PENDING)
+  transactionId  String?       @map("transaction_id")
+  subscriptionId String?       @map("subscription_id")
+  rentalId       String?       @map("rental_id")
+  notes          String?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  client         Client        @relation(fields: [clientId], references: [id])
+  rental         Rental?       @relation(fields: [rentalId], references: [id])
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@index([clientId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([paymentType])
+  @@map("payments")
+}
+
+model Rental {
+  id          String       @id @default(uuid())
+  roomId      String       @map("room_id")
+  clientName  String       @map("client_name")
+  clientPhone String       @map("client_phone")
+  clientEmail String?      @map("client_email")
+  eventType   String       @map("event_type")
+  date        DateTime     @db.Date
+  startTime   DateTime     @map("start_time") @db.Time(6)
+  endTime     DateTime     @map("end_time") @db.Time(6)
+  totalPrice  Decimal      @map("total_price") @db.Decimal(10, 2)
+  status      RentalStatus @default(REQUEST)
+  managerId   String?      @map("manager_id")
+  notes       String?
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  payments    Payment[]
+  manager     User?        @relation(fields: [managerId], references: [id])
+  room        Room         @relation(fields: [roomId], references: [id])
+
+  @@index([date])
+  @@index([roomId])
+  @@index([managerId])
+  @@index([status])
+  @@map("rentals")
+}
+
+model Event {
+  id                String      @id @default(uuid())
+  name              String
+  description       String?
+  eventTypeId       String?     @map("event_type_id")
+  date              DateTime    @db.Date
+  startTime         DateTime    @map("start_time") @db.Time(6)
+  endTime           DateTime    @map("end_time") @db.Time(6)
+  roomId            String      @map("room_id")
+  maxCapacity       Int?        @map("max_capacity")
+  responsibleUserId String?     @map("responsible_user_id")
+  photoUrl          String?     @map("photo_url")
+  status            EventStatus @default(PLANNED)
+  notes             String?
+  participants      Int?
+  budget            Decimal?    @db.Decimal(10, 2)
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+  eventType         EventType?  @relation(fields: [eventTypeId], references: [id])
+  responsibleUser   User?       @relation(fields: [responsibleUserId], references: [id])
+  room              Room        @relation(fields: [roomId], references: [id])
+
+  @@index([date])
+  @@index([eventTypeId])
+  @@index([status])
+  @@index([roomId])
+  @@map("events")
+}
+
+model EventType {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  events    Event[]
+
+  @@map("event_types")
+}
+
+model Reservation {
+  id        String            @id @default(uuid())
+  roomId    String            @map("room_id")
+  date      DateTime          @db.Date
+  startTime DateTime          @map("start_time") @db.Time(6)
+  endTime   DateTime          @map("end_time") @db.Time(6)
+  status    ReservationStatus @default(ACTIVE)
+  notes     String?
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+  room      Room              @relation(fields: [roomId], references: [id])
+
+  @@index([date])
+  @@index([roomId])
+  @@index([status])
+  @@index([date, roomId])
+  @@map("reservations")
+}
+
+model AuditLog {
+  id         String      @id @default(uuid())
+  userId     String      @map("user_id")
+  action     AuditAction
+  entityType String      @map("entity_type")
+  entityId   String      @map("entity_id")
+  changes    Json?
+  metadata   Json?
+  ipAddress  String?     @map("ip_address")
+  userAgent  String?     @map("user_agent")
+  createdAt  DateTime    @default(now()) @map("created_at")
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model SystemSettings {
+  id                          String   @id @default("system")
+  organizationName            String   @map("organization_name")
+  legalName                   String?  @map("legal_name")
+  address                     String?
+  phone                       String
+  email                       String
+  website                     String?
+  logo                        String?
+  workingHours                Json     @map("working_hours")
+  smtpHost                    String?  @map("smtp_host")
+  smtpPort                    Int?     @map("smtp_port")
+  smtpUser                    String?  @map("smtp_user")
+  smtpPassword                String?  @map("smtp_password")
+  emailFrom                   String?  @map("email_from")
+  emailNotifications          Json?    @map("email_notifications")
+  defaultCurrency             String   @default("RUB") @map("default_currency")
+  timezone                    String   @default("Europe/Moscow")
+  defaultSubscriptionValidity Int      @default(30) @map("default_subscription_validity")
+  instructorPercentage        Decimal  @default(40.0) @map("instructor_percentage") @db.Decimal(5, 2)
+  allowExpiredSubscriptions   Boolean  @default(false) @map("allow_expired_subscriptions")
+  allowDeductAfterExpiry      Boolean  @default(false) @map("allow_deduct_after_expiry")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
+  updatedBy                   String?  @map("updated_by")
+  updatedByUser               User?    @relation(fields: [updatedBy], references: [id])
+
+  @@map("system_settings")
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  VIP
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum RelationType {
+  PARENT
+  CHILD
+  SPOUSE
+  SIBLING
+}
+
+enum RoomType {
+  HALL
+  CLASS
+  STUDIO
+  CONFERENCE
+}
+
+enum RoomStatus {
+  AVAILABLE
+  MAINTENANCE
+  RETIRED
+}
+
+enum TeacherStatus {
+  ACTIVE
+  VACATION
+  DISMISSED
+}
+
+enum StudioType {
+  GROUP
+  INDIVIDUAL
+  BOTH
+}
+
+enum StudioStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum GroupStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ScheduleType {
+  GROUP_CLASS
+  INDIVIDUAL_CLASS
+}
+
+enum ScheduleStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  EXCUSED
+}
+
+enum SubscriptionTypeEnum {
+  UNLIMITED
+  SINGLE_VISIT
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  FROZEN
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  ONLINE
+}
+
+enum PaymentType {
+  SUBSCRIPTION
+  RENTAL
+  SINGLE_VISIT
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum RentalStatus {
+  REQUEST
+  CONFIRMED
+  PAID
+  COMPLETED
+  CANCELLED
+}
+
+enum EventStatus {
+  PLANNED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum ReservationStatus {
+  ACTIVE
+  CANCELLED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
