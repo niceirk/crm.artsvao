@@ -47,18 +47,31 @@ rsync_copy ./ "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/"
 echo -e "${YELLOW}🔐 Step 3: Setting up environment variables...${NC}"
 sshpass -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no .env.production "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/.env"
 
-echo -e "${YELLOW}🐳 Step 4: Building and starting Docker containers...${NC}"
-ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml down || true"
+echo -e "${YELLOW}🐳 Step 4: Building Docker containers...${NC}"
 ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml build --no-cache"
+
+echo -e "${YELLOW}🔄 Step 5: Running database migrations...${NC}"
+echo -e "Starting database for migrations..."
+ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml up -d postgres"
+sleep 5
+echo -e "Running migrations..."
+ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml run --rm backend npx prisma migrate deploy" || {
+    echo -e "${RED}❌ Migration failed! Check logs above.${NC}"
+    exit 1
+}
+echo -e "${GREEN}✅ Migrations completed successfully${NC}"
+
+echo -e "${YELLOW}🚀 Step 6: Starting all services...${NC}"
+ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml down || true"
 ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml up -d"
 
-echo -e "${YELLOW}⏳ Step 5: Waiting for services to start...${NC}"
+echo -e "${YELLOW}⏳ Step 7: Waiting for services to start...${NC}"
 sleep 15
 
-echo -e "${YELLOW}🔍 Step 6: Checking service status...${NC}"
+echo -e "${YELLOW}🔍 Step 8: Checking service status...${NC}"
 ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml ps"
 
-echo -e "${YELLOW}📋 Step 7: Checking backend logs...${NC}"
+echo -e "${YELLOW}📋 Step 9: Checking backend logs...${NC}"
 ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml logs --tail=20 backend" || true
 
 echo -e "${GREEN}✅ Deployment completed successfully!${NC}"

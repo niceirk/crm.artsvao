@@ -35,8 +35,12 @@ RUN npm ci --only=production && \
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
 
+# Copy entrypoint script
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
+
 # Expose port
 EXPOSE 3000
 
-# Start application
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/src/main"]
+# Start application with entrypoint script
+CMD ["/app/docker-entrypoint.sh"]
