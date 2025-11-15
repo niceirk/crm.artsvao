@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { CalendarEventStatus } from './calendar-event-status';
 
 export interface Rental {
   id: string;
@@ -11,7 +12,7 @@ export interface Rental {
   startTime: string;
   endTime: string;
   totalPrice: number;
-  status: 'REQUEST' | 'CONFIRMED' | 'PAID' | 'COMPLETED' | 'CANCELLED';
+  status: CalendarEventStatus;
   managerId?: string;
   notes?: string;
   createdAt: string;
@@ -38,14 +39,14 @@ export interface RentalFilters {
 export interface CreateRentalDto {
   roomId: string;
   clientName: string;
-  clientPhone: string;
+  clientPhone?: string;
   clientEmail?: string;
-  eventType: string;
+  eventType?: string;
   date: string;
   startTime: string;
   endTime: string;
-  totalPrice: number;
-  status?: 'REQUEST' | 'CONFIRMED' | 'PAID' | 'COMPLETED' | 'CANCELLED';
+  totalPrice?: number;
+  status?: CalendarEventStatus;
   managerId?: string;
   notes?: string;
 }

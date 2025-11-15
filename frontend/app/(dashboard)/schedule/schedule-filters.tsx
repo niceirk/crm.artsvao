@@ -53,10 +53,10 @@ export function ScheduleFilters({ filters, onFiltersChange }: ScheduleFiltersPro
   ];
 
   return (
-    <div className="flex gap-4 items-end">
-      <div className="flex-1 grid grid-cols-4 gap-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Помещения</label>
+    <div className="flex gap-3 items-end">
+      <div className="flex-1 grid grid-cols-4 gap-3">
+        <div className="space-y-1.5">
+          <label className="text-xs text-muted-foreground">Помещения</label>
           <MultiSelect
             options={roomOptions}
             selected={Array.isArray(filters.roomId) ? filters.roomId : filters.roomId ? [filters.roomId] : []}
@@ -71,8 +71,8 @@ export function ScheduleFilters({ filters, onFiltersChange }: ScheduleFiltersPro
           />
         </div>
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Преподаватели</label>
+        <div className="space-y-1.5">
+          <label className="text-xs text-muted-foreground">Преподаватели</label>
           <MultiSelect
             options={teacherOptions}
             selected={Array.isArray(filters.teacherId) ? filters.teacherId : filters.teacherId ? [filters.teacherId] : []}
@@ -87,8 +87,8 @@ export function ScheduleFilters({ filters, onFiltersChange }: ScheduleFiltersPro
           />
         </div>
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Группы</label>
+        <div className="space-y-1.5">
+          <label className="text-xs text-muted-foreground">Группы</label>
           <MultiSelect
             options={groupOptions}
             selected={Array.isArray(filters.groupId) ? filters.groupId : filters.groupId ? [filters.groupId] : []}
@@ -103,8 +103,8 @@ export function ScheduleFilters({ filters, onFiltersChange }: ScheduleFiltersPro
           />
         </div>
 
-        <div className="space-y-2">
-          <label className="text-sm font-medium">Типы событий</label>
+        <div className="space-y-1.5">
+          <label className="text-xs text-muted-foreground">Типы событий</label>
           <MultiSelect
             options={calendarEventTypeOptions}
             selected={Array.isArray(filters.eventTypeId) ? filters.eventTypeId : filters.eventTypeId ? [filters.eventTypeId] : []}
@@ -121,7 +121,7 @@ export function ScheduleFilters({ filters, onFiltersChange }: ScheduleFiltersPro
       </div>
 
       {hasActiveFilters && (
-        <Button variant="outline" onClick={handleClearFilters}>
+        <Button variant="outline" size="sm" onClick={handleClearFilters}>
           <X className="mr-2 h-4 w-4" />
           Сбросить
         </Button>

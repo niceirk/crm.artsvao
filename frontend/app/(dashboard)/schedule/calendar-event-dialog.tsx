@@ -55,7 +55,7 @@ interface CalendarEventDialogProps {
   rental?: Rental;
   event?: Event;
   reservation?: Reservation;
-  initialData?: { date: string; startTime: string; endTime: string };
+  initialData?: { date: string; startTime: string; endTime: string; roomId?: string };
 }
 
 const scheduleFormSchema = z.object({
@@ -66,16 +66,21 @@ const scheduleFormSchema = z.object({
   startTime: z.string().min(1, 'Введите время начала'),
   endTime: z.string().min(1, 'Введите время окончания'),
   type: z.enum(['GROUP_CLASS', 'INDIVIDUAL_CLASS']),
+  status: z.enum(['PLANNED', 'ONGOING', 'COMPLETED', 'CANCELLED']).optional(),
   notes: z.string().optional(),
 });
 
 const rentalFormSchema = z.object({
   roomId: z.string().min(1, 'Выберите помещение'),
-  clientName: z.string().min(1, 'Введите имя клиента'),
+  clientName: z.string().min(1, 'Введите имя арендатора'),
+  clientPhone: z.string().optional(),
+  clientEmail: z.string().email('Неверный формат email').optional().or(z.literal('')),
+  eventType: z.string().optional(),
+  totalPrice: z.number().optional(),
   date: z.string().min(1, 'Выберите дату'),
   startTime: z.string().min(1, 'Введите время начала'),
   endTime: z.string().min(1, 'Введите время окончания'),
-  status: z.enum(['REQUEST', 'CONFIRMED', 'PAID', 'COMPLETED', 'CANCELLED']).optional(),
+  status: z.enum(['PLANNED', 'ONGOING', 'COMPLETED', 'CANCELLED']).optional(),
   notes: z.string().optional(),
 });
 
@@ -85,6 +90,7 @@ const eventFormSchema = z.object({
   date: z.string().min(1, 'Выберите дату'),
   startTime: z.string().min(1, 'Введите время начала'),
   endTime: z.string().min(1, 'Введите время окончания'),
+  status: z.enum(['PLANNED', 'ONGOING', 'COMPLETED', 'CANCELLED']).optional(),
   notes: z.string().optional(),
 });
 
@@ -93,7 +99,7 @@ const reservationFormSchema = z.object({
   date: z.string().min(1, 'Выберите дату'),
   startTime: z.string().min(1, 'Введите время начала'),
   endTime: z.string().min(1, 'Введите время окончания'),
-  status: z.enum(['PENDING', 'APPROVED', 'CANCELLED']).optional(),
+  status: z.enum(['PLANNED', 'ONGOING', 'COMPLETED', 'CANCELLED']).optional(),
   notes: z.string().optional(),
   reservedBy: z.string().min(1, 'Введите имя'),
 });
@@ -151,24 +157,43 @@ export function CalendarEventDialog({
     if (open) {
       if (schedule) {
         setSelectedEventType('schedule');
+        // Extract date and time in correct format
+        const scheduleDate = schedule.date.split('T')[0];
+        const startTime = schedule.startTime.includes('T')
+          ? schedule.startTime.split('T')[1].slice(0, 5)
+          : schedule.startTime.slice(0, 5);
+        const endTime = schedule.endTime.includes('T')
+          ? schedule.endTime.split('T')[1].slice(0, 5)
+          : schedule.endTime.slice(0, 5);
+
         form.reset({
           groupId: schedule.groupId || '',
           teacherId: schedule.teacherId,
           roomId: schedule.roomId,
-          date: schedule.date,
-          startTime: schedule.startTime,
-          endTime: schedule.endTime,
+          date: scheduleDate,
+          startTime: startTime,
+          endTime: endTime,
           type: schedule.type,
+          status: schedule.status || 'PLANNED',
           notes: schedule.notes || '',
         });
       } else if (rental) {
         setSelectedEventType('rental');
+        // Extract date and time in correct format
+        const rentalDate = rental.date.split('T')[0];
+        const startTime = rental.startTime.includes('T')
+          ? rental.startTime.split('T')[1].slice(0, 5)
+          : rental.startTime.slice(0, 5);
+        const endTime = rental.endTime.includes('T')
+          ? rental.endTime.split('T')[1].slice(0, 5)
+          : rental.endTime.slice(0, 5);
+
         form.reset({
           roomId: rental.roomId,
           clientName: rental.clientName,
-          date: rental.date,
-          startTime: rental.startTime,
-          endTime: rental.endTime,
+          date: rentalDate,
+          startTime: startTime,
+          endTime: endTime,
           status: rental.status,
           notes: rental.notes || '',
         });
@@ -189,26 +214,68 @@ export function CalendarEventDialog({
           date: eventDate,
           startTime: startTime,
           endTime: endTime,
+          status: event.status,
           notes: event.notes || '',
         });
       } else if (reservation) {
         setSelectedEventType('reservation');
+        // Extract date and time in correct format
+        const reservationDate = reservation.date.split('T')[0];
+        const startTime = reservation.startTime.includes('T')
+          ? reservation.startTime.split('T')[1].slice(0, 5)
+          : reservation.startTime.slice(0, 5);
+        const endTime = reservation.endTime.includes('T')
+          ? reservation.endTime.split('T')[1].slice(0, 5)
+          : reservation.endTime.slice(0, 5);
+
         form.reset({
           roomId: reservation.roomId,
-          date: reservation.date,
-          startTime: reservation.startTime,
-          endTime: reservation.endTime,
+          date: reservationDate,
+          startTime: startTime,
+          endTime: endTime,
           status: reservation.status,
           notes: reservation.notes || '',
           reservedBy: reservation.reservedBy,
         });
       } else {
-        // Новое событие
-        form.reset({
-          date: initialData?.date || '',
-          startTime: initialData?.startTime || '',
-          endTime: initialData?.endTime || '',
-        });
+        // Новое событие - устанавливаем значения по умолчанию в зависимости от типа
+        const baseData = {
+          date: initialData?.date || new Date().toISOString().split('T')[0],
+          startTime: initialData?.startTime || '10:00',
+          endTime: initialData?.endTime || '11:00',
+          roomId: initialData?.roomId || '',
+          status: 'PLANNED' as const,
+          notes: '',
+        };
+
+        switch (selectedEventType) {
+          case 'schedule':
+            form.reset({
+              ...baseData,
+              groupId: '',
+              teacherId: '',
+              type: 'GROUP_CLASS' as const,
+            });
+            break;
+          case 'rental':
+            form.reset({
+              ...baseData,
+              clientName: '',
+            });
+            break;
+          case 'event':
+            form.reset({
+              ...baseData,
+              eventId: '',
+            });
+            break;
+          case 'reservation':
+            form.reset({
+              ...baseData,
+              reservedBy: '',
+            });
+            break;
+        }
       }
     }
   }, [open, schedule, rental, event, reservation, initialData, form, selectedEventType]);
@@ -240,6 +307,7 @@ export function CalendarEventDialog({
                 date: values.date,
                 startTime: values.startTime,
                 endTime: values.endTime,
+                status: values.status,
                 notes: values.notes,
               },
             });
@@ -403,50 +471,6 @@ export function CalendarEventDialog({
                     </FormItem>
                   )}
                 />
-              </>
-            )}
-
-            {/* Поля для Аренды */}
-            {selectedEventType === 'rental' && (
-              <>
-                <FormField
-                  control={form.control}
-                  name="clientName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Имя клиента *</FormLabel>
-                      <FormControl>
-                        <Input placeholder="Иван Иванов" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="roomId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Помещение *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Выберите помещение" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {rooms?.map((room) => (
-                            <SelectItem key={room.id} value={room.id}>
-                              {room.name} {room.number ? `(${room.number})` : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
 
                 <FormField
                   control={form.control}
@@ -461,9 +485,78 @@ export function CalendarEventDialog({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="REQUEST">Запрос</SelectItem>
-                          <SelectItem value="CONFIRMED">Подтверждено</SelectItem>
-                          <SelectItem value="PAID">Оплачено</SelectItem>
+                          <SelectItem value="PLANNED">Запланировано</SelectItem>
+                          <SelectItem value="ONGOING">В процессе</SelectItem>
+                          <SelectItem value="COMPLETED">Завершено</SelectItem>
+                          <SelectItem value="CANCELLED">Отменено</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
+            )}
+
+            {/* Поля для Аренды */}
+            {selectedEventType === 'rental' && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="clientName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Имя арендатора *</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Иван Иванов" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="roomId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Помещение *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Выберите помещение" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {rooms?.map((room) => (
+                              <SelectItem key={room.id} value={room.id}>
+                                {room.name} {room.number ? `(${room.number})` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="status"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Статус</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Выберите статус" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="PLANNED">Запланировано</SelectItem>
+                          <SelectItem value="ONGOING">В процессе</SelectItem>
                           <SelectItem value="COMPLETED">Завершено</SelectItem>
                           <SelectItem value="CANCELLED">Отменено</SelectItem>
                         </SelectContent>
@@ -514,30 +607,56 @@ export function CalendarEventDialog({
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="roomId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Помещение *</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Выберите помещение" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {rooms?.map((room) => (
-                            <SelectItem key={room.id} value={room.id}>
-                              {room.name} {room.number ? `(${room.number})` : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="roomId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Помещение *</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Выберите помещение" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {rooms?.map((room) => (
+                              <SelectItem key={room.id} value={room.id}>
+                                {room.name} {room.number ? `(${room.number})` : ''}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="status"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Статус</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Выберите статус" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="PLANNED">Запланировано</SelectItem>
+                            <SelectItem value="ONGOING">В процессе</SelectItem>
+                            <SelectItem value="COMPLETED">Завершено</SelectItem>
+                            <SelectItem value="CANCELLED">Отменено</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </>
             )}
 
@@ -598,8 +717,9 @@ export function CalendarEventDialog({
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          <SelectItem value="PENDING">Ожидает подтверждения</SelectItem>
-                          <SelectItem value="APPROVED">Подтверждено</SelectItem>
+                          <SelectItem value="PLANNED">Запланировано</SelectItem>
+                          <SelectItem value="ONGOING">В процессе</SelectItem>
+                          <SelectItem value="COMPLETED">Завершено</SelectItem>
                           <SelectItem value="CANCELLED">Отменено</SelectItem>
                         </SelectContent>
                       </Select>

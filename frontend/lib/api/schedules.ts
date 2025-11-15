@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { CalendarEventStatus } from './calendar-event-status';
 
 export interface Schedule {
   id: string;
@@ -11,7 +12,7 @@ export interface Schedule {
   type: 'GROUP_CLASS' | 'INDIVIDUAL_CLASS' | 'OPEN_CLASS' | 'EVENT';
   isRecurring: boolean;
   recurrenceRule?: string;
-  status: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED';
+  status: CalendarEventStatus;
   notes?: string;
   createdAt: string;
   updatedAt: string;
@@ -49,7 +50,7 @@ export interface CreateScheduleDto {
   type: 'GROUP_CLASS' | 'INDIVIDUAL_CLASS' | 'OPEN_CLASS' | 'EVENT';
   isRecurring?: boolean;
   recurrenceRule?: string;
-  status?: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED';
+  status?: CalendarEventStatus;
   notes?: string;
 }
 

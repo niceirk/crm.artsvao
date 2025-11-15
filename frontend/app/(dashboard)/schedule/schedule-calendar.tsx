@@ -1,19 +1,20 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import listPlugin from '@fullcalendar/list';
 import resourceTimeGridPlugin from '@fullcalendar/resource-timegrid';
-import type { EventClickArg, EventInput } from '@fullcalendar/core';
+import type { EventClickArg, EventInput, EventContentArg } from '@fullcalendar/core';
 import ruLocale from '@fullcalendar/core/locales/ru';
 import { Schedule } from '@/lib/api/schedules';
 import { Rental } from '@/lib/api/rentals';
 import { Event } from '@/lib/api/events';
 import { Reservation } from '@/lib/api/reservations';
 import { useRooms } from '@/hooks/use-rooms';
+import { Calendar, Key, Star, Lock } from 'lucide-react';
 import './schedule-calendar.css';
 
 type CalendarEventType = 'schedule' | 'rental' | 'event' | 'reservation';
@@ -25,7 +26,7 @@ interface ScheduleCalendarProps {
   reservations: Reservation[];
   isLoading: boolean;
   onEventClick: (eventId: string, eventType: CalendarEventType) => void;
-  onDateSelect: (dateRange: { date: string; startTime: string; endTime: string }) => void;
+  onDateSelect: (dateRange: { date: string; startTime: string; endTime: string; roomId?: string }) => void;
   onEventDrop: (
     eventId: string,
     eventType: CalendarEventType,
@@ -51,78 +52,136 @@ const getEventColor = (type: Schedule['type']) => {
   }
 };
 
-const getScheduleTitle = (schedule: Schedule) => {
-  // Extract time from datetime string (format: "1970-01-01T10:00:00.000Z" or "10:00:00")
-  const startTime = schedule.startTime.includes('T')
-    ? schedule.startTime.split('T')[1].slice(0, 5)
-    : schedule.startTime.slice(0, 5);
-  const endTime = schedule.endTime.includes('T')
-    ? schedule.endTime.split('T')[1].slice(0, 5)
-    : schedule.endTime.slice(0, 5);
-  const time = `${startTime}-${endTime}`;
-
+const getScheduleTitle = (schedule: Schedule, hideRoom: boolean = false) => {
   const teacher = schedule.teacher
     ? `${schedule.teacher.lastName} ${schedule.teacher.firstName[0]}.`
     : '';
   const room = schedule.room ? schedule.room.name : '';
   const group = schedule.group ? schedule.group.name : 'Индивидуальное';
 
-  return `${time} | ${group} | ${teacher} | ${room}`;
+  const lines = [group];
+  if (teacher) lines.push(teacher);
+  if (!hideRoom && room) lines.push(room);
+
+  return lines.join('\n');
 };
 
-const getRentalTitle = (rental: Rental) => {
-  const startTime = rental.startTime.includes('T')
-    ? rental.startTime.split('T')[1].slice(0, 5)
-    : rental.startTime.slice(0, 5);
-  const endTime = rental.endTime.includes('T')
-    ? rental.endTime.split('T')[1].slice(0, 5)
-    : rental.endTime.slice(0, 5);
-  const time = `${startTime}-${endTime}`;
+const getRentalTitle = (rental: Rental, hideRoom: boolean = false) => {
   const room = rental.room ? rental.room.name : '';
   const client = rental.clientName;
   const eventType = rental.eventType;
 
-  return `${time} | АРЕНДА: ${eventType} | ${client} | ${room}`;
+  const lines = [eventType, client];
+  if (!hideRoom && room) lines.push(room);
+
+  return lines.join('\n');
 };
 
-const getEventItemTitle = (event: Event) => {
-  const startTime = event.startTime.includes('T')
-    ? event.startTime.split('T')[1].slice(0, 5)
-    : event.startTime.slice(0, 5);
-  const endTime = event.endTime.includes('T')
-    ? event.endTime.split('T')[1].slice(0, 5)
-    : event.endTime.slice(0, 5);
-  const time = `${startTime}-${endTime}`;
-  const eventTypeName = event.eventType?.name || 'Мероприятие';
-
-  return `${time} | ${eventTypeName}: ${event.name}`;
+const getEventItemTitle = (event: Event, hideRoom: boolean = false) => {
+  return event.name;
 };
 
-const getReservationTitle = (reservation: Reservation) => {
-  const startTime = reservation.startTime.includes('T')
-    ? reservation.startTime.split('T')[1].slice(0, 5)
-    : reservation.startTime.slice(0, 5);
-  const endTime = reservation.endTime.includes('T')
-    ? reservation.endTime.split('T')[1].slice(0, 5)
-    : reservation.endTime.slice(0, 5);
-  const time = `${startTime}-${endTime}`;
+const getReservationTitle = (reservation: Reservation, hideRoom: boolean = false) => {
   const room = reservation.room ? reservation.room.name : '';
 
-  return `${time} | РЕЗЕРВ: ${reservation.reservedBy} | ${room}`;
+  const lines = [reservation.reservedBy];
+  if (!hideRoom && room) lines.push(room);
+
+  return lines.join('\n');
 };
 
 export function ScheduleCalendar({ schedules, rentals, events: eventItems, reservations, isLoading, onEventClick, onDateSelect, onEventDrop }: ScheduleCalendarProps) {
   const calendarRef = useRef<FullCalendar>(null);
   const { data: rooms } = useRooms();
+  const [currentView, setCurrentView] = useState<string>('resourceTimeGridDay');
+  const [scrollTime, setScrollTime] = useState<string>(() => {
+    // Вычисляем начальное время прокрутки
+    const now = new Date();
+    let hours = now.getHours();
+    let minutes = now.getMinutes() - 30;
+
+    if (minutes < 0) {
+      hours -= 1;
+      minutes += 60;
+    }
+
+    if (hours < 8) {
+      hours = 8;
+      minutes = 0;
+    }
+
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+  });
+
+  // Функция для прокрутки к текущему времени
+  const scrollToCurrentTime = useCallback(() => {
+    if (!calendarRef.current) return;
+
+    const now = new Date();
+    let hours = now.getHours();
+    let minutes = now.getMinutes() - 30;
+
+    if (minutes < 0) {
+      hours -= 1;
+      minutes += 60;
+    }
+
+    if (hours < 8) {
+      hours = 8;
+      minutes = 0;
+    }
+
+    // Обновляем scrollTime для автопрокрутки
+    const timeString = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
+    setScrollTime(timeString);
+
+    // Дополнительно используем прямой DOM scroll для кнопки "Сейчас"
+    const calendarElement = calendarRef.current.elRef.current;
+    if (calendarElement) {
+      const allElements = calendarElement.querySelectorAll('*');
+      let scrollContainer = null;
+
+      for (const el of allElements) {
+        if (el.scrollHeight > el.clientHeight + 5) {
+          const className = el.className;
+          if (className && (className.includes('scroller') || className.includes('timegrid') || className.includes('time-cols'))) {
+            scrollContainer = el;
+            break;
+          }
+        }
+      }
+
+      if (!scrollContainer) {
+        // Если не нашли специфичный, берем первый scrollable
+        for (const el of allElements) {
+          if (el.scrollHeight > el.clientHeight + 5) {
+            scrollContainer = el;
+            break;
+          }
+        }
+      }
+
+      if (scrollContainer) {
+        const totalMinutesFromStart = (hours * 60 + minutes) - (8 * 60);
+        const slots = scrollContainer.querySelectorAll('.fc-timegrid-slot');
+        if (slots.length > 0) {
+          const targetSlotIndex = Math.floor(totalMinutesFromStart / 30);
+          if (slots[targetSlotIndex]) {
+            slots[targetSlotIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        }
+      }
+    }
+  }, []);
 
   // All hooks must be called before any conditional returns
-  useEffect(() => {
-    console.log('ScheduleCalendar received schedules:', schedules);
-    console.log('ScheduleCalendar received rentals:', rentals);
-    console.log('ScheduleCalendar received events:', eventItems);
-    console.log('ScheduleCalendar received reservations:', reservations);
-    console.log('isLoading:', isLoading);
-  }, [schedules, rentals, eventItems, reservations, isLoading]);
+  // useEffect(() => {
+  //   console.log('ScheduleCalendar received schedules:', schedules);
+  //   console.log('ScheduleCalendar received rentals:', rentals);
+  //   console.log('ScheduleCalendar received events:', eventItems);
+  //   console.log('ScheduleCalendar received reservations:', reservations);
+  //   console.log('isLoading:', isLoading);
+  // }, [schedules, rentals, eventItems, reservations, isLoading]);
 
   useEffect(() => {
     // Resize calendar when window size changes
@@ -137,8 +196,23 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // Обновление времени прокрутки при смене режима
+  useEffect(() => {
+    if (!isLoading && calendarRef.current) {
+      // Даем календарю время отрендериться
+      const timer = setTimeout(() => {
+        scrollToCurrentTime();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [currentView, scrollToCurrentTime, isLoading]);
+
   // Prepare events data (always, not conditionally)
-  const scheduleEvents: EventInput[] = schedules.map((schedule) => {
+  const calendarEvents = useMemo(() => {
+    const hideRoom = currentView === 'resourceTimeGridDay';
+    const now = new Date();
+
+    const scheduleEvents: EventInput[] = schedules.map((schedule) => {
     // Extract time from the datetime string (format: "1970-01-01T10:00:00.000Z")
     const startTime = schedule.startTime.includes('T')
       ? schedule.startTime.split('T')[1].slice(0, 8)
@@ -150,14 +224,30 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     // Extract date (format: "2025-11-16T00:00:00.000Z")
     const date = schedule.date.split('T')[0];
 
+    // Проверяем, прошло ли событие
+    const eventEnd = new Date(`${date}T${endTime}`);
+    const isPast = eventEnd < now;
+
+    // Определяем цвет в зависимости от статуса
+    let backgroundColor = getEventColor(schedule.type);
+    let className = 'schedule-status-' + schedule.status.toLowerCase();
+
+    // Если событие завершено или уже прошло
+    if (schedule.status === 'COMPLETED' || (isPast && schedule.status !== 'CANCELLED')) {
+      backgroundColor = '#9ca3af'; // gray
+    } else if (schedule.status === 'CANCELLED') {
+      backgroundColor = '#ef4444'; // red
+    }
+
     return {
       id: `schedule-${schedule.id}`,
-      title: getScheduleTitle(schedule),
+      title: getScheduleTitle(schedule, hideRoom),
       start: `${date}T${startTime}`,
       end: `${date}T${endTime}`,
-      backgroundColor: getEventColor(schedule.type),
-      borderColor: getEventColor(schedule.type),
+      backgroundColor: backgroundColor,
+      borderColor: backgroundColor,
       resourceId: schedule.roomId,
+      className: className,
       extendedProps: {
         type: 'schedule',
         data: schedule,
@@ -177,14 +267,30 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     // Extract date
     const date = rental.date.split('T')[0];
 
+    // Проверяем, прошло ли событие
+    const eventEnd = new Date(`${date}T${endTime}`);
+    const isPast = eventEnd < now;
+
+    // Определяем цвет в зависимости от статуса
+    let backgroundColor = '#dc2626'; // red for rentals
+    let className = 'rental-status-' + rental.status.toLowerCase();
+
+    // Если событие завершено или уже прошло
+    if (rental.status === 'COMPLETED' || (isPast && rental.status !== 'CANCELLED')) {
+      backgroundColor = '#9ca3af'; // gray
+    } else if (rental.status === 'CANCELLED') {
+      backgroundColor = '#ef4444'; // red (lighter than default)
+    }
+
     return {
       id: `rental-${rental.id}`,
-      title: getRentalTitle(rental),
+      title: getRentalTitle(rental, hideRoom),
       start: `${date}T${startTime}`,
       end: `${date}T${endTime}`,
-      backgroundColor: '#dc2626', // red for rentals
-      borderColor: '#dc2626',
+      backgroundColor: backgroundColor,
+      borderColor: backgroundColor,
       resourceId: rental.roomId,
+      className: className,
       extendedProps: {
         type: 'rental',
         data: rental,
@@ -204,17 +310,30 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     // Extract date
     const date = event.date.split('T')[0];
 
+    // Проверяем, прошло ли событие
+    const eventEnd = new Date(`${date}T${endTime}`);
+    const isPast = eventEnd < now;
+
     // Use color from event type if available
-    const eventColor = event.eventType?.color || '#8b5cf6'; // purple default
+    let eventColor = event.eventType?.color || '#8b5cf6'; // purple default
+    let className = 'event-status-' + event.status.toLowerCase();
+
+    // Если событие завершено или уже прошло
+    if (event.status === 'COMPLETED' || (isPast && event.status !== 'CANCELLED')) {
+      eventColor = '#9ca3af'; // gray
+    } else if (event.status === 'CANCELLED') {
+      eventColor = '#ef4444'; // red
+    }
 
     return {
       id: `event-${event.id}`,
-      title: getEventItemTitle(event),
+      title: getEventItemTitle(event, hideRoom),
       start: `${date}T${startTime}`,
       end: `${date}T${endTime}`,
       backgroundColor: eventColor,
       borderColor: eventColor,
       resourceId: event.roomId,
+      className: className,
       extendedProps: {
         type: 'event',
         data: event,
@@ -236,7 +355,7 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
 
     return {
       id: `reservation-${reservation.id}`,
-      title: getReservationTitle(reservation),
+      title: getReservationTitle(reservation, hideRoom),
       start: `${date}T${startTime}`,
       end: `${date}T${endTime}`,
       backgroundColor: '#f59e0b', // amber for reservations
@@ -249,16 +368,17 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     };
   });
 
-  const calendarEvents: EventInput[] = [
-    ...scheduleEvents,
-    ...rentalEvents,
-    ...eventEvents,
-    ...reservationEvents,
-  ];
+    return [
+      ...scheduleEvents,
+      ...rentalEvents,
+      ...eventEvents,
+      ...reservationEvents,
+    ];
+  }, [schedules, rentals, eventItems, reservations, currentView]);
 
-  useEffect(() => {
-    console.log('Events for FullCalendar:', calendarEvents);
-  }, [calendarEvents]);
+  // useEffect(() => {
+  //   console.log('Events for FullCalendar:', calendarEvents);
+  // }, [calendarEvents]);
 
   // Conditional rendering comes AFTER all hooks
   if (isLoading) {
@@ -287,7 +407,10 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     const startTime = startDate.toTimeString().slice(0, 5); // HH:mm
     const endTime = endDate.toTimeString().slice(0, 5); // HH:mm
 
-    onDateSelect({ date, startTime, endTime });
+    // Extract resource (room) ID if available
+    const roomId = selectInfo.resource?.id;
+
+    onDateSelect({ date, startTime, endTime, roomId });
 
     // Unselect the time range
     const calendarApi = selectInfo.view.calendar;
@@ -312,6 +435,43 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     onEventDrop(eventId, eventType, date, startTime, endTime, newRoomId);
   };
 
+  const handleViewChange = (info: any) => {
+    setCurrentView(info.view.type);
+  };
+
+  const renderEventContent = (eventInfo: EventContentArg) => {
+    const eventType = eventInfo.event.extendedProps.type as CalendarEventType;
+
+    // Определяем иконку в зависимости от типа события
+    let IconComponent;
+    switch (eventType) {
+      case 'schedule':
+        IconComponent = Calendar;
+        break;
+      case 'rental':
+        IconComponent = Key;
+        break;
+      case 'event':
+        IconComponent = Star;
+        break;
+      case 'reservation':
+        IconComponent = Lock;
+        break;
+      default:
+        IconComponent = Calendar;
+    }
+
+    return (
+      <div className="fc-event-main-frame" style={{ display: 'flex', alignItems: 'flex-start', gap: '4px', padding: '2px' }}>
+        <IconComponent size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+        <div style={{ flex: 1, minWidth: 0, whiteSpace: 'pre-line', lineHeight: 1.3, fontSize: '0.875rem' }}>
+          <div className="fc-event-time">{eventInfo.timeText}</div>
+          <div className="fc-event-title">{eventInfo.event.title}</div>
+        </div>
+      </div>
+    );
+  };
+
   // Prepare resources from rooms
   const resources = rooms?.map((room) => ({
     id: room.id,
@@ -326,9 +486,15 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
         initialView="resourceTimeGridDay"
         locale={ruLocale}
         headerToolbar={{
-          left: 'prev,next today',
+          left: 'prev,next today scrollToNow',
           center: 'title',
           right: 'dayGridMonth,timeGridWeek,resourceTimeGridDay,listWeek',
+        }}
+        customButtons={{
+          scrollToNow: {
+            text: 'Сейчас',
+            click: scrollToCurrentTime,
+          },
         }}
         buttonText={{
           today: 'Сегодня',
@@ -341,8 +507,9 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
         schedulerLicenseKey="GPL-My-Project-Is-Open-Source"
         slotMinTime="08:00:00"
         slotMaxTime="22:00:00"
+        scrollTime={scrollTime}
         allDaySlot={false}
-        height="auto"
+        height={700}
         events={calendarEvents}
         eventClick={handleEventClick}
         select={handleSelect}
@@ -359,6 +526,8 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
         stickyHeaderDates={true}
         nowIndicator={true}
         resourceAreaHeaderContent="Помещения"
+        datesSet={handleViewChange}
+        eventContent={renderEventContent}
       />
 
       <style jsx global>{`
@@ -387,7 +556,67 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
 
         .schedule-calendar .fc-button {
           text-transform: capitalize;
-          font-weight: 500;
+          font-weight: 400;
+          font-size: 0.875rem;
+          padding: 0.375rem 0.75rem;
+          height: auto;
+        }
+
+        /* Неактивные кнопки - серые */
+        .schedule-calendar .fc-button:not(.fc-button-active) {
+          background-color: hsl(var(--muted));
+          border-color: hsl(var(--border));
+          color: hsl(var(--muted-foreground));
+        }
+
+        .schedule-calendar .fc-button:not(.fc-button-active):hover {
+          background-color: hsl(var(--muted) / 0.8);
+          border-color: hsl(var(--border));
+          color: hsl(var(--foreground));
+        }
+
+        /* Активные кнопки - черные */
+        .schedule-calendar .fc-button-active {
+          background-color: hsl(var(--primary));
+          border-color: hsl(var(--primary));
+          color: hsl(var(--primary-foreground));
+        }
+
+        .schedule-calendar .fc-button-active:hover {
+          background-color: hsl(var(--primary) / 0.9);
+          border-color: hsl(var(--primary) / 0.9);
+        }
+
+        /* Кнопки навигации (назад/вперед) - серые */
+        .schedule-calendar .fc-prev-button,
+        .schedule-calendar .fc-next-button {
+          background-color: hsl(var(--muted));
+          border-color: hsl(var(--border));
+          color: hsl(var(--muted-foreground));
+        }
+
+        .schedule-calendar .fc-prev-button:hover,
+        .schedule-calendar .fc-next-button:hover {
+          background-color: hsl(var(--muted) / 0.8);
+          border-color: hsl(var(--border));
+          color: hsl(var(--foreground));
+        }
+
+        .schedule-calendar .fc-toolbar-chunk {
+          display: flex;
+          gap: 0.25rem;
+        }
+
+        .schedule-calendar .fc-scrollToNow-button {
+          background-color: hsl(var(--muted));
+          border-color: hsl(var(--border));
+          color: hsl(var(--muted-foreground));
+        }
+
+        .schedule-calendar .fc-scrollToNow-button:hover {
+          background-color: hsl(var(--muted) / 0.8);
+          border-color: hsl(var(--border));
+          color: hsl(var(--foreground));
         }
 
         .schedule-calendar .fc-event {
@@ -395,6 +624,11 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
           border-radius: 4px;
           padding: 2px 4px;
           font-size: 0.875rem;
+        }
+
+        .schedule-calendar .fc-event-title {
+          white-space: pre-line;
+          line-height: 1.3;
         }
 
         .schedule-calendar .fc-event:hover {
@@ -407,8 +641,15 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
 
         .schedule-calendar .fc-col-header-cell {
           background-color: var(--fc-neutral-bg-color);
-          font-weight: 600;
-          padding: 0.5rem;
+          font-weight: 500;
+          padding: 0.375rem 0.5rem;
+          font-size: 0.875rem;
+        }
+
+        .schedule-calendar .fc-resource-timeline-divider,
+        .schedule-calendar .fc-datagrid-cell-cushion {
+          font-weight: 500;
+          font-size: 0.875rem;
         }
 
         .schedule-calendar .fc-daygrid-day.fc-day-today,
@@ -424,6 +665,38 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
         .schedule-calendar .fc-scrollgrid {
           border-radius: 0.5rem;
           overflow: hidden;
+        }
+
+        /* Стили для статусов событий */
+        .schedule-calendar .event-status-completed,
+        .schedule-calendar .schedule-status-completed,
+        .schedule-calendar .rental-status-completed {
+          /* Завершенные события - серый цвет уже установлен в backgroundColor */
+        }
+
+        .schedule-calendar .event-status-cancelled,
+        .schedule-calendar .schedule-status-cancelled,
+        .schedule-calendar .rental-status-cancelled {
+          /* Отмененные события - штриховка косыми линиями */
+          background-image: repeating-linear-gradient(
+            45deg,
+            transparent,
+            transparent 5px,
+            rgba(0, 0, 0, 0.15) 5px,
+            rgba(0, 0, 0, 0.15) 10px
+          ) !important;
+        }
+
+        .schedule-calendar .event-status-ongoing,
+        .schedule-calendar .schedule-status-ongoing,
+        .schedule-calendar .rental-status-ongoing {
+          /* Текущие события - обычный вид */
+        }
+
+        .schedule-calendar .event-status-planned,
+        .schedule-calendar .schedule-status-planned,
+        .schedule-calendar .rental-status-planned {
+          /* Запланированные события - обычный вид */
         }
       `}</style>
     </div>

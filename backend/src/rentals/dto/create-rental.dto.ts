@@ -1,5 +1,5 @@
 import { IsString, IsEmail, IsEnum, IsOptional, IsNumber, IsUUID, IsDateString, Min } from 'class-validator';
-import { RentalStatus } from '@prisma/client';
+import { CalendarEventStatus } from '@prisma/client';
 
 export class CreateRentalDto {
   @IsUUID()
@@ -9,14 +9,16 @@ export class CreateRentalDto {
   clientName: string;
 
   @IsString()
-  clientPhone: string;
+  @IsOptional()
+  clientPhone?: string;
 
   @IsEmail()
   @IsOptional()
   clientEmail?: string;
 
   @IsString()
-  eventType: string;
+  @IsOptional()
+  eventType?: string;
 
   @IsDateString()
   date: string;
@@ -29,11 +31,12 @@ export class CreateRentalDto {
 
   @IsNumber()
   @Min(0)
-  totalPrice: number;
-
-  @IsEnum(RentalStatus)
   @IsOptional()
-  status?: RentalStatus;
+  totalPrice?: number;
+
+  @IsEnum(CalendarEventStatus)
+  @IsOptional()
+  status?: CalendarEventStatus;
 
   @IsUUID()
   @IsOptional()

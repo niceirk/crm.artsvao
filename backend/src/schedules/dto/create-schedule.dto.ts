@@ -1,5 +1,5 @@
 import { IsString, IsEnum, IsOptional, IsBoolean, IsUUID, IsDateString } from 'class-validator';
-import { ScheduleType, ScheduleStatus } from '@prisma/client';
+import { ScheduleType, CalendarEventStatus } from '@prisma/client';
 
 export class CreateScheduleDto {
   @IsUUID()
@@ -32,9 +32,9 @@ export class CreateScheduleDto {
   @IsOptional()
   recurrenceRule?: string;
 
-  @IsEnum(ScheduleStatus)
+  @IsEnum(CalendarEventStatus)
   @IsOptional()
-  status?: ScheduleStatus;
+  status?: CalendarEventStatus;
 
   @IsString()
   @IsOptional()

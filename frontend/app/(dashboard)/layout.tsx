@@ -6,22 +6,25 @@ import { TopBar } from '@/components/navigation/topbar';
 import { useNavigationStore } from '@/lib/stores/navigation-store';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
+import { useAuthStore } from '@/lib/store/auth-store';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { sidebarCollapsed } = useNavigationStore();
   const { user, isLoading } = useAuth();
+  const _hasHydrated = useAuthStore((state) => state._hasHydrated);
   const router = useRouter();
 
   // Проверка авторизации
   useEffect(() => {
-    if (!isLoading && !user) {
+    if (_hasHydrated && !isLoading && !user) {
       router.push('/login');
     }
-  }, [user, isLoading, router]);
+  }, [_hasHydrated, user, isLoading, router]);
 
-  if (isLoading) {
+  // Wait for hydration to complete
+  if (!_hasHydrated || isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <p className="text-muted-foreground">Загрузка...</p>

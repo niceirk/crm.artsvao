@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { CalendarEventStatus } from './calendar-event-status';
 
 export interface Reservation {
   id: string;
@@ -6,7 +7,7 @@ export interface Reservation {
   date: string;
   startTime: string;
   endTime: string;
-  status: 'PENDING' | 'APPROVED' | 'CANCELLED';
+  status: CalendarEventStatus;
   notes?: string;
   reservedBy: string;
   createdAt: string;
@@ -23,7 +24,7 @@ export interface CreateReservationDto {
   date: string;
   startTime: string;
   endTime: string;
-  status?: 'PENDING' | 'APPROVED' | 'CANCELLED';
+  status?: CalendarEventStatus;
   notes?: string;
   reservedBy: string;
 }

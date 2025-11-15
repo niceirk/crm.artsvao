@@ -197,24 +197,24 @@ model Group {
 }
 
 model Schedule {
-  id             String         @id @default(uuid())
-  groupId        String?        @map("group_id")
-  teacherId      String         @map("teacher_id")
-  roomId         String         @map("room_id")
-  date           DateTime       @db.Date
-  startTime      DateTime       @map("start_time") @db.Time(6)
-  endTime        DateTime       @map("end_time") @db.Time(6)
+  id             String               @id @default(uuid())
+  groupId        String?              @map("group_id")
+  teacherId      String               @map("teacher_id")
+  roomId         String               @map("room_id")
+  date           DateTime             @db.Date
+  startTime      DateTime             @map("start_time") @db.Time(6)
+  endTime        DateTime             @map("end_time") @db.Time(6)
   type           ScheduleType
-  isRecurring    Boolean        @default(false) @map("is_recurring")
-  recurrenceRule String?        @map("recurrence_rule")
-  status         ScheduleStatus @default(SCHEDULED)
+  isRecurring    Boolean              @default(false) @map("is_recurring")
+  recurrenceRule String?              @map("recurrence_rule")
+  status         CalendarEventStatus  @default(PLANNED)
   notes          String?
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
   attendances    Attendance[]
-  group          Group?         @relation(fields: [groupId], references: [id])
-  room           Room           @relation(fields: [roomId], references: [id])
-  teacher        Teacher        @relation(fields: [teacherId], references: [id])
+  group          Group?               @relation(fields: [groupId], references: [id])
+  room           Room                 @relation(fields: [roomId], references: [id])
+  teacher        Teacher              @relation(fields: [teacherId], references: [id])
 
   @@index([date])
   @@index([teacherId])
@@ -312,24 +312,24 @@ model Payment {
 }
 
 model Rental {
-  id          String       @id @default(uuid())
-  roomId      String       @map("room_id")
-  clientName  String       @map("client_name")
-  clientPhone String       @map("client_phone")
-  clientEmail String?      @map("client_email")
-  eventType   String       @map("event_type")
-  date        DateTime     @db.Date
-  startTime   DateTime     @map("start_time") @db.Time(6)
-  endTime     DateTime     @map("end_time") @db.Time(6)
-  totalPrice  Decimal      @map("total_price") @db.Decimal(10, 2)
-  status      RentalStatus @default(REQUEST)
-  managerId   String?      @map("manager_id")
+  id          String               @id @default(uuid())
+  roomId      String               @map("room_id")
+  clientName  String               @map("client_name")
+  clientPhone String               @map("client_phone")
+  clientEmail String?              @map("client_email")
+  eventType   String               @map("event_type")
+  date        DateTime             @db.Date
+  startTime   DateTime             @map("start_time") @db.Time(6)
+  endTime     DateTime             @map("end_time") @db.Time(6)
+  totalPrice  Decimal              @map("total_price") @db.Decimal(10, 2)
+  status      CalendarEventStatus  @default(PLANNED)
+  managerId   String?              @map("manager_id")
   notes       String?
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
   payments    Payment[]
-  manager     User?        @relation(fields: [managerId], references: [id])
-  room        Room         @relation(fields: [roomId], references: [id])
+  manager     User?                @relation(fields: [managerId], references: [id])
+  room        Room                 @relation(fields: [roomId], references: [id])
 
   @@index([date])
   @@index([roomId])
@@ -339,25 +339,25 @@ model Rental {
 }
 
 model Event {
-  id                String      @id @default(uuid())
+  id                String               @id @default(uuid())
   name              String
   description       String?
-  eventTypeId       String?     @map("event_type_id")
-  date              DateTime    @db.Date
-  startTime         DateTime    @map("start_time") @db.Time(6)
-  endTime           DateTime    @map("end_time") @db.Time(6)
-  roomId            String      @map("room_id")
-  maxCapacity       Int?        @map("max_capacity")
-  responsibleUserId String?     @map("responsible_user_id")
-  photoUrl          String?     @map("photo_url")
-  status            EventStatus @default(PLANNED)
+  eventTypeId       String?              @map("event_type_id")
+  date              DateTime             @db.Date
+  startTime         DateTime             @map("start_time") @db.Time(6)
+  endTime           DateTime             @map("end_time") @db.Time(6)
+  roomId            String               @map("room_id")
+  maxCapacity       Int?                 @map("max_capacity")
+  responsibleUserId String?              @map("responsible_user_id")
+  photoUrl          String?              @map("photo_url")
+  status            CalendarEventStatus  @default(PLANNED)
   notes             String?
   participants      Int?
-  budget            Decimal?    @db.Decimal(10, 2)
-  createdAt         DateTime    @default(now()) @map("created_at")
-  updatedAt         DateTime    @updatedAt @map("updated_at")
-  eventType         EventType?  @relation(fields: [eventTypeId], references: [id])
-  responsibleUser   User?       @relation(fields: [responsibleUserId], references: [id])
+  budget            Decimal?             @db.Decimal(10, 2)
+  createdAt         DateTime             @default(now()) @map("created_at")
+  updatedAt         DateTime             @updatedAt @map("updated_at")
+  eventType         EventType?           @relation(fields: [eventTypeId], references: [id])
+  responsibleUser   User?                @relation(fields: [responsibleUserId], references: [id])
   room              Room        @relation(fields: [roomId], references: [id])
 
   @@index([date])
@@ -378,16 +378,17 @@ model EventType {
 }
 
 model Reservation {
-  id        String            @id @default(uuid())
-  roomId    String            @map("room_id")
-  date      DateTime          @db.Date
-  startTime DateTime          @map("start_time") @db.Time(6)
-  endTime   DateTime          @map("end_time") @db.Time(6)
-  status    ReservationStatus @default(ACTIVE)
-  notes     String?
-  createdAt DateTime          @default(now()) @map("created_at")
-  updatedAt DateTime          @updatedAt @map("updated_at")
-  room      Room              @relation(fields: [roomId], references: [id])
+  id         String               @id @default(uuid())
+  roomId     String               @map("room_id")
+  date       DateTime             @db.Date
+  startTime  DateTime             @map("start_time") @db.Time(6)
+  endTime    DateTime             @map("end_time") @db.Time(6)
+  status     CalendarEventStatus  @default(PLANNED)
+  reservedBy String?              @map("reserved_by")
+  notes      String?
+  createdAt  DateTime             @default(now()) @map("created_at")
+  updatedAt  DateTime             @updatedAt @map("updated_at")
+  room       Room                 @relation(fields: [roomId], references: [id])
 
   @@index([date])
   @@index([roomId])
@@ -515,10 +516,12 @@ enum ScheduleType {
   INDIVIDUAL_CLASS
 }
 
-enum ScheduleStatus {
-  SCHEDULED
-  COMPLETED
-  CANCELLED
+// Единый статус для всех событий календаря
+enum CalendarEventStatus {
+  PLANNED    // Запланировано
+  ONGOING    // В процессе
+  COMPLETED  // Завершено
+  CANCELLED  // Отменено
 }
 
 enum AttendanceStatus {
@@ -555,26 +558,6 @@ enum PaymentStatus {
   COMPLETED
   FAILED
   REFUNDED
-}
-
-enum RentalStatus {
-  REQUEST
-  CONFIRMED
-  PAID
-  COMPLETED
-  CANCELLED
-}
-
-enum EventStatus {
-  PLANNED
-  ONGOING
-  COMPLETED
-  CANCELLED
-}
-
-enum ReservationStatus {
-  ACTIVE
-  CANCELLED
 }
 
 enum AuditAction {

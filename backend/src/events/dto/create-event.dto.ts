@@ -8,7 +8,7 @@ import {
   IsEnum,
   IsDateString,
 } from 'class-validator';
-import { EventStatus } from '@prisma/client';
+import { CalendarEventStatus } from '@prisma/client';
 
 export class CreateEventDto {
   @IsString()
@@ -47,9 +47,9 @@ export class CreateEventDto {
   @IsOptional()
   photoUrl?: string;
 
-  @IsEnum(EventStatus)
+  @IsEnum(CalendarEventStatus)
   @IsOptional()
-  status?: EventStatus;
+  status?: CalendarEventStatus;
 
   @IsString()
   @IsOptional()

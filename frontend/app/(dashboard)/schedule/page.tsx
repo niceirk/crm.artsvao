@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
@@ -28,7 +28,7 @@ export default function SchedulePage() {
   const [selectedRental, setSelectedRental] = useState<Rental | undefined>();
   const [selectedEvent, setSelectedEvent] = useState<Event | undefined>();
   const [selectedReservation, setSelectedReservation] = useState<Reservation | undefined>();
-  const [selectedDateRange, setSelectedDateRange] = useState<{ date: string; startTime: string; endTime: string } | null>(null);
+  const [selectedDateRange, setSelectedDateRange] = useState<{ date: string; startTime: string; endTime: string; roomId?: string } | null>(null);
 
   // Separate eventTypeId from other filters for API calls
   const { eventTypeId, ...apiFilters } = filters;
@@ -105,7 +105,7 @@ export default function SchedulePage() {
     }
   };
 
-  const handleDateSelect = (dateRange: { date: string; startTime: string; endTime: string }) => {
+  const handleDateSelect = (dateRange: { date: string; startTime: string; endTime: string; roomId?: string }) => {
     setSelectedDateRange(dateRange);
     setSelectedSchedule(undefined);
     setSelectedRental(undefined);
@@ -222,13 +222,7 @@ export default function SchedulePage() {
       <ScheduleFilters filters={filters} onFiltersChange={setFilters} />
 
       <Card>
-        <CardHeader>
-          <CardTitle>Календарь расписания</CardTitle>
-          <CardDescription>
-            Просмотр и управление всеми событиями
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           <ScheduleCalendar
             schedules={filteredSchedules}
             rentals={filteredRentals}

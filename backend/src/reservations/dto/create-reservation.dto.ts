@@ -1,5 +1,5 @@
 import { IsString, IsOptional, IsEnum, IsDateString } from 'class-validator';
-import { ReservationStatus } from '@prisma/client';
+import { CalendarEventStatus } from '@prisma/client';
 
 export class CreateReservationDto {
   @IsString()
@@ -14,9 +14,13 @@ export class CreateReservationDto {
   @IsString()
   endTime: string;
 
-  @IsEnum(ReservationStatus)
+  @IsEnum(CalendarEventStatus)
   @IsOptional()
-  status?: ReservationStatus;
+  status?: CalendarEventStatus;
+
+  @IsString()
+  @IsOptional()
+  reservedBy?: string;
 
   @IsString()
   @IsOptional()

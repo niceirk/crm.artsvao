@@ -94,6 +94,9 @@ export class EventsService {
       where.eventTypeId = filters.eventTypeId;
     }
 
+    // Автоматически обновляем статусы завершенных событий
+    await this.updateCompletedEvents();
+
     return this.prisma.event.findMany({
       where,
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
@@ -111,8 +114,75 @@ export class EventsService {
             lastName: true,
           },
         },
+        room: {
+          select: {
+            id: true,
+            name: true,
+            number: true,
+          },
+        },
       },
     });
+  }
+
+  /**
+   * Автоматически обновляет статус событий на COMPLETED,
+   * если время их завершения уже прошло
+   */
+  private async updateCompletedEvents() {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    // Текущее время в UTC для сравнения (время с начала дня в миллисекундах)
+    const currentTimeOfDay = new Date(Date.UTC(1970, 0, 1, now.getHours(), now.getMinutes(), 0));
+
+    // Найти все события со статусом PLANNED или ONGOING,
+    // которые уже завершились
+    const eventsToComplete = await this.prisma.event.findMany({
+      where: {
+        OR: [
+          { status: 'PLANNED' },
+          { status: 'ONGOING' },
+        ],
+        date: {
+          lte: today,
+        },
+      },
+    });
+
+    // Фильтруем события, у которых прошло время окончания
+    const completedEventIds = eventsToComplete
+      .filter((event) => {
+        const eventDate = new Date(event.date);
+        const eventEndTime = new Date(event.endTime);
+
+        // Если событие было в прошлом (не сегодня), оно завершено
+        if (eventDate < today) {
+          return true;
+        }
+
+        // Если событие сегодня, проверяем время окончания
+        if (eventDate.getTime() === today.getTime()) {
+          return eventEndTime <= currentTimeOfDay;
+        }
+
+        return false;
+      })
+      .map((event) => event.id);
+
+    // Обновляем статус всех завершенных событий
+    if (completedEventIds.length > 0) {
+      await this.prisma.event.updateMany({
+        where: {
+          id: {
+            in: completedEventIds,
+          },
+        },
+        data: {
+          status: 'COMPLETED',
+        },
+      });
+    }
   }
 
   async findOne(id: string) {

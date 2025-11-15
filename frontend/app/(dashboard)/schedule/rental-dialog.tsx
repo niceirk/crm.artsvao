@@ -34,9 +34,8 @@ import { useRooms } from '@/hooks/use-rooms';
 import { Rental } from '@/lib/api/rentals';
 
 const statusOptions = [
-  { value: 'REQUEST', label: 'Запрос' },
-  { value: 'CONFIRMED', label: 'Подтверждено' },
-  { value: 'PAID', label: 'Оплачено' },
+  { value: 'PLANNED', label: 'Запланировано' },
+  { value: 'ONGOING', label: 'В процессе' },
   { value: 'COMPLETED', label: 'Завершено' },
   { value: 'CANCELLED', label: 'Отменено' },
 ] as const;
@@ -51,7 +50,7 @@ const formSchema = z.object({
   startTime: z.string().min(1, 'Введите время начала'),
   endTime: z.string().min(1, 'Введите время окончания'),
   totalPrice: z.coerce.number().min(0, 'Цена должна быть больше 0'),
-  status: z.enum(['REQUEST', 'CONFIRMED', 'PAID', 'COMPLETED', 'CANCELLED']).optional(),
+  status: z.enum(['PLANNED', 'ONGOING', 'COMPLETED', 'CANCELLED']).optional(),
   notes: z.string().optional(),
 });
 
@@ -81,7 +80,7 @@ export function RentalDialog({ open, onOpenChange, rental, initialData }: Rental
       startTime: '10:00',
       endTime: '18:00',
       totalPrice: 0,
-      status: 'REQUEST',
+      status: 'PLANNED',
       notes: '',
     },
   });
@@ -123,7 +122,7 @@ export function RentalDialog({ open, onOpenChange, rental, initialData }: Rental
         startTime: initialData.startTime,
         endTime: initialData.endTime,
         totalPrice: 0,
-        status: 'REQUEST',
+        status: 'PLANNED',
         notes: '',
       });
     } else {
@@ -137,7 +136,7 @@ export function RentalDialog({ open, onOpenChange, rental, initialData }: Rental
         startTime: '10:00',
         endTime: '18:00',
         totalPrice: 0,
-        status: 'REQUEST',
+        status: 'PLANNED',
         notes: '',
       });
     }

@@ -44,7 +44,8 @@ const typeOptions = [
 ] as const;
 
 const statusOptions = [
-  { value: 'SCHEDULED', label: 'Запланировано' },
+  { value: 'PLANNED', label: 'Запланировано' },
+  { value: 'ONGOING', label: 'В процессе' },
   { value: 'COMPLETED', label: 'Завершено' },
   { value: 'CANCELLED', label: 'Отменено' },
 ] as const;
@@ -57,7 +58,7 @@ const formSchema = z.object({
   startTime: z.string().min(1, 'Введите время начала'),
   endTime: z.string().min(1, 'Введите время окончания'),
   type: z.enum(['GROUP_CLASS', 'INDIVIDUAL_CLASS', 'OPEN_CLASS', 'EVENT']),
-  status: z.enum(['SCHEDULED', 'COMPLETED', 'CANCELLED']).optional(),
+  status: z.enum(['PLANNED', 'ONGOING', 'COMPLETED', 'CANCELLED']).optional(),
   notes: z.string().optional(),
 });
 
@@ -87,7 +88,7 @@ export function ScheduleDialog({ open, onOpenChange, schedule, initialData }: Sc
       startTime: '10:00',
       endTime: '11:00',
       type: 'GROUP_CLASS',
-      status: 'SCHEDULED',
+      status: 'PLANNED',
       notes: '',
     },
   });
@@ -113,7 +114,7 @@ export function ScheduleDialog({ open, onOpenChange, schedule, initialData }: Sc
         startTime: startTime,
         endTime: endTime,
         type: schedule.type,
-        status: schedule.status,
+        status: schedule.status || 'PLANNED',
         notes: schedule.notes || '',
       });
     } else if (initialData) {
@@ -125,7 +126,7 @@ export function ScheduleDialog({ open, onOpenChange, schedule, initialData }: Sc
         startTime: initialData.startTime,
         endTime: initialData.endTime,
         type: 'GROUP_CLASS',
-        status: 'SCHEDULED',
+        status: 'PLANNED',
         notes: '',
       });
     } else {
@@ -137,7 +138,7 @@ export function ScheduleDialog({ open, onOpenChange, schedule, initialData }: Sc
         startTime: '10:00',
         endTime: '11:00',
         type: 'GROUP_CLASS',
-        status: 'SCHEDULED',
+        status: 'PLANNED',
         notes: '',
       });
     }

@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { CalendarEventStatus } from './calendar-event-status';
 
 export interface Event {
   id: string;
@@ -10,7 +11,7 @@ export interface Event {
   startTime: string;
   endTime: string;
   responsibleUserId?: string;
-  status: 'PLANNED' | 'ONGOING' | 'COMPLETED' | 'CANCELLED';
+  status: CalendarEventStatus;
   notes?: string;
   participants?: number;
   budget?: number;
@@ -44,7 +45,7 @@ export interface CreateEventDto {
   startTime: string;
   endTime: string;
   responsibleUserId?: string;
-  status?: 'PLANNED' | 'ONGOING' | 'COMPLETED' | 'CANCELLED';
+  status?: CalendarEventStatus;
   notes?: string;
   participants?: number;
   budget?: number;
