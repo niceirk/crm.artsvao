@@ -5,6 +5,10 @@ export class CreateRentalDto {
   @IsUUID()
   roomId: string;
 
+  @IsUUID()
+  @IsOptional()
+  clientId?: string;
+
   @IsString()
   clientName: string;
 

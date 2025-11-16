@@ -164,6 +164,218 @@ async function main() {
 
   console.log(`✅ Created ${groups.length} groups`);
 
+  // Создать льготные категории
+  const benefitCategories = await Promise.all([
+    prisma.benefitCategory.upsert({
+      where: { name: 'Нет льготы' },
+      update: {},
+      create: {
+        name: 'Нет льготы',
+        discountPercent: 0,
+        description: 'Без применения льгот',
+        requiresDocument: false,
+      },
+    }),
+    prisma.benefitCategory.upsert({
+      where: { name: 'Пенсионер' },
+      update: {},
+      create: {
+        name: 'Пенсионер',
+        discountPercent: 20,
+        description: 'Скидка для пенсионеров',
+        requiresDocument: true,
+      },
+    }),
+    prisma.benefitCategory.upsert({
+      where: { name: 'Многодетная семья' },
+      update: {},
+      create: {
+        name: 'Многодетная семья',
+        discountPercent: 30,
+        description: 'Скидка для многодетных семей',
+        requiresDocument: true,
+      },
+    }),
+    prisma.benefitCategory.upsert({
+      where: { name: 'Сотрудник' },
+      update: {},
+      create: {
+        name: 'Сотрудник',
+        discountPercent: 100,
+        description: 'Бесплатно для сотрудников культурного центра',
+        requiresDocument: false,
+      },
+    }),
+  ]);
+
+  console.log(`✅ Created ${benefitCategories.length} benefit categories`);
+
+  // Создать категории услуг
+  const serviceCategories = await Promise.all([
+    prisma.serviceCategory.upsert({
+      where: { name: 'Абонементы' },
+      update: {},
+      create: {
+        name: 'Абонементы',
+        description: 'Абонементы на групповые занятия',
+        icon: 'ticket',
+        color: '#3b82f6',
+      },
+    }),
+    prisma.serviceCategory.upsert({
+      where: { name: 'Аренда помещений' },
+      update: {},
+      create: {
+        name: 'Аренда помещений',
+        description: 'Аренда залов и студий',
+        icon: 'building',
+        color: '#10b981',
+      },
+    }),
+    prisma.serviceCategory.upsert({
+      where: { name: 'Разовые занятия' },
+      update: {},
+      create: {
+        name: 'Разовые занятия',
+        description: 'Одноразовые посещения групп',
+        icon: 'calendar',
+        color: '#f59e0b',
+      },
+    }),
+    prisma.serviceCategory.upsert({
+      where: { name: 'Индивидуальные уроки' },
+      update: {},
+      create: {
+        name: 'Индивидуальные уроки',
+        description: 'Занятия один-на-один с преподавателем',
+        icon: 'user',
+        color: '#8b5cf6',
+      },
+    }),
+  ]);
+
+  console.log(`✅ Created ${serviceCategories.length} service categories`);
+
+  // Создать услуги
+  const services = await Promise.all([
+    // Абонементы
+    prisma.service.create({
+      data: {
+        name: 'Абонемент "Безлимит" на танцы (младшая группа)',
+        description: 'Неограниченное посещение занятий в течение месяца',
+        categoryId: serviceCategories[0].id,
+        serviceType: 'SUBSCRIPTION',
+        basePrice: 4000,
+        vatRate: 0, // Образовательные услуги без НДС
+        priceWithVat: 4000,
+        unitOfMeasure: 'MONTH',
+        writeOffTiming: 'ON_SALE',
+        groupId: groups[0].id,
+      },
+    }),
+    prisma.service.create({
+      data: {
+        name: 'Абонемент "Безлимит" на вокал (средняя группа)',
+        description: 'Неограниченное посещение занятий в течение месяца',
+        categoryId: serviceCategories[0].id,
+        serviceType: 'SUBSCRIPTION',
+        basePrice: 5000,
+        vatRate: 0,
+        priceWithVat: 5000,
+        unitOfMeasure: 'MONTH',
+        writeOffTiming: 'ON_SALE',
+        groupId: groups[1].id,
+      },
+    }),
+    // Аренда
+    prisma.service.create({
+      data: {
+        name: 'Аренда Большого зала (почасовая)',
+        description: 'Аренда Большого зала на 1 час',
+        categoryId: serviceCategories[1].id,
+        serviceType: 'RENTAL',
+        basePrice: 2000,
+        vatRate: 20,
+        priceWithVat: 2400,
+        unitOfMeasure: 'HOUR',
+        writeOffTiming: 'ON_SALE',
+        roomId: rooms[0].id,
+      },
+    }),
+    prisma.service.create({
+      data: {
+        name: 'Аренда Танцевальной студии (посуточная)',
+        description: 'Аренда Танцевальной студии на 1 день',
+        categoryId: serviceCategories[1].id,
+        serviceType: 'RENTAL',
+        basePrice: 10000,
+        vatRate: 20,
+        priceWithVat: 12000,
+        unitOfMeasure: 'DAY',
+        writeOffTiming: 'ON_SALE',
+        roomId: rooms[1].id,
+      },
+    }),
+    // Разовые занятия
+    prisma.service.create({
+      data: {
+        name: 'Разовое посещение танцев (младшая группа)',
+        description: 'Одно занятие без абонемента',
+        categoryId: serviceCategories[2].id,
+        serviceType: 'SINGLE_SESSION',
+        basePrice: 500,
+        vatRate: 0,
+        priceWithVat: 500,
+        unitOfMeasure: 'SESSION',
+        writeOffTiming: 'ON_USE',
+        groupId: groups[0].id,
+      },
+    }),
+    prisma.service.create({
+      data: {
+        name: 'Разовое посещение вокала (средняя группа)',
+        description: 'Одно занятие без абонемента',
+        categoryId: serviceCategories[2].id,
+        serviceType: 'SINGLE_SESSION',
+        basePrice: 600,
+        vatRate: 0,
+        priceWithVat: 600,
+        unitOfMeasure: 'SESSION',
+        writeOffTiming: 'ON_USE',
+        groupId: groups[1].id,
+      },
+    }),
+    // Индивидуальные уроки
+    prisma.service.create({
+      data: {
+        name: 'Индивидуальный урок хореографии',
+        description: 'Персональное занятие с педагогом по хореографии',
+        categoryId: serviceCategories[3].id,
+        serviceType: 'INDIVIDUAL_LESSON',
+        basePrice: 2000,
+        vatRate: 0,
+        priceWithVat: 2000,
+        unitOfMeasure: 'SESSION',
+        writeOffTiming: 'ON_USE',
+      },
+    }),
+    prisma.service.create({
+      data: {
+        name: 'Индивидуальный урок вокала',
+        description: 'Персональное занятие с педагогом по вокалу',
+        categoryId: serviceCategories[3].id,
+        serviceType: 'INDIVIDUAL_LESSON',
+        basePrice: 2500,
+        vatRate: 0,
+        priceWithVat: 2500,
+        unitOfMeasure: 'SESSION',
+        writeOffTiming: 'ON_USE',
+      },
+    }),
+  ]);
+
+  console.log(`✅ Created ${services.length} services`);
+
   // Создать типы абонементов
   const subscriptionTypes = await Promise.all([
     prisma.subscriptionType.create({
@@ -230,6 +442,9 @@ async function main() {
   console.log(`   - ${teachers.length} teachers`);
   console.log(`   - ${studios.length} studios`);
   console.log(`   - ${groups.length} groups`);
+  console.log(`   - ${benefitCategories.length} benefit categories`);
+  console.log(`   - ${serviceCategories.length} service categories`);
+  console.log(`   - ${services.length} services`);
   console.log(`   - ${subscriptionTypes.length} subscription types`);
   console.log(`   - System settings initialized`);
   console.log('\n💡 Login credentials:');

@@ -121,23 +121,79 @@ export class ClientsService {
             description: true,
           },
         },
-        relations: {
-          include: {
-            relatedClient: true,
+        benefitCategory: {
+          select: {
+            id: true,
+            name: true,
+            discountPercent: true,
           },
+        },
+        relations: {
+          select: {
+            id: true,
+            relationType: true,
+            relatedClient: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                middleName: true,
+                phone: true,
+              },
+            },
+          },
+          take: 10,
         },
         relatedTo: {
-          include: {
-            client: true,
+          select: {
+            id: true,
+            relationType: true,
+            client: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                middleName: true,
+                phone: true,
+              },
+            },
           },
+          take: 10,
         },
         subscriptions: {
-          include: {
-            subscriptionType: true,
-            group: true,
+          select: {
+            id: true,
+            validMonth: true,
+            startDate: true,
+            endDate: true,
+            status: true,
+            paidPrice: true,
+            remainingVisits: true,
+            subscriptionType: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+              },
+            },
+            group: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
           },
+          orderBy: { createdAt: 'desc' },
+          take: 5,
         },
         payments: {
+          select: {
+            id: true,
+            amount: true,
+            paymentMethod: true,
+            status: true,
+            createdAt: true,
+          },
           orderBy: { createdAt: 'desc' },
           take: 10,
         },

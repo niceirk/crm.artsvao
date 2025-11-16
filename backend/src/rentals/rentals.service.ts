@@ -3,12 +3,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateRentalDto } from './dto/create-rental.dto';
 import { UpdateRentalDto } from './dto/update-rental.dto';
 import { ConflictCheckerService } from '../shared/conflict-checker.service';
+import { InvoicesService } from '../invoices/invoices.service';
+import { ServiceType, WriteOffTiming } from '@prisma/client';
 
 @Injectable()
 export class RentalsService {
   constructor(
     private prisma: PrismaService,
     private conflictChecker: ConflictCheckerService,
+    private invoicesService: InvoicesService,
   ) {}
 
   async create(createRentalDto: CreateRentalDto) {
@@ -52,7 +55,7 @@ export class RentalsService {
       endTime: new Date(Date.UTC(1970, 0, 1, endHour, endMin, 0)),
     };
 
-    return this.prisma.rental.create({
+    const rental = await this.prisma.rental.create({
       data: createData,
       include: {
         room: {
@@ -76,6 +79,36 @@ export class RentalsService {
         },
       },
     });
+
+    // Автоматическое создание счета, если указан clientId
+    if (createRentalDto.clientId && createRentalDto.totalPrice > 0) {
+      try {
+        await this.invoicesService.create({
+          clientId: createRentalDto.clientId,
+          rentalId: rental.id,
+          items: [
+            {
+              serviceType: ServiceType.RENTAL,
+              serviceName: `Аренда ${room.name}${room.number ? ` №${room.number}` : ''}`,
+              serviceDescription: `${createRentalDto.eventType || 'Мероприятие'} - ${new Date(createRentalDto.date).toLocaleDateString('ru-RU')} (${createRentalDto.startTime}-${createRentalDto.endTime})`,
+              roomId: createRentalDto.roomId,
+              quantity: 1,
+              basePrice: Number(createRentalDto.totalPrice),
+              unitPrice: Number(createRentalDto.totalPrice),
+              vatRate: 0,
+              discountPercent: 0,
+              writeOffTiming: WriteOffTiming.ON_SALE,
+            },
+          ],
+          notes: createRentalDto.notes,
+        }, createRentalDto.managerId);
+      } catch (error) {
+        // Логируем ошибку, но не прерываем создание аренды
+        console.error('Failed to auto-create invoice for rental:', error);
+      }
+    }
+
+    return rental;
   }
 
   async findAll(queryParams?: { date?: string; roomId?: string; status?: string }) {

@@ -20,6 +20,10 @@ import { RentalsModule } from './rentals/rentals.module';
 import { EventTypesModule } from './event-types/event-types.module';
 import { EventsModule } from './events/events.module';
 import { ReservationsModule } from './reservations/reservations.module';
+import { BenefitCategoriesModule } from './benefit-categories/benefit-categories.module';
+import { ServiceCategoriesModule } from './service-categories/service-categories.module';
+import { ServicesModule } from './services/services.module';
+import { InvoicesModule } from './invoices/invoices.module';
 
 @Module({
   imports: [
@@ -43,6 +47,10 @@ import { ReservationsModule } from './reservations/reservations.module';
     EventTypesModule,
     EventsModule,
     ReservationsModule,
+    BenefitCategoriesModule,
+    ServiceCategoriesModule,
+    ServicesModule,
+    InvoicesModule,
   ],
   controllers: [AppController],
   providers: [

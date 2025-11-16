@@ -12,6 +12,9 @@ import {
   FileText,
   CalendarClock,
   Palette,
+  Percent,
+  ClipboardList,
+  FileStack,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -72,6 +75,12 @@ export const navigationConfig: NavGroup[] = [
         icon: Receipt,
         description: 'Управление абонементами клиентов',
       },
+      {
+        title: 'Счета',
+        href: '/invoices',
+        icon: FileStack,
+        description: 'Управление счетами и платежами',
+      },
     ],
   },
   {
@@ -104,6 +113,20 @@ export const navigationConfig: NavGroup[] = [
         icon: Users2,
         description: 'Группы студий',
         requiresAdmin: false,
+      },
+      {
+        title: 'Льготные категории',
+        href: '/admin/benefit-categories',
+        icon: Percent,
+        description: 'Справочник льгот и скидок',
+        requiresAdmin: true,
+      },
+      {
+        title: 'Номенклатура услуг',
+        href: '/admin/services',
+        icon: ClipboardList,
+        description: 'Справочник услуг с НДС',
+        requiresAdmin: true,
       },
       {
         title: 'Типы мероприятий',

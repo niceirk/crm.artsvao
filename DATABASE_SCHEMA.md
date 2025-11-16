@@ -21,6 +21,8 @@ erDiagram
     Client ||--o{ Subscription : "has"
     Client ||--o{ Attendance : "attends"
     Client ||--o{ Payment : "pays"
+    Client ||--o{ Invoice : "receives"
+    Client ||--o| BenefitCategory : "has benefit"
     Client {
         uuid id PK
         string first_name
@@ -155,6 +157,7 @@ erDiagram
     }
 
     Subscription ||--o{ Payment : "paid with"
+    Subscription ||--o{ Invoice : "invoiced"
     Subscription ||--o{ SubscriptionCompensation : "has"
     Subscription {
         uuid id PK
@@ -190,9 +193,11 @@ erDiagram
         timestamp updated_at
     }
 
+    Payment ||--o| Invoice : "pays"
     Payment {
         uuid id PK
         uuid client_id FK
+        uuid invoice_id FK
         decimal amount
         enum payment_method
         enum payment_type
@@ -205,7 +210,122 @@ erDiagram
         timestamp updated_at
     }
 
+    BenefitCategory ||--o{ Client : "grants discount"
+    BenefitCategory {
+        uuid id PK
+        string name UK
+        decimal discount_percent
+        text description
+        boolean requires_document
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    ServiceCategory ||--o{ Service : "categorizes"
+    ServiceCategory {
+        uuid id PK
+        string name UK
+        text description
+        string icon
+        string color
+        integer sort_order
+        boolean is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    Service ||--o{ InvoiceItem : "sold via"
+    Service ||--o| Group : "for group"
+    Service ||--o| Room : "for room"
+    Service ||--o| ServiceCategory : "belongs to"
+    Service {
+        uuid id PK
+        string name
+        text description
+        string short_description
+        uuid category_id FK
+        enum service_type
+        decimal base_price
+        decimal vat_rate
+        decimal price_with_vat
+        string unit_of_measure
+        enum write_off_timing
+        integer default_quantity
+        uuid group_id FK
+        uuid room_id FK
+        boolean is_active
+        boolean is_archived
+        integer sort_order
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    Invoice ||--o{ InvoiceItem : "contains"
+    Invoice ||--o{ Payment : "paid via"
+    Invoice ||--o| Subscription : "for subscription"
+    Invoice ||--o| Rental : "for rental"
+    Invoice ||--o{ InvoiceAuditLog : "has audit"
+    Invoice {
+        uuid id PK
+        string invoice_number UK
+        uuid client_id FK
+        uuid subscription_id FK
+        uuid rental_id FK
+        decimal subtotal
+        decimal discount_amount
+        decimal total_amount
+        enum status
+        timestamp issued_at
+        date due_date
+        timestamp paid_at
+        text notes
+        uuid created_by FK
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    InvoiceItem {
+        uuid id PK
+        uuid invoice_id FK
+        uuid service_id FK
+        enum service_type
+        string service_name
+        text service_description
+        uuid subscription_type_id FK
+        uuid room_id FK
+        decimal quantity
+        decimal unit_price
+        decimal base_price
+        decimal vat_rate
+        decimal vat_amount
+        decimal discount_percent
+        decimal discount_amount
+        decimal total_price
+        enum write_off_timing
+        enum write_off_status
+        decimal remaining_quantity
+        boolean is_price_adjusted
+        text adjustment_reason
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    InvoiceAuditLog {
+        uuid id PK
+        uuid invoice_id FK
+        uuid item_id FK
+        enum action
+        string field_name
+        string old_value
+        string new_value
+        text reason
+        uuid user_id FK
+        timestamp created_at
+    }
+
     Rental ||--o{ Payment : "paid with"
+    Rental ||--o{ Invoice : "invoiced"
     Rental {
         uuid id PK
         uuid room_id FK
@@ -363,6 +483,63 @@ CREATE INDEX idx_company_contact_is_primary ON CompanyContact(client_id, is_prim
 CREATE INDEX idx_rental_client ON Rental(client_id);
 ```
 
+### Invoice
+```sql
+CREATE INDEX idx_invoice_client ON Invoice(client_id);
+CREATE INDEX idx_invoice_subscription ON Invoice(subscription_id);
+CREATE INDEX idx_invoice_rental ON Invoice(rental_id);
+CREATE INDEX idx_invoice_status ON Invoice(status);
+CREATE INDEX idx_invoice_issued ON Invoice(issued_at);
+CREATE INDEX idx_invoice_due ON Invoice(due_date);
+CREATE UNIQUE INDEX idx_invoice_number ON Invoice(invoice_number);
+```
+
+### InvoiceItem
+```sql
+CREATE INDEX idx_invoice_item_invoice ON InvoiceItem(invoice_id);
+CREATE INDEX idx_invoice_item_write_off_status ON InvoiceItem(write_off_status);
+```
+
+### InvoiceAuditLog
+```sql
+CREATE INDEX idx_invoice_audit_invoice ON InvoiceAuditLog(invoice_id);
+CREATE INDEX idx_invoice_audit_user ON InvoiceAuditLog(user_id);
+CREATE INDEX idx_invoice_audit_created ON InvoiceAuditLog(created_at);
+CREATE INDEX idx_invoice_audit_action ON InvoiceAuditLog(action);
+```
+
+### BenefitCategory
+```sql
+CREATE UNIQUE INDEX idx_benefit_category_name ON BenefitCategory(name);
+CREATE INDEX idx_benefit_category_active ON BenefitCategory(is_active);
+```
+
+### ServiceCategory
+```sql
+CREATE UNIQUE INDEX idx_service_category_name ON ServiceCategory(name);
+CREATE INDEX idx_service_category_active ON ServiceCategory(is_active);
+CREATE INDEX idx_service_category_sort ON ServiceCategory(sort_order);
+```
+
+### Service
+```sql
+CREATE INDEX idx_service_category ON Service(category_id);
+CREATE INDEX idx_service_type ON Service(service_type);
+CREATE INDEX idx_service_active ON Service(is_active);
+CREATE INDEX idx_service_archived ON Service(is_archived);
+CREATE INDEX idx_service_group ON Service(group_id);
+CREATE INDEX idx_service_room ON Service(room_id);
+CREATE INDEX idx_service_sort ON Service(sort_order);
+-- Composite index для поиска активных услуг по категории
+CREATE INDEX idx_service_category_active ON Service(category_id, is_active);
+```
+
+### InvoiceItem (дополнительные индексы)
+```sql
+CREATE INDEX idx_invoice_item_service ON InvoiceItem(service_id);
+CREATE INDEX idx_invoice_item_subscription_type ON InvoiceItem(subscription_type_id);
+```
+
 ### RentalContract
 ```sql
 CREATE INDEX idx_rental_contract_rental ON RentalContract(rental_id);
@@ -409,11 +586,13 @@ model User {
   createdAt     DateTime    @default(now()) @map("created_at")
   updatedAt     DateTime    @updatedAt @map("updated_at")
 
-  rentals       Rental[]
-  events        Event[]
-  auditLogs     AuditLog[]
-  invitations   UserInvitation[]
-  systemSettings SystemSettings[]
+  rentals           Rental[]
+  events            Event[]
+  auditLogs         AuditLog[]
+  createdInvoices   Invoice[]        @relation("InvoiceCreator")
+  invoiceAuditLogs  InvoiceAuditLog[] @relation("InvoiceAudit")
+  invitations       UserInvitation[]
+  systemSettings    SystemSettings[]
 
   @@map("users")
 }
@@ -448,6 +627,9 @@ model Client {
   dateOfBirth     DateTime?     @map("date_of_birth") @db.Date
   gender          Gender?
 
+  // Льготная категория
+  benefitCategoryId  String?   @map("benefit_category_id")
+
   // Поля для ЮРИДИЧЕСКИХ ЛИЦ (clientType = COMPANY)
   companyName     String?       @map("company_name")  // Обязательно для компаний
   inn             String?       // ИНН (10-12 цифр) - Обязательно для компаний
@@ -472,11 +654,13 @@ model Client {
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
   // Relations
+  benefitCategory BenefitCategory? @relation(fields: [benefitCategoryId], references: [id], onDelete: SetNull)
   relations       ClientRelation[] @relation("ClientRelations")
   relatedTo       ClientRelation[] @relation("RelatedClientRelations")
   subscriptions   Subscription[]
   attendances     Attendance[]
   payments        Payment[]
+  invoices        Invoice[]
   rentals         Rental[]         // Аренды помещений (в основном для компаний)
   companyContacts CompanyContact[]  // Контактные лица для компаний
 
@@ -488,6 +672,23 @@ model Client {
   @@index([inn])
   @@index([companyName])
   @@map("clients")
+}
+
+// Льготные категории для скидок
+model BenefitCategory {
+  id                 String   @id @default(uuid())
+  name               String   @unique
+  discountPercent    Decimal  @map("discount_percent") @db.Decimal(5, 2)
+  description        String?  @db.Text
+  requiresDocument   Boolean  @default(false) @map("requires_document")
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  clients            Client[]
+
+  @@index([isActive])
+  @@map("benefit_categories")
 }
 
 enum RelationType {
@@ -562,6 +763,7 @@ model Room {
   schedules     Schedule[]
   groups        Group[]
   rentals       Rental[]
+  invoiceItems  InvoiceItem[]
 
   @@map("rooms")
 }
@@ -730,6 +932,7 @@ model SubscriptionType {
 
   group         Group                 @relation(fields: [groupId], references: [id], onDelete: Cascade)
   subscriptions Subscription[]
+  invoiceItems  InvoiceItem[]
 
   @@index([groupId])
   @@map("subscription_types")
@@ -774,6 +977,7 @@ model Subscription {
   subscriptionType    SubscriptionType    @relation(fields: [subscriptionTypeId], references: [id])
   group               Group               @relation(fields: [groupId], references: [id])
   payments            Payment[]
+  invoices            Invoice[]
   compensations       SubscriptionCompensation[]
 
   @@index([clientId])
@@ -836,6 +1040,7 @@ enum PaymentStatus {
 model Payment {
   id              String        @id @default(uuid())
   clientId        String        @map("client_id")
+  invoiceId       String?       @map("invoice_id")
   amount          Decimal       @db.Decimal(10, 2)
   paymentMethod   PaymentMethod @map("payment_method")
   paymentType     PaymentType   @map("payment_type")
@@ -844,18 +1049,167 @@ model Payment {
   subscriptionId  String?       @map("subscription_id")
   rentalId        String?       @map("rental_id")
   notes           String?       @db.Text
+  paidAt          DateTime?     @map("paid_at")
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
   client          Client        @relation(fields: [clientId], references: [id])
+  invoice         Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   subscription    Subscription? @relation(fields: [subscriptionId], references: [id])
   rental          Rental?       @relation(fields: [rentalId], references: [id])
 
   @@index([clientId])
+  @@index([invoiceId])
   @@index([status])
   @@index([createdAt])
   @@index([paymentType])
   @@map("payments")
+}
+
+// ============================================================================
+// МОДУЛЬ СЧЕТОВ (INVOICES)
+// ============================================================================
+
+enum InvoiceStatus {
+  DRAFT           // Черновик
+  PENDING         // Ожидает оплаты
+  PAID            // Оплачен
+  PARTIALLY_PAID  // Частично оплачен
+  OVERDUE         // Просрочен
+  CANCELLED       // Отменен
+}
+
+model Invoice {
+  id              String         @id @default(uuid())
+  invoiceNumber   String         @unique @map("invoice_number")
+  clientId        String         @map("client_id")
+  subscriptionId  String?        @map("subscription_id")
+  rentalId        String?        @map("rental_id")
+
+  subtotal        Decimal        @db.Decimal(10, 2)
+  discountAmount  Decimal        @default(0) @map("discount_amount") @db.Decimal(10, 2)
+  totalAmount     Decimal        @map("total_amount") @db.Decimal(10, 2)
+
+  status          InvoiceStatus  @default(PENDING)
+  issuedAt        DateTime       @default(now()) @map("issued_at")
+  dueDate         DateTime?      @map("due_date") @db.Date
+  paidAt          DateTime?      @map("paid_at")
+
+  notes           String?        @db.Text
+  createdBy       String?        @map("created_by")
+
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  subscription    Subscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  rental          Rental?        @relation(fields: [rentalId], references: [id], onDelete: SetNull)
+  creator         User?          @relation("InvoiceCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  items           InvoiceItem[]
+  payments        Payment[]
+  auditLogs       InvoiceAuditLog[]
+
+  @@index([clientId])
+  @@index([subscriptionId])
+  @@index([rentalId])
+  @@index([status])
+  @@index([issuedAt])
+  @@index([dueDate])
+  @@map("invoices")
+}
+
+enum ServiceType {
+  SUBSCRIPTION      // Абонемент
+  RENTAL            // Аренда
+  SINGLE_SESSION    // Разовое занятие
+  INDIVIDUAL_LESSON // Индивидуальное занятие
+  COWORKING         // Коворкинг
+  OTHER             // Прочие услуги
+}
+
+enum WriteOffTiming {
+  ON_SALE   // Списание при продаже (оплате счета)
+  ON_USE    // Списание при использовании
+}
+
+enum WriteOffStatus {
+  PENDING       // Ожидает списания
+  IN_PROGRESS   // Частично списано (для ON_USE)
+  COMPLETED     // Полностью списано
+  CANCELLED     // Отменено
+}
+
+model InvoiceItem {
+  id                 String            @id @default(uuid())
+  invoiceId          String            @map("invoice_id")
+
+  serviceType        ServiceType       @map("service_type")
+  serviceName        String            @map("service_name")
+  serviceDescription String?           @map("service_description")
+
+  subscriptionTypeId String?           @map("subscription_type_id")
+  roomId             String?           @map("room_id")
+
+  quantity           Decimal           @default(1) @db.Decimal(10, 2)
+  unitPrice          Decimal           @map("unit_price") @db.Decimal(10, 2)
+  basePrice          Decimal           @map("base_price") @db.Decimal(10, 2)
+  discountPercent    Decimal           @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  discountAmount     Decimal           @default(0) @map("discount_amount") @db.Decimal(10, 2)
+  totalPrice         Decimal           @map("total_price") @db.Decimal(10, 2)
+
+  writeOffTiming     WriteOffTiming    @map("write_off_timing")
+  writeOffStatus     WriteOffStatus    @default(PENDING) @map("write_off_status")
+  remainingQuantity  Decimal?          @map("remaining_quantity") @db.Decimal(10, 2)
+
+  isPriceAdjusted    Boolean           @default(false) @map("is_price_adjusted")
+  adjustmentReason   String?           @map("adjustment_reason") @db.Text
+
+  createdAt          DateTime          @default(now()) @map("created_at")
+  updatedAt          DateTime          @updatedAt @map("updated_at")
+
+  invoice            Invoice           @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  subscriptionType   SubscriptionType? @relation(fields: [subscriptionTypeId], references: [id], onDelete: SetNull)
+  room               Room?             @relation(fields: [roomId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([writeOffStatus])
+  @@map("invoice_items")
+}
+
+enum AuditAction {
+  CREATED         // Счет создан
+  UPDATED         // Обновлен
+  PRICE_ADJUSTED  // Цена скорректирована
+  STATUS_CHANGED  // Статус изменен
+  ITEM_ADDED      // Позиция добавлена
+  ITEM_REMOVED    // Позиция удалена
+  CANCELLED       // Счет отменен
+}
+
+model InvoiceAuditLog {
+  id          String   @id @default(uuid())
+  invoiceId   String   @map("invoice_id")
+  itemId      String?  @map("item_id")
+
+  action      AuditAction
+  fieldName   String   @map("field_name")
+  oldValue    String?  @map("old_value")
+  newValue    String?  @map("new_value")
+
+  reason      String?  @db.Text
+  userId      String   @map("user_id")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user        User     @relation("InvoiceAudit", fields: [userId], references: [id])
+
+  @@index([invoiceId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([action])
+  @@map("invoice_audit_logs")
 }
 
 enum RentalStatus {
@@ -893,6 +1247,7 @@ model Rental {
   client      Client?         @relation(fields: [clientId], references: [id])
   manager     User?           @relation(fields: [managerId], references: [id])
   payments    Payment[]
+  invoices    Invoice[]
   contract    RentalContract?  // Договор аренды (для компаний)
 
   @@index([date])
@@ -1108,6 +1463,203 @@ model SystemSettings {
   @@map("system_settings")
 }
 ```
+
+---
+
+## Описание ключевых таблиц
+
+### Модуль счетов (Invoices)
+
+#### Invoice (Счет на оплату)
+
+Центральная таблица финансовой системы для управления счетами клиентов.
+
+**Назначение**: Формирование счетов на оплату услуг (абонементы, аренда, разовые занятия)
+
+**Ключевые поля**:
+- `invoiceNumber` - Уникальный номер счета (формат: `INV-YYYYMMDD-XXXX`), генерируется автоматически
+- `clientId` - Клиент (физлицо или компания)
+- `subscriptionId` - Связь с абонементом (опционально)
+- `rentalId` - Связь с арендой (опционально)
+- `subtotal` - Сумма до скидок и НДС
+- `discountAmount` - Общая скидка на весь счет
+- `totalAmount` - Итоговая сумма к оплате (включая НДС и скидки)
+- `status` - Статус счета (DRAFT/PENDING/PAID/PARTIALLY_PAID/OVERDUE/CANCELLED)
+- `issuedAt` - Дата выставления счета
+- `dueDate` - Срок оплаты
+- `paidAt` - Дата оплаты
+- `createdBy` - Кто создал счет (менеджер/администратор)
+
+**Бизнес-логика**:
+- Автоматическое создание при бронировании аренды (если указан `clientId`)
+- Автоматическое создание при покупке абонемента (в разработке)
+- Ручное создание менеджерами через UI
+- Автоматический расчет сумм с учетом НДС и скидок
+- Применение льготных категорий клиента
+
+**Статусы**:
+- `DRAFT` - Черновик (для будущего использования)
+- `PENDING` - Ожидает оплаты (основной статус после создания)
+- `PAID` - Полностью оплачен
+- `PARTIALLY_PAID` - Частично оплачен
+- `OVERDUE` - Просрочен (устанавливается автоматически после `dueDate`)
+- `CANCELLED` - Отменен
+
+#### InvoiceItem (Позиции счета)
+
+Таблица позиций (строк) счета с подробной информацией об услуге.
+
+**Назначение**: Детализация услуг в счете с гибкой логикой списания
+
+**Ключевые поля**:
+- `invoiceId` - Связь со счетом
+- `serviceId` - Связь с услугой из номенклатуры (опционально)
+- `serviceType` - Тип услуги (SUBSCRIPTION/RENTAL/SINGLE_SESSION/INDIVIDUAL_LESSON/OTHER)
+- `serviceName` - Название услуги
+- `serviceDescription` - Описание услуги
+- `quantity` - Количество единиц
+- `unitPrice` - Цена за единицу (после скидок)
+- `basePrice` - Базовая цена за единицу (до скидок)
+- `vatRate` - Ставка НДС (0%, 10%, 20%)
+- `vatAmount` - Сумма НДС
+- `discountPercent` - Процент скидки на позицию
+- `discountAmount` - Сумма скидки
+- `totalPrice` - Итоговая цена позиции
+- `writeOffTiming` - Модель списания (ON_SALE/ON_USE)
+- `writeOffStatus` - Статус списания (PENDING/IN_PROGRESS/COMPLETED/CANCELLED)
+- `remainingQuantity` - Остаток количества для списания (для ON_USE)
+- `isPriceAdjusted` - Флаг корректировки цены вручную
+- `adjustmentReason` - Причина корректировки
+
+**Модели списания (WriteOffTiming)**:
+- `ON_SALE` - Списание при продаже (оплате счета)
+  - Используется для: аренда, разовые занятия
+  - Услуга считается полностью оказанной сразу после оплаты
+- `ON_USE` - Списание при использовании
+  - Используется для: абонементы, пакеты занятий
+  - Списание происходит постепенно по мере посещения занятий
+  - Отслеживается `remainingQuantity`
+
+**Статусы списания (WriteOffStatus)**:
+- `PENDING` - Ожидает списания (счет не оплачен или услуга не использована)
+- `IN_PROGRESS` - Частично списано (для ON_USE, когда использована часть)
+- `COMPLETED` - Полностью списано
+- `CANCELLED` - Отменено (при отмене счета)
+
+#### InvoiceAuditLog (Журнал аудита счетов)
+
+Полный аудит всех изменений счетов для прозрачности и контроля.
+
+**Назначение**: Отслеживание всех изменений счетов и их позиций
+
+**Ключевые поля**:
+- `invoiceId` - Связь со счетом
+- `itemId` - Связь с позицией счета (опционально)
+- `action` - Тип действия (CREATED/UPDATED/PRICE_ADJUSTED/STATUS_CHANGED/ITEM_ADDED/ITEM_REMOVED/CANCELLED)
+- `fieldName` - Название измененного поля
+- `oldValue` - Старое значение
+- `newValue` - Новое значение
+- `reason` - Причина изменения (обязательна для корректировок цен)
+- `userId` - Кто внес изменение
+
+**Отслеживаемые события**:
+- Создание счета
+- Изменение статуса
+- Корректировка цен (требует обоснования)
+- Добавление/удаление позиций
+- Отмена счета
+
+### Модуль номенклатуры услуг (Services)
+
+#### ServiceCategory (Категории услуг)
+
+Справочник категорий для группировки услуг.
+
+**Назначение**: Классификация и организация услуг по категориям
+
+**Ключевые поля**:
+- `name` - Название категории (уникальное)
+- `description` - Описание категории
+- `icon` - Иконка для UI
+- `color` - Цвет для визуального выделения
+- `sortOrder` - Порядок сортировки
+- `isActive` - Активность категории
+
+**Примеры категорий**:
+- Абонементы (танцы, вокал, гимнастика)
+- Аренда помещений
+- Разовые занятия
+- Индивидуальные уроки
+- Коворкинг
+- Прочие услуги
+
+#### Service (Номенклатура услуг)
+
+Центральный справочник всех услуг культурного центра.
+
+**Назначение**: Единая таблица для всех типов услуг с гибким ценообразованием
+
+**Ключевые поля**:
+- `name` - Название услуги
+- `description` - Полное описание
+- `shortDescription` - Краткое описание для UI
+- `categoryId` - Категория услуги
+- `serviceType` - Тип услуги (SUBSCRIPTION/RENTAL/SINGLE_SESSION/INDIVIDUAL_LESSON/OTHER)
+- `basePrice` - Базовая цена (без НДС)
+- `vatRate` - Ставка НДС (0%, 10%, 20%)
+- `priceWithVat` - Цена с НДС (вычисляется автоматически)
+- `unitOfMeasure` - Единица измерения (MONTH/HOUR/SESSION/DAY/PIECE)
+- `writeOffTiming` - Модель списания (ON_SALE/ON_USE)
+- `defaultQuantity` - Количество по умолчанию
+- `groupId` - Связь с группой (для абонементов)
+- `roomId` - Связь с помещением (для аренды)
+- `isActive` - Активность услуги
+- `isArchived` - Архивность (для скрытия устаревших услуг)
+- `sortOrder` - Порядок сортировки
+
+**Типы услуг (ServiceType)**:
+- `SUBSCRIPTION` - Абонемент на занятия в группе
+- `RENTAL` - Аренда помещения
+- `SINGLE_SESSION` - Разовое групповое занятие
+- `INDIVIDUAL_LESSON` - Индивидуальное занятие
+- `OTHER` - Прочие услуги
+
+**Единицы измерения (UnitOfMeasure)**:
+- `MONTH` - Месяц (для абонементов)
+- `HOUR` - Час (для аренды, индивидуальных занятий)
+- `SESSION` - Занятие (для разовых посещений)
+- `DAY` - День (для долгосрочной аренды)
+- `PIECE` - Штука (для прочих услуг)
+
+**Интеграция**:
+- Связь с `InvoiceItem` через `serviceId`
+- Автоматическое применение льгот из `BenefitCategory`
+- Корректировка цен с аудитом через `InvoiceAuditLog`
+
+#### BenefitCategory (Льготные категории)
+
+Справочник льготных категорий клиентов для автоматического применения скидок.
+
+**Назначение**: Управление скидками для различных категорий клиентов
+
+**Ключевые поля**:
+- `name` - Название категории (уникальное)
+- `discountPercent` - Процент скидки (0-100%)
+- `description` - Описание категории и условий применения
+- `requiresDocument` - Требуется ли подтверждающий документ
+- `isActive` - Активность категории
+
+**Примеры категорий**:
+- Многодетная семья (10%)
+- Пенсионеры (15%)
+- Студенты (5%)
+- Сотрудники партнеров (20%)
+- VIP клиенты (25%)
+
+**Применение**:
+- Скидка применяется автоматически при создании счета для клиента с `benefitCategoryId`
+- Можно отменить/изменить вручную в позиции счета
+- Все корректировки логируются в `InvoiceAuditLog`
 
 ---
 

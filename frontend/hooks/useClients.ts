@@ -1,3 +1,4 @@
+import React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   getClients,
@@ -111,14 +112,26 @@ export const useDeleteClient = () => {
 };
 
 /**
- * Hook для поиска клиентов
+ * Hook для поиска клиентов с debounce
  */
-export const useSearchClients = (query: string) => {
+export const useSearchClients = (query: string, delay: number = 500) => {
+  const [debouncedQuery, setDebouncedQuery] = React.useState(query);
+
+  React.useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedQuery(query);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [query, delay]);
+
   return useQuery({
-    queryKey: ['clients', 'search', query],
-    queryFn: () => searchClients(query),
-    enabled: query.length >= 2,
-    staleTime: 1000 * 60, // 1 минута
+    queryKey: ['clients', 'search', debouncedQuery],
+    queryFn: () => searchClients(debouncedQuery),
+    enabled: debouncedQuery.length >= 2,
+    staleTime: 1000 * 60 * 5, // 5 минут
   });
 };
 
