@@ -31,6 +31,21 @@ export class StudiosController {
     return this.studiosService.findAll();
   }
 
+  @Get(':id/groups')
+  getStudioGroups(@Param('id') id: string) {
+    return this.studiosService.getStudioGroups(id);
+  }
+
+  @Get(':id/subscription-types')
+  getStudioSubscriptionTypes(@Param('id') id: string) {
+    return this.studiosService.getStudioSubscriptionTypes(id);
+  }
+
+  @Get(':id/stats')
+  getStudioStats(@Param('id') id: string) {
+    return this.studiosService.getStudioStats(id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.studiosService.findOne(id);

@@ -26,6 +26,12 @@ export interface CreateStudioDto {
 
 export interface UpdateStudioDto extends Partial<CreateStudioDto> {}
 
+export interface StudioStats {
+  groupsCount: number;
+  activeSubscriptionsCount: number;
+  participantsCount: number;
+}
+
 export const studiosApi = {
   getStudios: async (): Promise<Studio[]> => {
     const { data } = await apiClient.get('/studios');
@@ -49,5 +55,21 @@ export const studiosApi = {
 
   deleteStudio: async (id: string): Promise<void> => {
     await apiClient.delete(`/studios/${id}`);
+  },
+
+  // Новые методы для детальной страницы студии
+  getStudioGroups: async (studioId: string): Promise<any[]> => {
+    const { data } = await apiClient.get(`/studios/${studioId}/groups`);
+    return data;
+  },
+
+  getStudioSubscriptionTypes: async (studioId: string): Promise<any[]> => {
+    const { data } = await apiClient.get(`/studios/${studioId}/subscription-types`);
+    return data;
+  },
+
+  getStudioStats: async (studioId: string): Promise<StudioStats> => {
+    const { data } = await apiClient.get(`/studios/${studioId}/stats`);
+    return data;
   },
 };

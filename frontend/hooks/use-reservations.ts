@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { reservationsApi, type Reservation, type CreateReservationDto, type UpdateReservationDto, type ReservationFilters } from '@/lib/api/reservations';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from '@/lib/utils/toast';
 
 export const useReservations = (filters?: ReservationFilters) => {
   return useQuery({
@@ -19,17 +19,11 @@ export const useReservation = (id: string) => {
 };
 
 export const useCreateReservation = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: (data: CreateReservationDto) => reservationsApi.createReservation(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reservations'] });
-      toast({
-        title: 'Успешно',
-        description: 'Резерв создан',
-      });
+      toast.success('Резерв создан');
     },
     onError: (error: any) => {
       toast({
@@ -42,10 +36,7 @@ export const useCreateReservation = () => {
 };
 
 export const useUpdateReservation = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateReservationDto }) =>
       reservationsApi.updateReservation(id, data),
     onMutate: async ({ id, data }) => {
@@ -87,17 +78,11 @@ export const useUpdateReservation = () => {
 };
 
 export const useDeleteReservation = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: (id: string) => reservationsApi.deleteReservation(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reservations'] });
-      toast({
-        title: 'Успешно',
-        description: 'Резерв удалён',
-      });
+      toast.success('Резерв удалён');
     },
     onError: (error: any) => {
       toast({

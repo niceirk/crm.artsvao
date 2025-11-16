@@ -10,16 +10,27 @@ import {
   Settings,
   Receipt,
   FileText,
+  CalendarClock,
+  Palette,
   type LucideIcon,
 } from 'lucide-react';
 
-export interface NavItem {
+// Интерфейс для подпунктов навигации
+export interface NavSubItem {
   title: string;
   href: string;
+  description?: string;
+  requiresAdmin?: boolean;
+}
+
+export interface NavItem {
+  title: string;
+  href?: string; // Опциональный (для родителей с children)
   icon: LucideIcon;
   badge?: string;
   description?: string;
   requiresAdmin?: boolean; // Доступно только для ADMIN
+  children?: NavSubItem[]; // Вложенные подпункты меню
 }
 
 export interface NavGroup {
@@ -33,9 +44,21 @@ export const navigationConfig: NavGroup[] = [
     items: [
       {
         title: 'Расписание',
-        href: '/schedule',
         icon: Calendar,
-        description: 'Сквозное расписание занятий и аренд',
+        description: 'Управление расписанием',
+        children: [
+          {
+            title: 'Сквозное расписание',
+            href: '/schedule',
+            description: 'Просмотр и редактирование расписания',
+          },
+          {
+            title: 'Планирование',
+            href: '/schedule-planner',
+            description: 'Создание повторяющихся занятий',
+            requiresAdmin: true,
+          },
+        ],
       },
       {
         title: 'Клиенты',
@@ -52,14 +75,14 @@ export const navigationConfig: NavGroup[] = [
     ],
   },
   {
-    title: 'Администрирование',
+    title: 'Настройки',
     items: [
       {
         title: 'Помещения',
         href: '/admin/rooms',
         icon: Building2,
         description: 'Справочник помещений',
-        requiresAdmin: false, // Доступно всем (на чтение для менеджеров)
+        requiresAdmin: false,
       },
       {
         title: 'Преподаватели',
@@ -87,7 +110,7 @@ export const navigationConfig: NavGroup[] = [
         href: '/admin/event-types',
         icon: CalendarDays,
         description: 'Справочник типов мероприятий',
-        requiresAdmin: true, // Только для админа
+        requiresAdmin: true,
       },
       {
         title: 'Мероприятия',
@@ -99,8 +122,15 @@ export const navigationConfig: NavGroup[] = [
     ],
   },
   {
-    title: 'Отчеты и настройки',
+    title: 'Система',
     items: [
+      {
+        title: 'Design System',
+        href: '/design-system',
+        icon: Palette,
+        description: 'Библиотека компонентов и элементов дизайна',
+        requiresAdmin: false, // Доступно всем
+      },
       {
         title: 'Отчеты',
         href: '/reports',
@@ -109,10 +139,10 @@ export const navigationConfig: NavGroup[] = [
         requiresAdmin: true, // Только для админа
       },
       {
-        title: 'Настройки',
+        title: 'Настройки системы',
         href: '/settings',
         icon: Settings,
-        description: 'Настройки системы',
+        description: 'Конфигурация системы',
         requiresAdmin: true, // Только для админа
       },
     ],
@@ -127,14 +157,35 @@ export function filterNavigationByRole(
   return navigation
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => {
-        // Если требуется admin, показываем только для админов
-        if (item.requiresAdmin) {
-          return isAdmin;
-        }
-        // Иначе показываем всем
-        return true;
-      }),
+      items: group.items
+        .map((item) => {
+          // Если есть children, фильтруем их
+          if (item.children) {
+            const filteredChildren = item.children.filter((child) => {
+              if (child.requiresAdmin) {
+                return isAdmin;
+              }
+              return true;
+            });
+
+            // Если все children отфильтровались, скрываем родителя
+            if (filteredChildren.length === 0) {
+              return null;
+            }
+
+            return {
+              ...item,
+              children: filteredChildren,
+            };
+          }
+
+          // Обычный элемент без children
+          if (item.requiresAdmin) {
+            return isAdmin ? item : null;
+          }
+          return item;
+        })
+        .filter((item): item is NavItem => item !== null),
     }))
     .filter((group) => group.items.length > 0); // Убираем пустые группы
 }

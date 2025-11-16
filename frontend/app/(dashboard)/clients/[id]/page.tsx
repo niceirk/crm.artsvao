@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useClient } from '@/hooks/useClients';
 import { ClientHeader } from './components/client-header';
@@ -11,13 +11,30 @@ import { ClientHistoryCard } from './components/client-history-card';
 import { ClientEditDialog } from '../components/client-edit-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle } from 'lucide-react';
+import { useBreadcrumbs } from '@/lib/contexts/breadcrumbs-context';
 
 export default function ClientDetailPage() {
   const params = useParams();
   const clientId = params.id as string;
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const { setCustomTitle } = useBreadcrumbs();
 
   const { data: client, isLoading, error } = useClient(clientId);
+
+  // Устанавливаем название клиента в хлебные крошки
+  useEffect(() => {
+    if (client) {
+      const clientName = `${client.firstName} ${client.lastName}`;
+      setCustomTitle(clientName);
+    }
+  }, [client, setCustomTitle]);
+
+  // Очищаем кастомный заголовок при размонтировании компонента
+  useEffect(() => {
+    return () => {
+      setCustomTitle(null);
+    };
+  }, []);
 
   if (isLoading) {
     return (

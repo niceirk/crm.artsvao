@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { rentalsApi, type RentalFilters, type CreateRentalDto, type UpdateRentalDto, type Rental } from '@/lib/api/rentals';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from '@/lib/utils/toast';
 
 export const useRentals = (filters?: RentalFilters) => {
   return useQuery({
@@ -19,17 +19,11 @@ export const useRental = (id: string) => {
 };
 
 export const useCreateRental = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: (data: CreateRentalDto) => rentalsApi.createRental(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rentals'] });
-      toast({
-        title: 'Успешно',
-        description: 'Аренда создана',
-      });
+      toast.success('Аренда создана');
     },
     onError: (error: any) => {
       toast({
@@ -42,10 +36,7 @@ export const useCreateRental = () => {
 };
 
 export const useUpdateRental = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateRentalDto }) =>
       rentalsApi.updateRental(id, data),
     onMutate: async ({ id, data }) => {
@@ -87,17 +78,11 @@ export const useUpdateRental = () => {
 };
 
 export const useDeleteRental = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: (id: string) => rentalsApi.deleteRental(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rentals'] });
-      toast({
-        title: 'Успешно',
-        description: 'Аренда удалена',
-      });
+      toast.success('Аренда удалена');
     },
     onError: (error: any) => {
       toast({

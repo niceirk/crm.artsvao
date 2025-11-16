@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { useAuthStore } from '@/lib/store/auth-store';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { BreadcrumbsProvider } from '@/lib/contexts/breadcrumbs-context';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { sidebarCollapsed } = useNavigationStore();
@@ -37,29 +38,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="relative h-screen overflow-hidden">
-      {/* Desktop Sidebar */}
-      <Sidebar />
+    <BreadcrumbsProvider>
+      <div className="relative h-screen overflow-hidden">
+        {/* Desktop Sidebar */}
+        <Sidebar />
 
-      {/* Mobile Sidebar (Drawer) */}
-      <MobileSidebar />
+        {/* Mobile Sidebar (Drawer) */}
+        <MobileSidebar />
 
-      {/* Main Content */}
-      <div
-        className={cn(
-          'flex h-screen flex-col transition-all duration-300',
-          'md:pl-16', // На desktop учитываем сайдбар
-          sidebarCollapsed ? 'md:pl-16' : 'md:pl-64'
-        )}
-      >
-        {/* Top Bar */}
-        <TopBar sidebarCollapsed={sidebarCollapsed} />
+        {/* Main Content */}
+        <div
+          className={cn(
+            'flex h-screen flex-col transition-all duration-300',
+            'md:pl-20', // На desktop учитываем сайдбар
+            sidebarCollapsed ? 'md:pl-20' : 'md:pl-64'
+          )}
+        >
+          {/* Top Bar */}
+          <TopBar sidebarCollapsed={sidebarCollapsed} />
 
-        {/* Page Content */}
-        <main className="flex-1 overflow-y-auto bg-muted/40 p-4 md:p-6">
-          <div className="mx-auto max-w-screen-2xl">{children}</div>
-        </main>
+          {/* Page Content */}
+          <main className="flex-1 overflow-y-auto bg-muted/40 p-4 md:p-6">
+            <div className="mx-auto max-w-screen-2xl">{children}</div>
+          </main>
+        </div>
       </div>
-    </div>
+    </BreadcrumbsProvider>
   );
 }

@@ -56,6 +56,58 @@ export interface CreateScheduleDto {
 
 export interface UpdateScheduleDto extends Partial<CreateScheduleDto> {}
 
+export interface RecurrenceRuleDto {
+  daysOfWeek: number[]; // 0=Sunday, 1=Monday, ..., 6=Saturday
+  startDate: string; // ISO date
+  endDate: string; // ISO date
+  time: {
+    start: string; // HH:mm
+    end: string; // HH:mm
+  };
+}
+
+export interface CreateRecurringScheduleDto {
+  groupId: string;
+  teacherId: string;
+  roomId: string;
+  type?: 'GROUP_CLASS' | 'INDIVIDUAL_CLASS' | 'OPEN_CLASS' | 'EVENT';
+  recurrenceRule: RecurrenceRuleDto;
+  autoEnrollClients?: boolean;
+}
+
+export interface BulkUpdateScheduleDto {
+  scheduleIds: string[];
+  groupId?: string;
+  teacherId?: string;
+  roomId?: string;
+  startTime?: string;
+  endTime?: string;
+  type?: 'GROUP_CLASS' | 'INDIVIDUAL_CLASS' | 'OPEN_CLASS' | 'EVENT';
+  status?: CalendarEventStatus;
+}
+
+export interface CopyScheduleDto {
+  scheduleIds: string[];
+  targetDate: string;
+  preserveTime?: boolean;
+  autoEnrollClients?: boolean;
+}
+
+export interface BulkCancelScheduleDto {
+  scheduleIds: string[];
+  reason: string;
+  action: 'CANCEL' | 'TRANSFER';
+  transferDate?: string;
+  transferStartTime?: string;
+  transferEndTime?: string;
+  notifyClients?: boolean;
+}
+
+export interface BulkDeleteScheduleDto {
+  scheduleIds: string[];
+  reason?: string;
+}
+
 export interface ScheduleFilters {
   date?: string;
   roomId?: string | string[];
@@ -123,5 +175,30 @@ export const schedulesApi = {
 
   deleteSchedule: async (id: string): Promise<void> => {
     await apiClient.delete(`/schedules/${id}`);
+  },
+
+  createRecurring: async (data: CreateRecurringScheduleDto): Promise<any> => {
+    const { data: response } = await apiClient.post('/schedules/recurring', data);
+    return response;
+  },
+
+  bulkUpdate: async (data: BulkUpdateScheduleDto): Promise<any> => {
+    const { data: response } = await apiClient.patch('/schedules/bulk', data);
+    return response;
+  },
+
+  copySchedules: async (data: CopyScheduleDto): Promise<any> => {
+    const { data: response } = await apiClient.post('/schedules/copy', data);
+    return response;
+  },
+
+  bulkCancel: async (data: BulkCancelScheduleDto): Promise<any> => {
+    const { data: response } = await apiClient.post('/schedules/bulk-cancel', data);
+    return response;
+  },
+
+  bulkDelete: async (data: BulkDeleteScheduleDto): Promise<any> => {
+    const { data: response } = await apiClient.post('/schedules/bulk-delete', data);
+    return response;
   },
 };

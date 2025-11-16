@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { MoreHorizontal, Pencil, Trash2, Palette } from 'lucide-react';
+import { MoreHorizontal, Pencil, Trash2, Palette, Eye } from 'lucide-react';
+import Link from 'next/link';
 import {
   Table,
   TableBody,
@@ -119,7 +120,14 @@ export function StudiosTable({ studios, isLoading }: StudiosTableProps) {
           <TableBody>
             {studios.map((studio) => (
               <TableRow key={studio.id}>
-                <TableCell className="font-medium">{studio.name}</TableCell>
+                <TableCell className="font-medium">
+                  <Link
+                    href={`/studios/${studio.id}`}
+                    className="hover:underline hover:text-primary transition-colors"
+                  >
+                    {studio.name}
+                  </Link>
+                </TableCell>
                 <TableCell>{typeLabels[studio.type]}</TableCell>
                 <TableCell>{studio.category || '—'}</TableCell>
                 <TableCell>
@@ -140,6 +148,12 @@ export function StudiosTable({ studios, isLoading }: StudiosTableProps) {
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Действия</DropdownMenuLabel>
                       <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild>
+                        <Link href={`/studios/${studio.id}`}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          Просмотр
+                        </Link>
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleEdit(studio)}>
                         <Pencil className="mr-2 h-4 w-4" />
                         Редактировать

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { teachersApi, Teacher, CreateTeacherDto, UpdateTeacherDto } from '@/lib/api/teachers';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from '@/lib/utils/toast';
 
 export const useTeachers = () => {
   return useQuery({
@@ -20,30 +20,21 @@ export const useTeacher = (id: string) => {
 
 export const useCreateTeacher = () => {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationFn: (data: CreateTeacherDto) => teachersApi.createTeacher(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teachers'] });
-      toast({
-        title: 'Успешно',
-        description: 'Преподаватель создан',
-      });
+      toast.success('Преподаватель создан');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка создания преподавателя',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка создания преподавателя');
     },
   });
 };
 
 export const useUpdateTeacher = () => {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateTeacherDto }) =>
@@ -51,40 +42,25 @@ export const useUpdateTeacher = () => {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['teachers'] });
       queryClient.invalidateQueries({ queryKey: ['teachers', variables.id] });
-      toast({
-        title: 'Успешно',
-        description: 'Преподаватель обновлен',
-      });
+      toast.success('Преподаватель обновлен');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка обновления преподавателя',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка обновления преподавателя');
     },
   });
 };
 
 export const useDeleteTeacher = () => {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationFn: (id: string) => teachersApi.deleteTeacher(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teachers'] });
-      toast({
-        title: 'Успешно',
-        description: 'Преподаватель удален',
-      });
+      toast.success('Преподаватель удален');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка удаления преподавателя',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка удаления преподавателя');
     },
   });
 };

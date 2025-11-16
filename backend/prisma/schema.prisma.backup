@@ -1,0 +1,543 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_DATABASE_URL")
+}
+
+model attendances {
+  id                    String           @id
+  schedule_id           String
+  client_id             String
+  status                AttendanceStatus
+  notes                 String?
+  subscription_deducted Boolean          @default(false)
+  created_at            DateTime         @default(now())
+  clients               clients          @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  schedules             schedules        @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
+
+  @@index([client_id])
+  @@index([created_at])
+  @@index([schedule_id])
+}
+
+model audit_logs {
+  id          String      @id
+  user_id     String
+  action      AuditAction
+  entity_type String
+  entity_id   String
+  changes     Json?
+  metadata    Json?
+  ip_address  String?
+  user_agent  String?
+  created_at  DateTime    @default(now())
+  users       users       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([action])
+  @@index([created_at])
+  @@index([entity_id])
+  @@index([entity_type])
+  @@index([user_id])
+}
+
+model client_relations {
+  id                                                  String       @id
+  client_id                                           String
+  related_client_id                                   String
+  relation_type                                       RelationType
+  created_at                                          DateTime     @default(now())
+  clients_client_relations_client_idToclients         clients      @relation("client_relations_client_idToclients", fields: [client_id], references: [id], onDelete: Cascade)
+  clients_client_relations_related_client_idToclients clients      @relation("client_relations_related_client_idToclients", fields: [related_client_id], references: [id], onDelete: Cascade)
+}
+
+model clients {
+  id                                                           String             @id
+  first_name                                                   String
+  last_name                                                    String
+  middle_name                                                  String?
+  date_of_birth                                                DateTime?          @db.Date
+  gender                                                       Gender?
+  phone                                                        String
+  email                                                        String?
+  address                                                      String?
+  photo_url                                                    String?
+  notes                                                        String?
+  status                                                       ClientStatus       @default(ACTIVE)
+  created_at                                                   DateTime           @default(now())
+  updated_at                                                   DateTime
+  lead_source_id                                               String?
+  attendances                                                  attendances[]
+  client_relations_client_relations_client_idToclients         client_relations[] @relation("client_relations_client_idToclients")
+  client_relations_client_relations_related_client_idToclients client_relations[] @relation("client_relations_related_client_idToclients")
+  lead_sources                                                 lead_sources?      @relation(fields: [lead_source_id], references: [id])
+  payments                                                     payments[]
+  subscriptions                                                subscriptions[]
+
+  @@index([created_at])
+  @@index([email])
+  @@index([first_name])
+  @@index([last_name])
+  @@index([lead_source_id])
+  @@index([phone])
+  @@index([status, created_at])
+  @@index([status])
+}
+
+model event_types {
+  id         String   @id
+  name       String   @unique
+  created_at DateTime @default(now())
+  updated_at DateTime
+  events     events[]
+}
+
+model events {
+  id                  String              @id
+  name                String
+  description         String?
+  date                DateTime            @db.Date
+  start_time          DateTime            @db.Time(6)
+  end_time            DateTime            @db.Time(6)
+  max_capacity        Int?
+  responsible_user_id String?
+  photo_url           String?
+  created_at          DateTime            @default(now())
+  updated_at          DateTime
+  event_type_id       String?
+  room_id             String
+  budget              Decimal?            @db.Decimal(10, 2)
+  notes               String?
+  participants        Int?
+  status              CalendarEventStatus @default(PLANNED)
+  event_types         event_types?        @relation(fields: [event_type_id], references: [id])
+  users               users?              @relation(fields: [responsible_user_id], references: [id])
+  rooms               rooms               @relation(fields: [room_id], references: [id])
+
+  @@index([date])
+  @@index([event_type_id])
+  @@index([room_id])
+}
+
+model groups {
+  id                   String               @id
+  studio_id            String
+  name                 String
+  teacher_id           String
+  room_id              String?
+  max_participants     Int
+  single_session_price Decimal              @db.Decimal(10, 2)
+  status               GroupStatus          @default(ACTIVE)
+  created_at           DateTime             @default(now())
+  updated_at           DateTime
+  age_min              Int?
+  age_max              Int?
+  rooms                rooms?               @relation(fields: [room_id], references: [id])
+  studios              studios              @relation(fields: [studio_id], references: [id], onDelete: Cascade)
+  teachers             teachers             @relation(fields: [teacher_id], references: [id])
+  schedules            schedules[]
+  subscription_types   subscription_types[]
+  subscriptions        subscriptions[]
+}
+
+model lead_sources {
+  id          String    @id
+  name        String    @unique
+  description String?
+  is_active   Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime
+  clients     clients[]
+}
+
+model password_reset_tokens {
+  id         String    @id
+  user_id    String
+  token      String    @unique
+  expires_at DateTime
+  used_at    DateTime?
+  created_at DateTime  @default(now())
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([expires_at])
+  @@index([token])
+  @@index([user_id])
+}
+
+model payments {
+  id              String         @id
+  client_id       String
+  amount          Decimal        @db.Decimal(10, 2)
+  payment_method  PaymentMethod
+  payment_type    PaymentType
+  status          PaymentStatus  @default(PENDING)
+  transaction_id  String?
+  subscription_id String?
+  rental_id       String?
+  notes           String?
+  created_at      DateTime       @default(now())
+  updated_at      DateTime
+  clients         clients        @relation(fields: [client_id], references: [id])
+  rentals         rentals?       @relation(fields: [rental_id], references: [id])
+  subscriptions   subscriptions? @relation(fields: [subscription_id], references: [id])
+
+  @@index([client_id])
+  @@index([created_at])
+  @@index([payment_type])
+  @@index([status])
+}
+
+model rentals {
+  id           String              @id
+  room_id      String
+  client_name  String
+  client_phone String
+  client_email String?
+  event_type   String
+  date         DateTime            @db.Date
+  start_time   DateTime            @db.Time(6)
+  end_time     DateTime            @db.Time(6)
+  total_price  Decimal             @db.Decimal(10, 2)
+  manager_id   String?
+  notes        String?
+  created_at   DateTime            @default(now())
+  updated_at   DateTime
+  status       CalendarEventStatus @default(PLANNED)
+  payments     payments[]
+  users        users?              @relation(fields: [manager_id], references: [id])
+  rooms        rooms               @relation(fields: [room_id], references: [id])
+
+  @@index([date])
+  @@index([manager_id])
+  @@index([room_id])
+}
+
+model reservations {
+  id          String              @id
+  room_id     String
+  date        DateTime            @db.Date
+  start_time  DateTime            @db.Time(6)
+  end_time    DateTime            @db.Time(6)
+  notes       String?
+  created_at  DateTime            @default(now())
+  updated_at  DateTime
+  status      CalendarEventStatus @default(PLANNED)
+  reserved_by String?
+  rooms       rooms               @relation(fields: [room_id], references: [id])
+
+  @@index([date])
+  @@index([date, room_id])
+  @@index([room_id])
+}
+
+model rooms {
+  id           String         @id
+  name         String
+  number       String?
+  area         Decimal?       @db.Decimal(10, 2)
+  capacity     Int?
+  type         RoomType
+  equipment    String?
+  hourly_rate  Decimal        @db.Decimal(10, 2)
+  daily_rate   Decimal?       @db.Decimal(10, 2)
+  status       RoomStatus     @default(AVAILABLE)
+  created_at   DateTime       @default(now())
+  updated_at   DateTime
+  events       events[]
+  groups       groups[]
+  rentals      rentals[]
+  reservations reservations[]
+  schedules    schedules[]
+}
+
+model schedules {
+  id                  String              @id
+  group_id            String?
+  teacher_id          String
+  room_id             String
+  date                DateTime            @db.Date
+  start_time          DateTime            @db.Time(6)
+  end_time            DateTime            @db.Time(6)
+  type                ScheduleType
+  is_recurring        Boolean             @default(false)
+  recurrence_rule     String?
+  notes               String?
+  created_at          DateTime            @default(now())
+  updated_at          DateTime
+  status              CalendarEventStatus @default(PLANNED)
+  parent_schedule_id  String?
+  recurrence_end_date DateTime?           @db.Date
+  cancellation_reason String?
+  created_by          String?
+  attendances         attendances[]
+  users               users?              @relation(fields: [created_by], references: [id])
+  groups              groups?             @relation(fields: [group_id], references: [id])
+  schedules           schedules?          @relation("schedulesToschedules", fields: [parent_schedule_id], references: [id])
+  other_schedules     schedules[]         @relation("schedulesToschedules")
+  rooms               rooms               @relation(fields: [room_id], references: [id])
+  teachers            teachers            @relation(fields: [teacher_id], references: [id])
+
+  @@index([date])
+  @@index([date, room_id])
+  @@index([group_id, date])
+  @@index([group_id])
+  @@index([parent_schedule_id])
+  @@index([room_id])
+  @@index([teacher_id])
+}
+
+model studios {
+  id          String       @id
+  name        String
+  description String?
+  type        StudioType
+  category    String?
+  photo_url   String?
+  status      StudioStatus @default(ACTIVE)
+  created_at  DateTime     @default(now())
+  updated_at  DateTime
+  groups      groups[]
+}
+
+model subscription_types {
+  id            String               @id
+  name          String
+  description   String?
+  group_id      String
+  type          SubscriptionTypeEnum
+  price         Decimal              @db.Decimal(10, 2)
+  is_active     Boolean              @default(true)
+  created_at    DateTime             @default(now())
+  updated_at    DateTime
+  groups        groups               @relation(fields: [group_id], references: [id], onDelete: Cascade)
+  subscriptions subscriptions[]
+
+  @@index([group_id])
+}
+
+model subscriptions {
+  id                   String             @id
+  client_id            String
+  subscription_type_id String
+  group_id             String
+  valid_month          String
+  purchase_date        DateTime           @db.Date
+  start_date           DateTime           @db.Date
+  end_date             DateTime           @db.Date
+  original_price       Decimal            @db.Decimal(10, 2)
+  paid_price           Decimal            @db.Decimal(10, 2)
+  remaining_visits     Int?
+  purchased_months     Int                @default(1)
+  status               SubscriptionStatus @default(ACTIVE)
+  created_at           DateTime           @default(now())
+  updated_at           DateTime
+  payments             payments[]
+  clients              clients            @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  groups               groups             @relation(fields: [group_id], references: [id])
+  subscription_types   subscription_types @relation(fields: [subscription_type_id], references: [id])
+
+  @@index([client_id])
+  @@index([group_id])
+  @@index([start_date, end_date])
+  @@index([status])
+  @@index([valid_month])
+}
+
+model system_settings {
+  id                            String   @id @default("system")
+  organization_name             String
+  legal_name                    String?
+  address                       String?
+  phone                         String
+  email                         String
+  website                       String?
+  logo                          String?
+  working_hours                 Json
+  smtp_host                     String?
+  smtp_port                     Int?
+  smtp_user                     String?
+  smtp_password                 String?
+  email_from                    String?
+  email_notifications           Json?
+  default_currency              String   @default("RUB")
+  timezone                      String   @default("Europe/Moscow")
+  default_subscription_validity Int      @default(30)
+  instructor_percentage         Decimal  @default(40.0) @db.Decimal(5, 2)
+  allow_expired_subscriptions   Boolean  @default(false)
+  allow_deduct_after_expiry     Boolean  @default(false)
+  updated_at                    DateTime
+  updated_by                    String?
+  users                         users?   @relation(fields: [updated_by], references: [id])
+}
+
+model teachers {
+  id                String        @id
+  first_name        String
+  last_name         String
+  middle_name       String?
+  phone             String
+  email             String?
+  specialization    String?
+  salary_percentage Decimal       @db.Decimal(5, 2)
+  photo_url         String?
+  status            TeacherStatus @default(ACTIVE)
+  created_at        DateTime      @default(now())
+  updated_at        DateTime
+  groups            groups[]
+  schedules         schedules[]
+}
+
+model user_invitations {
+  id         String    @id
+  user_id    String
+  token      String    @unique
+  expires_at DateTime
+  used_at    DateTime?
+  created_at DateTime  @default(now())
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([expires_at])
+  @@index([token])
+  @@index([user_id])
+}
+
+model users {
+  id                    String                  @id
+  email                 String                  @unique
+  password_hash         String?
+  role                  UserRole
+  first_name            String
+  last_name             String
+  status                UserStatus              @default(BLOCKED)
+  last_login_at         DateTime?
+  created_at            DateTime                @default(now())
+  updated_at            DateTime
+  audit_logs            audit_logs[]
+  events                events[]
+  password_reset_tokens password_reset_tokens[]
+  rentals               rentals[]
+  schedules             schedules[]
+  system_settings       system_settings[]
+  user_invitations      user_invitations[]
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  EXCUSED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+enum CalendarEventStatus {
+  PLANNED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum ClientStatus {
+  ACTIVE
+  INACTIVE
+  VIP
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum GroupStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  ONLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentType {
+  SUBSCRIPTION
+  RENTAL
+  SINGLE_VISIT
+}
+
+enum RelationType {
+  PARENT
+  CHILD
+  SPOUSE
+  SIBLING
+}
+
+enum RoomStatus {
+  AVAILABLE
+  MAINTENANCE
+  RETIRED
+}
+
+enum RoomType {
+  HALL
+  CLASS
+  STUDIO
+  CONFERENCE
+}
+
+enum ScheduleType {
+  GROUP_CLASS
+  INDIVIDUAL_CLASS
+}
+
+enum StudioStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum StudioType {
+  GROUP
+  INDIVIDUAL
+  BOTH
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  FROZEN
+}
+
+enum SubscriptionTypeEnum {
+  UNLIMITED
+  SINGLE_VISIT
+}
+
+enum TeacherStatus {
+  ACTIVE
+  VACATION
+  DISMISSED
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+}

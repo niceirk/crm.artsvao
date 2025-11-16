@@ -45,10 +45,7 @@ export const useLeadSource = (id: string) => {
  * Hook для создания источника привлечения
  */
 export const useCreateLeadSource = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: (data: CreateLeadSourceDto) => createLeadSource(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lead-sources'] });
@@ -71,10 +68,7 @@ export const useCreateLeadSource = () => {
  * Hook для обновления источника привлечения
  */
 export const useUpdateLeadSource = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateLeadSourceDto }) =>
       updateLeadSource(id, data),
     onSuccess: (_, variables) => {
@@ -99,10 +93,7 @@ export const useUpdateLeadSource = () => {
  * Hook для удаления источника привлечения
  */
 export const useDeleteLeadSource = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: (id: string) => deleteLeadSource(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lead-sources'] });

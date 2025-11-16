@@ -34,8 +34,13 @@ export class GroupsService {
       }
     }
 
+    const { weeklySchedule, ...restDto } = createGroupDto;
+
     return this.prisma.group.create({
-      data: createGroupDto,
+      data: {
+        ...restDto,
+        weeklySchedule: weeklySchedule as any,
+      },
       include: {
         studio: {
           select: {
@@ -173,9 +178,14 @@ export class GroupsService {
       }
     }
 
+    const { weeklySchedule, ...restDto } = updateGroupDto;
+
     return this.prisma.group.update({
       where: { id },
-      data: updateGroupDto,
+      data: {
+        ...restDto,
+        ...(weeklySchedule !== undefined && { weeklySchedule: weeklySchedule as any }),
+      },
       include: {
         studio: {
           select: {
@@ -226,6 +236,123 @@ export class GroupsService {
 
     return this.prisma.group.delete({
       where: { id },
+    });
+  }
+
+  async getGroupMembers(groupId: string) {
+    await this.findOne(groupId); // Check if group exists
+
+    return this.prisma.subscription.findMany({
+      where: {
+        groupId,
+        status: 'ACTIVE',
+      },
+      include: {
+        client: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            middleName: true,
+            phone: true,
+            email: true,
+            photoUrl: true,
+          },
+        },
+        subscriptionType: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        },
+      },
+      orderBy: {
+        client: {
+          lastName: 'asc',
+        },
+      },
+    });
+  }
+
+  async updateWeeklySchedule(groupId: string, weeklySchedule: any[]) {
+    await this.findOne(groupId); // Check if group exists
+
+    return this.prisma.group.update({
+      where: { id: groupId },
+      data: {
+        weeklySchedule: weeklySchedule as any
+      },
+      include: {
+        studio: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        },
+        teacher: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        room: {
+          select: {
+            id: true,
+            name: true,
+            number: true,
+          },
+        },
+      },
+    });
+  }
+
+  async getGroupMonthlySchedule(groupId: string, year: number, month: number) {
+    // Verify group exists
+    await this.findOne(groupId);
+
+    // Calculate start and end dates of the month
+    const startDate = new Date(year, month - 1, 1);
+    const endDate = new Date(year, month, 0);
+
+    // Get all schedules for this group in the given month
+    // Exclude parent recurring records (isRecurring: true)
+    return this.prisma.schedule.findMany({
+      where: {
+        groupId,
+        date: {
+          gte: startDate,
+          lte: endDate,
+        },
+        isRecurring: false, // Только реальные занятия, без родительских записей
+      },
+      include: {
+        teacher: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            middleName: true,
+          },
+        },
+        room: {
+          select: {
+            id: true,
+            name: true,
+            number: true,
+          },
+        },
+        _count: {
+          select: {
+            attendances: true,
+          },
+        },
+      },
+      orderBy: {
+        date: 'asc',
+      },
     });
   }
 }

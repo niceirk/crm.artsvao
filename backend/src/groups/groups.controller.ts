@@ -8,6 +8,7 @@ import {
   Delete,
   UseGuards,
   ValidationPipe,
+  Query,
 } from '@nestjs/common';
 import { GroupsService } from './groups.service';
 import { CreateGroupDto } from './dto/create-group.dto';
@@ -31,9 +32,32 @@ export class GroupsController {
     return this.groupsService.findAll();
   }
 
+  @Get(':id/members')
+  getGroupMembers(@Param('id') id: string) {
+    return this.groupsService.getGroupMembers(id);
+  }
+
+  @Get(':id/schedule/monthly')
+  getGroupMonthlySchedule(
+    @Param('id') id: string,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    return this.groupsService.getGroupMonthlySchedule(id, parseInt(year), parseInt(month));
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.groupsService.findOne(id);
+  }
+
+  @Patch(':id/weekly-schedule')
+  @UseGuards(AdminGuard)
+  updateWeeklySchedule(
+    @Param('id') id: string,
+    @Body('weeklySchedule') weeklySchedule: any[]
+  ) {
+    return this.groupsService.updateWeeklySchedule(id, weeklySchedule);
   }
 
   @Patch(':id')

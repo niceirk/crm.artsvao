@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { MoreHorizontal, Pencil, Trash2, Users, Copy } from 'lucide-react';
 import {
   Table,
@@ -52,6 +53,7 @@ interface GroupsTableProps {
 }
 
 export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
+  const router = useRouter();
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -59,6 +61,10 @@ export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
 
   const deleteGroup = useDeleteGroup();
   const createGroup = useCreateGroup();
+
+  const handleRowClick = (groupId: string) => {
+    router.push(`/groups/${groupId}`);
+  };
 
   const handleEdit = (group: Group) => {
     setSelectedGroup(group);
@@ -150,7 +156,11 @@ export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
           </TableHeader>
           <TableBody>
             {groups.map((group) => (
-              <TableRow key={group.id}>
+              <TableRow
+                key={group.id}
+                className="cursor-pointer hover:bg-accent"
+                onClick={() => handleRowClick(group.id)}
+              >
                 <TableCell className="font-medium">{group.name}</TableCell>
                 <TableCell>{group.studio?.name || '—'}</TableCell>
                 <TableCell>{getTeacherFullName(group.teacher)}</TableCell>
@@ -170,7 +180,7 @@ export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
                     {statusLabels[group.status]}
                   </Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell onClick={(e) => e.stopPropagation()}>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon">
@@ -180,16 +190,16 @@ export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Действия</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => handleEdit(group)}>
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEdit(group); }}>
                         <Pencil className="mr-2 h-4 w-4" />
                         Редактировать
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleCopy(group)}>
+                      <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleCopy(group); }}>
                         <Copy className="mr-2 h-4 w-4" />
                         Копировать
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => handleDelete(group)}
+                        onClick={(e) => { e.stopPropagation(); handleDelete(group); }}
                         className="text-destructive"
                       >
                         <Trash2 className="mr-2 h-4 w-4" />

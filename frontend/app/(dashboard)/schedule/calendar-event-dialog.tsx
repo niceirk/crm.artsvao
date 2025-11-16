@@ -12,6 +12,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Form,
   FormControl,
   FormDescription,
@@ -32,7 +42,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useCreateSchedule, useUpdateSchedule } from '@/hooks/use-schedules';
+import { useCreateSchedule, useUpdateSchedule, useDeleteSchedule } from '@/hooks/use-schedules';
 import { useCreateRental, useUpdateRental } from '@/hooks/use-rentals';
 import { useCreateEvent, useUpdateEvent, useEvents } from '@/hooks/use-events';
 import { useCreateReservation, useUpdateReservation } from '@/hooks/use-reservations';
@@ -117,9 +127,11 @@ export function CalendarEventDialog({
   const [selectedEventType, setSelectedEventType] = useState<EventType>(
     initialEventType || 'schedule'
   );
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const createSchedule = useCreateSchedule();
   const updateSchedule = useUpdateSchedule();
+  const deleteSchedule = useDeleteSchedule();
   const createRental = useCreateRental();
   const updateRental = useUpdateRental();
   const createEvent = useCreateEvent();
@@ -340,6 +352,7 @@ export function CalendarEventDialog({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -793,33 +806,83 @@ export function CalendarEventDialog({
               )}
             />
 
-            <div className="flex justify-end gap-2 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-              >
-                Отмена
-              </Button>
-              <Button
-                type="submit"
-                disabled={
-                  createSchedule.isPending ||
-                  updateSchedule.isPending ||
-                  createRental.isPending ||
-                  updateRental.isPending ||
-                  createEvent.isPending ||
-                  updateEvent.isPending ||
-                  createReservation.isPending ||
-                  updateReservation.isPending
-                }
-              >
-                {isEditing ? 'Сохранить' : 'Создать'}
-              </Button>
+            <div className="flex justify-between gap-2 pt-4">
+              <div>
+                {isEditing && selectedEventType === 'schedule' && schedule && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={deleteSchedule.isPending}
+                  >
+                    Удалить
+                  </Button>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Отмена
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={
+                    createSchedule.isPending ||
+                    updateSchedule.isPending ||
+                    createRental.isPending ||
+                    updateRental.isPending ||
+                    createEvent.isPending ||
+                    updateEvent.isPending ||
+                    createReservation.isPending ||
+                    updateReservation.isPending
+                  }
+                >
+                  {isEditing ? 'Сохранить' : 'Создать'}
+                </Button>
+              </div>
             </div>
           </form>
         </Form>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Удалить занятие?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Это действие нельзя отменить. Занятие будет удалено, а записи клиентов отменены.
+            Все занятия будут автоматически возвращены в абонементы клиентов.
+            {schedule?._count?.attendances && schedule._count.attendances > 0 && (
+              <span className="block mt-2 font-medium text-foreground">
+                Будет отменено записей: {schedule._count.attendances}
+              </span>
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Отмена</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (schedule) {
+                deleteSchedule.mutate(schedule.id, {
+                  onSuccess: () => {
+                    setShowDeleteConfirm(false);
+                    onOpenChange(false);
+                  },
+                });
+              }
+            }}
+            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+          >
+            Удалить
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

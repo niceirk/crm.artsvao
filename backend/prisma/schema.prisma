@@ -183,6 +183,8 @@ model Group {
   singleSessionPrice Decimal            @map("single_session_price") @db.Decimal(10, 2)
   ageMin             Int?               @map("age_min")
   ageMax             Int?               @map("age_max")
+  duration           Int?
+  weeklySchedule     Json?              @map("weekly_schedule")
   status             GroupStatus        @default(ACTIVE)
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")

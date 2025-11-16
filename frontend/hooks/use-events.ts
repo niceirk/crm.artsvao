@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { eventsApi, type Event, type CreateEventDto, type UpdateEventDto, type EventFilters } from '@/lib/api/events';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from '@/lib/utils/toast';
 
 export const useEvents = (filters?: EventFilters) => {
   return useQuery({
@@ -20,30 +20,21 @@ export const useEvent = (id: string) => {
 
 export const useCreateEvent = () => {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationFn: (data: CreateEventDto) => eventsApi.createEvent(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
-      toast({
-        title: 'Успешно',
-        description: 'Мероприятие создано',
-      });
+      toast.success('Мероприятие создано');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка создания мероприятия',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка создания мероприятия');
     },
   });
 };
 
 export const useUpdateEvent = () => {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateEventDto }) =>
@@ -73,11 +64,7 @@ export const useUpdateEvent = () => {
           queryClient.setQueryData(queryKey, data);
         });
       }
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка обновления мероприятия',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка обновления мероприятия');
     },
     onSettled: () => {
       // Always refetch after error or success
@@ -88,23 +75,15 @@ export const useUpdateEvent = () => {
 
 export const useDeleteEvent = () => {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationFn: (id: string) => eventsApi.deleteEvent(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
-      toast({
-        title: 'Успешно',
-        description: 'Мероприятие удалено',
-      });
+      toast.success('Мероприятие удалено');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка удаления мероприятия',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка удаления мероприятия');
     },
   });
 };

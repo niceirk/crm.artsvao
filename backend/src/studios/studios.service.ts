@@ -77,4 +77,98 @@ export class StudiosService {
       where: { id },
     });
   }
+
+  async getStudioGroups(studioId: string) {
+    await this.findOne(studioId); // Check if exists
+
+    return this.prisma.group.findMany({
+      where: { studioId },
+      include: {
+        teacher: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        room: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        _count: {
+          select: {
+            subscriptions: true,
+            schedules: true,
+          },
+        },
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async getStudioSubscriptionTypes(studioId: string) {
+    await this.findOne(studioId); // Check if exists
+
+    return this.prisma.subscriptionType.findMany({
+      where: {
+        group: {
+          studioId,
+        },
+      },
+      include: {
+        group: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getStudioStats(studioId: string) {
+    await this.findOne(studioId); // Check if exists
+
+    // Подсчитываем количество групп
+    const groupsCount = await this.prisma.group.count({
+      where: { studioId },
+    });
+
+    // Получаем все группы студии
+    const groups = await this.prisma.group.findMany({
+      where: { studioId },
+      select: { id: true },
+    });
+
+    const groupIds = groups.map((g) => g.id);
+
+    // Подсчитываем активные абонементы
+    const activeSubscriptionsCount = await this.prisma.subscription.count({
+      where: {
+        groupId: { in: groupIds },
+        status: 'ACTIVE',
+      },
+    });
+
+    // Подсчитываем уникальных участников
+    const participants = await this.prisma.subscription.findMany({
+      where: {
+        groupId: { in: groupIds },
+        status: 'ACTIVE',
+      },
+      select: {
+        clientId: true,
+      },
+      distinct: ['clientId'],
+    });
+
+    return {
+      groupsCount,
+      activeSubscriptionsCount,
+      participantsCount: participants.length,
+    };
+  }
 }

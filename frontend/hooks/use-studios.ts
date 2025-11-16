@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { studiosApi, Studio, CreateStudioDto, UpdateStudioDto } from '@/lib/api/studios';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from '@/lib/utils/toast';
 
 export const useStudios = () => {
   return useQuery({
@@ -19,30 +19,21 @@ export const useStudio = (id: string) => {
 
 export const useCreateStudio = () => {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationFn: (data: CreateStudioDto) => studiosApi.createStudio(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['studios'] });
-      toast({
-        title: 'Успешно',
-        description: 'Студия создана',
-      });
+      toast.success('Студия создана');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка создания студии',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка создания студии');
     },
   });
 };
 
 export const useUpdateStudio = () => {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateStudioDto }) =>
@@ -50,40 +41,25 @@ export const useUpdateStudio = () => {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['studios'] });
       queryClient.invalidateQueries({ queryKey: ['studios', variables.id] });
-      toast({
-        title: 'Успешно',
-        description: 'Студия обновлена',
-      });
+      toast.success('Студия обновлена');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка обновления студии',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка обновления студии');
     },
   });
 };
 
 export const useDeleteStudio = () => {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationFn: (id: string) => studiosApi.deleteStudio(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['studios'] });
-      toast({
-        title: 'Успешно',
-        description: 'Студия удалена',
-      });
+      toast.success('Студия удалена');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка удаления студии',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка удаления студии');
     },
   });
 };

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { groupsApi, Group, CreateGroupDto, UpdateGroupDto } from '@/lib/api/groups';
-import { useToast } from '@/hooks/use-toast';
+import { toast } from '@/lib/utils/toast';
 
 export const useGroups = () => {
   return useQuery({
@@ -19,30 +19,21 @@ export const useGroup = (id: string) => {
 
 export const useCreateGroup = () => {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationFn: (data: CreateGroupDto) => groupsApi.createGroup(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['groups'] });
-      toast({
-        title: 'Успешно',
-        description: 'Группа создана',
-      });
+      toast.success('Группа создана');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка создания группы',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка создания группы');
     },
   });
 };
 
 export const useUpdateGroup = () => {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateGroupDto }) =>
@@ -50,40 +41,25 @@ export const useUpdateGroup = () => {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['groups'] });
       queryClient.invalidateQueries({ queryKey: ['groups', variables.id] });
-      toast({
-        title: 'Успешно',
-        description: 'Группа обновлена',
-      });
+      toast.success('Группа обновлена');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка обновления группы',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка обновления группы');
     },
   });
 };
 
 export const useDeleteGroup = () => {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
 
   return useMutation({
     mutationFn: (id: string) => groupsApi.deleteGroup(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['groups'] });
-      toast({
-        title: 'Успешно',
-        description: 'Группа удалена',
-      });
+      toast.success('Группа удалена');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка удаления группы',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка удаления группы');
     },
   });
 };

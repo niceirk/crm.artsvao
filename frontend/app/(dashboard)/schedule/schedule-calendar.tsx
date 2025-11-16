@@ -136,7 +136,8 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     setScrollTime(timeString);
 
     // Дополнительно используем прямой DOM scroll для кнопки "Сейчас"
-    const calendarElement = calendarRef.current.elRef.current;
+    const calendarApi = calendarRef.current.getApi();
+    const calendarElement = calendarApi.el;
     if (calendarElement) {
       const allElements = calendarElement.querySelectorAll('*');
       let scrollContainer = null;

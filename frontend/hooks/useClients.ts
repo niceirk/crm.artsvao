@@ -43,10 +43,7 @@ export const useClient = (id: string) => {
  * Hook для создания клиента
  */
 export const useCreateClient = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: (data: CreateClientDto) => createClient(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
@@ -69,10 +66,7 @@ export const useCreateClient = () => {
  * Hook для обновления клиента
  */
 export const useUpdateClient = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateClientDto }) =>
       updateClient(id, data),
     onSuccess: (_, variables) => {
@@ -97,10 +91,7 @@ export const useUpdateClient = () => {
  * Hook для удаления клиента
  */
 export const useDeleteClient = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: (id: string) => deleteClient(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clients'] });
@@ -146,10 +137,7 @@ export const useClientRelations = (clientId: string) => {
  * Hook для создания родственной связи
  */
 export const useCreateClientRelation = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: ({ clientId, data }: { clientId: string; data: CreateRelationDto }) =>
       createClientRelation(clientId, data),
     onSuccess: (_, variables) => {
@@ -175,10 +163,7 @@ export const useCreateClientRelation = () => {
  * Hook для удаления родственной связи
  */
 export const useDeleteClientRelation = () => {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-
-  return useMutation({
+  const queryClient = useQueryClient();return useMutation({
     mutationFn: ({ clientId, relationId }: { clientId: string; relationId: string }) =>
       deleteClientRelation(clientId, relationId),
     onSuccess: (_, variables) => {
