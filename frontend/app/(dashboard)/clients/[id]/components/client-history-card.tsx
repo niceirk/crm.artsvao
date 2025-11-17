@@ -1,15 +1,21 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { History, CreditCard, CalendarCheck, Receipt, AlertCircle, FileStack, ExternalLink } from 'lucide-react';
+import { History, CreditCard, CalendarCheck, Receipt, AlertCircle, FileStack, ExternalLink, Plus } from 'lucide-react';
 import { useClientInvoices } from '@/hooks/use-invoices';
+import { useClientSubscriptions } from '@/hooks/use-subscriptions';
+import { SellSubscriptionDialog } from '@/app/(dashboard)/subscriptions/components/sell-subscription-dialog';
 import type { Client } from '@/lib/types/clients';
 import type { InvoiceStatus } from '@/lib/types/invoices';
+import type { SubscriptionStatus } from '@/lib/types/subscriptions';
 
 interface ClientHistoryCardProps {
   client: Client;
@@ -33,12 +39,30 @@ const statusVariants: Record<InvoiceStatus, 'default' | 'secondary' | 'destructi
   CANCELLED: 'outline',
 };
 
+const subscriptionStatusLabels: Record<SubscriptionStatus, string> = {
+  ACTIVE: 'Активен',
+  EXPIRED: 'Истёк',
+  FROZEN: 'Заморожен',
+  CANCELLED: 'Отменён',
+};
+
+const subscriptionStatusVariants: Record<SubscriptionStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  ACTIVE: 'default',
+  EXPIRED: 'secondary',
+  FROZEN: 'outline',
+  CANCELLED: 'destructive',
+};
+
 export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
-  // Получаем счета клиента
+  const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
+
+  // Получаем счета и абонементы клиента
   const { data: invoices, isLoading: isLoadingInvoices } = useClientInvoices(client.id);
+  const { data: subscriptionsResponse, isLoading: isLoadingSubscriptions } = useClientSubscriptions(client.id);
+
+  const subscriptions = subscriptionsResponse?.data || [];
 
   // TODO: Получать данные из API когда модули будут готовы
-  const subscriptions: any[] = [];
   const attendance: any[] = [];
   const payments: any[] = [];
 
@@ -163,16 +187,66 @@ export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
           </TabsContent>
 
           <TabsContent value="subscriptions" className="mt-4">
-            {subscriptions.length === 0 ? (
+            <div className="mb-4 flex justify-end">
+              <Button onClick={() => setIsSellDialogOpen(true)} size="sm">
+                <Plus className="h-4 w-4 mr-2" />
+                Продать абонемент
+              </Button>
+            </div>
+            {isLoadingSubscriptions ? (
+              <div className="space-y-3">
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            ) : subscriptions.length === 0 ? (
               <EmptyState message="Нет абонементов" />
             ) : (
               <div className="space-y-3">
-                {subscriptions.map((sub: any) => (
+                {subscriptions.map((subscription) => (
                   <div
-                    key={sub.id}
-                    className="flex items-center justify-between p-3 rounded-lg border"
+                    key={subscription.id}
+                    className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
                   >
-                    {/* TODO: Компонент абонемента */}
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center justify-center h-10 w-10 rounded-full bg-primary/10">
+                            <CreditCard className="h-5 w-5 text-primary" />
+                          </div>
+                          <div>
+                            <p className="font-medium">{subscription.subscriptionType.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {subscription.group.name}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold text-lg">
+                            {formatCurrency(subscription.paidPrice)}
+                          </p>
+                          <Badge variant={subscriptionStatusVariants[subscription.status]} className="mt-1">
+                            {subscriptionStatusLabels[subscription.status]}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4 pl-13 text-sm text-muted-foreground">
+                        <span>
+                          {format(new Date(subscription.startDate), 'dd MMM', { locale: ru })} - {format(new Date(subscription.endDate), 'dd MMM yyyy', { locale: ru })}
+                        </span>
+                        {subscription.remainingVisits !== null && subscription.remainingVisits !== undefined && (
+                          <>
+                            <span>•</span>
+                            <span>Осталось: {subscription.remainingVisits} пос.</span>
+                          </>
+                        )}
+                        {subscription.discountAmount > 0 && (
+                          <>
+                            <span>•</span>
+                            <span className="text-destructive">Скидка: {formatCurrency(subscription.discountAmount)}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -214,6 +288,12 @@ export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
           </TabsContent>
         </Tabs>
       </CardContent>
+
+      <SellSubscriptionDialog
+        open={isSellDialogOpen}
+        onOpenChange={setIsSellDialogOpen}
+        preselectedClientId={client.id}
+      />
     </Card>
   );
 }

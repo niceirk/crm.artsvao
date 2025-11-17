@@ -11,6 +11,7 @@ import { useReservations, useUpdateReservation } from '@/hooks/use-reservations'
 import { ScheduleCalendar } from './schedule-calendar';
 import { CalendarEventDialog } from './calendar-event-dialog';
 import { ScheduleFilters } from './schedule-filters';
+import { AttendanceSheet } from './attendance-sheet';
 import { ScheduleFilters as FilterType } from '@/lib/api/schedules';
 import type { Schedule } from '@/lib/api/schedules';
 import type { Rental } from '@/lib/api/rentals';
@@ -23,6 +24,7 @@ export default function SchedulePage() {
   const [filters, setFilters] = useState<FilterType>({});
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isAttendanceSheetOpen, setIsAttendanceSheetOpen] = useState(false);
   const [selectedEventType, setSelectedEventType] = useState<CalendarEventType>('schedule');
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | undefined>();
   const [selectedRental, setSelectedRental] = useState<Rental | undefined>();
@@ -250,7 +252,24 @@ export default function SchedulePage() {
         rental={selectedRental}
         event={selectedEvent}
         reservation={selectedReservation}
+        onOpenAttendance={() => {
+          if (selectedSchedule) {
+            setIsEditDialogOpen(false);
+            setIsAttendanceSheetOpen(true);
+          }
+        }}
       />
+
+      {selectedSchedule && selectedSchedule.group && (
+        <AttendanceSheet
+          open={isAttendanceSheetOpen}
+          onOpenChange={setIsAttendanceSheetOpen}
+          scheduleId={selectedSchedule.id}
+          groupId={selectedSchedule.group.id}
+          groupName={selectedSchedule.group.name}
+          startTime={selectedSchedule.startTime}
+        />
+      )}
     </div>
   );
 }

@@ -15,6 +15,7 @@ import {
   Percent,
   ClipboardList,
   FileStack,
+  CreditCard,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -79,7 +80,13 @@ export const navigationConfig: NavGroup[] = [
         title: 'Счета',
         href: '/invoices',
         icon: FileStack,
-        description: 'Управление счетами и платежами',
+        description: 'Управление счетами',
+      },
+      {
+        title: 'Платежи',
+        href: '/payments',
+        icon: CreditCard,
+        description: 'Управление платежами',
       },
     ],
   },
@@ -126,6 +133,13 @@ export const navigationConfig: NavGroup[] = [
         href: '/admin/services',
         icon: ClipboardList,
         description: 'Справочник услуг с НДС',
+        requiresAdmin: true,
+      },
+      {
+        title: 'Типы абонементов',
+        href: '/admin/subscription-types',
+        icon: Receipt,
+        description: 'Справочник типов абонементов',
         requiresAdmin: true,
       },
       {

@@ -66,6 +66,7 @@ interface CalendarEventDialogProps {
   event?: Event;
   reservation?: Reservation;
   initialData?: { date: string; startTime: string; endTime: string; roomId?: string };
+  onOpenAttendance?: () => void;
 }
 
 const scheduleFormSchema = z.object({
@@ -123,6 +124,7 @@ export function CalendarEventDialog({
   event,
   reservation,
   initialData,
+  onOpenAttendance,
 }: CalendarEventDialogProps) {
   const [selectedEventType, setSelectedEventType] = useState<EventType>(
     initialEventType || 'schedule'
@@ -807,7 +809,16 @@ export function CalendarEventDialog({
             />
 
             <div className="flex justify-between gap-2 pt-4">
-              <div>
+              <div className="flex gap-2">
+                {isEditing && selectedEventType === 'schedule' && schedule && schedule.group && onOpenAttendance && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={onOpenAttendance}
+                  >
+                    Журнал посещаемости
+                  </Button>
+                )}
                 {isEditing && selectedEventType === 'schedule' && schedule && (
                   <Button
                     type="button"

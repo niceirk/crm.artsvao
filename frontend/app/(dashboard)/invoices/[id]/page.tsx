@@ -46,6 +46,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useInvoice, useUpdateInvoice } from '@/hooks/use-invoices';
 import { useAuth } from '@/hooks/use-auth';
 import type { InvoiceStatus } from '@/lib/types/invoices';
+import { InvoicePaymentsSection } from './components/invoice-payments-section';
 
 const statusLabels: Record<InvoiceStatus, string> = {
   DRAFT: 'Черновик',
@@ -317,44 +318,7 @@ export default function InvoiceDetailsPage() {
           </Card>
 
           {/* Payments */}
-          {invoice.payments && invoice.payments.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CreditCard className="h-5 w-5" />
-                  История платежей
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Дата</TableHead>
-                      <TableHead>Сумма</TableHead>
-                      <TableHead>Способ оплаты</TableHead>
-                      <TableHead>Статус</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {invoice.payments.map((payment) => (
-                      <TableRow key={payment.id}>
-                        <TableCell>
-                          {new Date(payment.createdAt).toLocaleString('ru-RU')}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          {formatCurrency(payment.amount)}
-                        </TableCell>
-                        <TableCell>{payment.paymentMethod}</TableCell>
-                        <TableCell>
-                          <Badge variant="default">{payment.status}</Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          )}
+          <InvoicePaymentsSection invoice={invoice} />
 
           {/* Audit Logs */}
           {invoice.auditLogs && invoice.auditLogs.length > 0 && (

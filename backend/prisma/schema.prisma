@@ -9,24 +9,25 @@ datasource db {
 }
 
 model User {
-  id             String               @id @default(uuid())
-  email          String               @unique
-  passwordHash   String?              @map("password_hash")
-  role           UserRole
-  firstName      String               @map("first_name")
-  lastName       String               @map("last_name")
-  status         UserStatus           @default(BLOCKED)
-  lastLoginAt    DateTime?            @map("last_login_at")
-  createdAt      DateTime             @default(now()) @map("created_at")
-  updatedAt      DateTime             @updatedAt @map("updated_at")
-  auditLogs          AuditLog[]
-  events             Event[]
-  passwordResets     PasswordResetToken[]
-  rentals            Rental[]
-  systemSettings     SystemSettings[]
-  invitations        UserInvitation[]
-  createdInvoices    Invoice[]            @relation("InvoiceCreator")
-  invoiceAuditLogs   InvoiceAuditLog[]    @relation("InvoiceAudit")
+  id               String               @id @default(uuid())
+  email            String               @unique
+  passwordHash     String?              @map("password_hash")
+  role             UserRole
+  firstName        String               @map("first_name")
+  lastName         String               @map("last_name")
+  status           UserStatus           @default(BLOCKED)
+  lastLoginAt      DateTime?            @map("last_login_at")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  attendances      Attendance[]
+  auditLogs        AuditLog[]
+  events           Event[]
+  invoiceAuditLogs InvoiceAuditLog[]    @relation("InvoiceAudit")
+  createdInvoices  Invoice[]            @relation("InvoiceCreator")
+  passwordResets   PasswordResetToken[]
+  rentals          Rental[]
+  systemSettings   SystemSettings[]
+  invitations      UserInvitation[]
 
   @@map("users")
 }
@@ -116,10 +117,10 @@ model Service {
   isActive       Boolean         @default(true) @map("is_active")
   createdAt      DateTime        @default(now()) @map("created_at")
   updatedAt      DateTime        @updatedAt @map("updated_at")
+  invoiceItems   InvoiceItem[]
   category       ServiceCategory @relation(fields: [categoryId], references: [id])
   group          Group?          @relation(fields: [groupId], references: [id])
   room           Room?           @relation(fields: [roomId], references: [id])
-  invoiceItems   InvoiceItem[]
 
   @@index([categoryId])
   @@index([serviceType])
@@ -130,31 +131,31 @@ model Service {
 }
 
 model Client {
-  id                  String            @id @default(uuid())
-  firstName           String            @map("first_name")
-  lastName            String            @map("last_name")
-  middleName          String?           @map("middle_name")
-  dateOfBirth         DateTime?         @map("date_of_birth") @db.Date
-  gender              Gender?
-  phone               String
-  email               String?
-  address             String?
-  photoUrl            String?           @map("photo_url")
-  notes               String?
-  status              ClientStatus      @default(ACTIVE)
-  createdAt           DateTime          @default(now()) @map("created_at")
-  updatedAt           DateTime          @updatedAt @map("updated_at")
-  leadSourceId        String?           @map("lead_source_id")
-  benefitCategoryId   String?           @map("benefit_category_id")
-  attendances         Attendance[]
-  relations           ClientRelation[]  @relation("ClientRelations")
-  relatedTo           ClientRelation[]  @relation("RelatedClientRelations")
-  leadSource          LeadSource?       @relation(fields: [leadSourceId], references: [id])
-  benefitCategory     BenefitCategory?  @relation(fields: [benefitCategoryId], references: [id])
-  payments            Payment[]
-  subscriptions       Subscription[]
-  rentals             Rental[]
-  invoices            Invoice[]
+  id                String           @id @default(uuid())
+  firstName         String           @map("first_name")
+  lastName          String           @map("last_name")
+  middleName        String?          @map("middle_name")
+  dateOfBirth       DateTime?        @map("date_of_birth") @db.Date
+  gender            Gender?
+  phone             String
+  email             String?
+  address           String?
+  photoUrl          String?          @map("photo_url")
+  notes             String?
+  status            ClientStatus     @default(ACTIVE)
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  leadSourceId      String?          @map("lead_source_id")
+  benefitCategoryId String?          @map("benefit_category_id")
+  attendances       Attendance[]
+  relations         ClientRelation[] @relation("ClientRelations")
+  relatedTo         ClientRelation[] @relation("RelatedClientRelations")
+  benefitCategory   BenefitCategory? @relation(fields: [benefitCategoryId], references: [id])
+  leadSource        LeadSource?      @relation(fields: [leadSourceId], references: [id])
+  invoices          Invoice[]
+  payments          Payment[]
+  rentals           Rental[]
+  subscriptions     Subscription[]
 
   @@index([phone])
   @@index([email])
@@ -177,9 +178,6 @@ model ClientRelation {
   client          Client       @relation("ClientRelations", fields: [clientId], references: [id], onDelete: Cascade)
   relatedClient   Client       @relation("RelatedClientRelations", fields: [relatedClientId], references: [id], onDelete: Cascade)
 
-  @@index([clientId])
-  @@index([relatedClientId])
-  @@index([clientId, relationType])
   @@map("client_relations")
 }
 
@@ -196,13 +194,13 @@ model Room {
   status       RoomStatus    @default(AVAILABLE)
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
+  events       Event[]
   groups       Group[]
+  invoiceItems InvoiceItem[]
   rentals      Rental[]
   reservations Reservation[]
   schedules    Schedule[]
-  events       Event[]
   services     Service[]
-  invoiceItems InvoiceItem[]
 
   @@map("rooms")
 }
@@ -249,43 +247,43 @@ model Group {
   roomId             String?            @map("room_id")
   maxParticipants    Int                @map("max_participants")
   singleSessionPrice Decimal            @map("single_session_price") @db.Decimal(10, 2)
+  status             GroupStatus        @default(ACTIVE)
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
   ageMin             Int?               @map("age_min")
   ageMax             Int?               @map("age_max")
   duration           Int?
   weeklySchedule     Json?              @map("weekly_schedule")
-  status             GroupStatus        @default(ACTIVE)
-  createdAt          DateTime           @default(now()) @map("created_at")
-  updatedAt          DateTime           @updatedAt @map("updated_at")
   room               Room?              @relation(fields: [roomId], references: [id])
   studio             Studio             @relation(fields: [studioId], references: [id], onDelete: Cascade)
   teacher            Teacher            @relation(fields: [teacherId], references: [id])
   schedules          Schedule[]
+  services           Service[]
   subscriptionTypes  SubscriptionType[]
   subscriptions      Subscription[]
-  services           Service[]
 
   @@map("groups")
 }
 
 model Schedule {
-  id             String               @id @default(uuid())
-  groupId        String?              @map("group_id")
-  teacherId      String               @map("teacher_id")
-  roomId         String               @map("room_id")
-  date           DateTime             @db.Date
-  startTime      DateTime             @map("start_time") @db.Time(6)
-  endTime        DateTime             @map("end_time") @db.Time(6)
+  id             String              @id @default(uuid())
+  groupId        String?             @map("group_id")
+  teacherId      String              @map("teacher_id")
+  roomId         String              @map("room_id")
+  date           DateTime            @db.Date
+  startTime      DateTime            @map("start_time") @db.Time(6)
+  endTime        DateTime            @map("end_time") @db.Time(6)
   type           ScheduleType
-  isRecurring    Boolean              @default(false) @map("is_recurring")
-  recurrenceRule String?              @map("recurrence_rule")
-  status         CalendarEventStatus  @default(PLANNED)
+  isRecurring    Boolean             @default(false) @map("is_recurring")
+  recurrenceRule String?             @map("recurrence_rule")
   notes          String?
-  createdAt      DateTime             @default(now()) @map("created_at")
-  updatedAt      DateTime             @updatedAt @map("updated_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  status         CalendarEventStatus @default(PLANNED)
   attendances    Attendance[]
-  group          Group?               @relation(fields: [groupId], references: [id])
-  room           Room                 @relation(fields: [roomId], references: [id])
-  teacher        Teacher              @relation(fields: [teacherId], references: [id])
+  group          Group?              @relation(fields: [groupId], references: [id])
+  room           Room                @relation(fields: [roomId], references: [id])
+  teacher        Teacher             @relation(fields: [teacherId], references: [id])
 
   @@index([date])
   @@index([teacherId])
@@ -303,12 +301,22 @@ model Attendance {
   notes                String?
   subscriptionDeducted Boolean          @default(false) @map("subscription_deducted")
   createdAt            DateTime         @default(now()) @map("created_at")
+  markedAt             DateTime?        @map("marked_at")
+  markedBy             String?          @map("marked_by")
+  subscriptionId       String?          @map("subscription_id")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
   client               Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  markedByUser         User?            @relation(fields: [markedBy], references: [id])
   schedule             Schedule         @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  subscription         Subscription?    @relation(fields: [subscriptionId], references: [id])
 
   @@index([clientId])
   @@index([scheduleId])
+  @@index([subscriptionId])
+  @@index([markedBy])
   @@index([createdAt])
+  @@index([markedBy], map: "idx_attendance_marked_by")
+  @@index([subscriptionId], map: "idx_attendance_subscription_id")
   @@map("attendances")
 }
 
@@ -345,6 +353,9 @@ model Subscription {
   status             SubscriptionStatus @default(ACTIVE)
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
+  discountAmount     Decimal            @default(0) @map("discount_amount") @db.Decimal(10, 2)
+  attendances        Attendance[]
+  invoices           Invoice[]
   payments           Payment[]
   client             Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
   group              Group              @relation(fields: [groupId], references: [id])
@@ -355,14 +366,12 @@ model Subscription {
   @@index([status])
   @@index([validMonth])
   @@index([startDate, endDate])
-  @@index([clientId, status])
   @@map("subscriptions")
 }
 
 model Payment {
   id             String        @id @default(uuid())
   clientId       String        @map("client_id")
-  invoiceId      String?       @map("invoice_id")
   amount         Decimal       @db.Decimal(10, 2)
   paymentMethod  PaymentMethod @map("payment_method")
   paymentType    PaymentType   @map("payment_type")
@@ -373,8 +382,9 @@ model Payment {
   notes          String?
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")
+  invoiceId      String?       @map("invoice_id")
   client         Client        @relation(fields: [clientId], references: [id])
-  invoice        Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  invoice        Invoice?      @relation(fields: [invoiceId], references: [id])
   rental         Rental?       @relation(fields: [rentalId], references: [id])
   subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
 
@@ -383,32 +393,31 @@ model Payment {
   @@index([status])
   @@index([createdAt])
   @@index([paymentType])
-  @@index([clientId, createdAt])
   @@map("payments")
 }
 
 model Rental {
-  id          String               @id @default(uuid())
-  roomId      String               @map("room_id")
-  clientId    String?              @map("client_id")
-  clientName  String               @map("client_name")
-  clientPhone String               @map("client_phone")
-  clientEmail String?              @map("client_email")
-  eventType   String               @map("event_type")
-  date        DateTime             @db.Date
-  startTime   DateTime             @map("start_time") @db.Time(6)
-  endTime     DateTime             @map("end_time") @db.Time(6)
-  totalPrice  Decimal              @map("total_price") @db.Decimal(10, 2)
-  status      CalendarEventStatus  @default(PLANNED)
-  managerId   String?              @map("manager_id")
+  id          String              @id @default(uuid())
+  roomId      String              @map("room_id")
+  clientName  String              @map("client_name")
+  clientPhone String              @map("client_phone")
+  clientEmail String?             @map("client_email")
+  eventType   String              @map("event_type")
+  date        DateTime            @db.Date
+  startTime   DateTime            @map("start_time") @db.Time(6)
+  endTime     DateTime            @map("end_time") @db.Time(6)
+  totalPrice  Decimal             @map("total_price") @db.Decimal(10, 2)
+  managerId   String?             @map("manager_id")
   notes       String?
-  createdAt   DateTime             @default(now()) @map("created_at")
-  updatedAt   DateTime             @updatedAt @map("updated_at")
-  payments    Payment[]
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  status      CalendarEventStatus @default(PLANNED)
+  clientId    String?             @map("client_id")
   invoices    Invoice[]
-  client      Client?              @relation(fields: [clientId], references: [id])
-  manager     User?                @relation(fields: [managerId], references: [id])
-  room        Room                 @relation(fields: [roomId], references: [id])
+  payments    Payment[]
+  client      Client?             @relation(fields: [clientId], references: [id])
+  manager     User?               @relation(fields: [managerId], references: [id])
+  room        Room                @relation(fields: [roomId], references: [id])
 
   @@index([date])
   @@index([roomId])
@@ -419,26 +428,26 @@ model Rental {
 }
 
 model Event {
-  id                String               @id @default(uuid())
+  id                String              @id @default(uuid())
   name              String
   description       String?
-  eventTypeId       String?              @map("event_type_id")
-  date              DateTime             @db.Date
-  startTime         DateTime             @map("start_time") @db.Time(6)
-  endTime           DateTime             @map("end_time") @db.Time(6)
-  roomId            String               @map("room_id")
-  maxCapacity       Int?                 @map("max_capacity")
-  responsibleUserId String?              @map("responsible_user_id")
-  photoUrl          String?              @map("photo_url")
-  status            CalendarEventStatus  @default(PLANNED)
+  date              DateTime            @db.Date
+  startTime         DateTime            @map("start_time") @db.Time(6)
+  endTime           DateTime            @map("end_time") @db.Time(6)
+  maxCapacity       Int?                @map("max_capacity")
+  responsibleUserId String?             @map("responsible_user_id")
+  photoUrl          String?             @map("photo_url")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+  eventTypeId       String?             @map("event_type_id")
+  roomId            String              @map("room_id")
+  budget            Decimal?            @db.Decimal(10, 2)
   notes             String?
   participants      Int?
-  budget            Decimal?             @db.Decimal(10, 2)
-  createdAt         DateTime             @default(now()) @map("created_at")
-  updatedAt         DateTime             @updatedAt @map("updated_at")
-  eventType         EventType?           @relation(fields: [eventTypeId], references: [id])
-  responsibleUser   User?                @relation(fields: [responsibleUserId], references: [id])
-  room              Room        @relation(fields: [roomId], references: [id])
+  status            CalendarEventStatus @default(PLANNED)
+  eventType         EventType?          @relation(fields: [eventTypeId], references: [id])
+  responsibleUser   User?               @relation(fields: [responsibleUserId], references: [id])
+  room              Room                @relation(fields: [roomId], references: [id])
 
   @@index([date])
   @@index([eventTypeId])
@@ -458,17 +467,17 @@ model EventType {
 }
 
 model Reservation {
-  id         String               @id @default(uuid())
-  roomId     String               @map("room_id")
-  date       DateTime             @db.Date
-  startTime  DateTime             @map("start_time") @db.Time(6)
-  endTime    DateTime             @map("end_time") @db.Time(6)
-  status     CalendarEventStatus  @default(PLANNED)
-  reservedBy String?              @map("reserved_by")
+  id         String              @id @default(uuid())
+  roomId     String              @map("room_id")
+  date       DateTime            @db.Date
+  startTime  DateTime            @map("start_time") @db.Time(6)
+  endTime    DateTime            @map("end_time") @db.Time(6)
   notes      String?
-  createdAt  DateTime             @default(now()) @map("created_at")
-  updatedAt  DateTime             @updatedAt @map("updated_at")
-  room       Room                 @relation(fields: [roomId], references: [id])
+  createdAt  DateTime            @default(now()) @map("created_at")
+  updatedAt  DateTime            @updatedAt @map("updated_at")
+  status     CalendarEventStatus @default(PLANNED)
+  reservedBy String?             @map("reserved_by")
+  room       Room                @relation(fields: [roomId], references: [id])
 
   @@index([date])
   @@index([roomId])
@@ -525,6 +534,94 @@ model SystemSettings {
   updatedByUser               User?    @relation(fields: [updatedBy], references: [id])
 
   @@map("system_settings")
+}
+
+model Invoice {
+  id             String            @id @default(uuid())
+  invoiceNumber  String            @unique @map("invoice_number")
+  clientId       String            @map("client_id")
+  subscriptionId String?           @map("subscription_id")
+  rentalId       String?           @map("rental_id")
+  subtotal       Decimal           @db.Decimal(10, 2)
+  discountAmount Decimal           @default(0) @map("discount_amount") @db.Decimal(10, 2)
+  totalAmount    Decimal           @map("total_amount") @db.Decimal(10, 2)
+  status         InvoiceStatus     @default(PENDING)
+  issuedAt       DateTime          @default(now()) @map("issued_at")
+  dueDate        DateTime?         @map("due_date") @db.Date
+  paidAt         DateTime?         @map("paid_at")
+  notes          String?
+  createdBy      String?           @map("created_by")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  auditLogs      InvoiceAuditLog[]
+  items          InvoiceItem[]
+  client         Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  creator        User?             @relation("InvoiceCreator", fields: [createdBy], references: [id])
+  rental         Rental?           @relation(fields: [rentalId], references: [id])
+  subscription   Subscription?     @relation(fields: [subscriptionId], references: [id])
+  payments       Payment[]
+
+  @@index([clientId])
+  @@index([subscriptionId])
+  @@index([rentalId])
+  @@index([status])
+  @@index([issuedAt])
+  @@index([dueDate])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id                 String         @id @default(uuid())
+  invoiceId          String         @map("invoice_id")
+  serviceId          String?        @map("service_id")
+  serviceType        ServiceType    @map("service_type")
+  serviceName        String         @map("service_name")
+  serviceDescription String?        @map("service_description")
+  roomId             String?        @map("room_id")
+  quantity           Decimal        @default(1) @db.Decimal(10, 2)
+  unitPrice          Decimal        @map("unit_price") @db.Decimal(10, 2)
+  basePrice          Decimal        @map("base_price") @db.Decimal(10, 2)
+  vatRate            Decimal        @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount          Decimal        @map("vat_amount") @db.Decimal(10, 2)
+  discountPercent    Decimal        @default(0) @map("discount_percent") @db.Decimal(5, 2)
+  discountAmount     Decimal        @default(0) @map("discount_amount") @db.Decimal(10, 2)
+  totalPrice         Decimal        @map("total_price") @db.Decimal(10, 2)
+  writeOffTiming     WriteOffTiming @map("write_off_timing")
+  writeOffStatus     WriteOffStatus @default(PENDING) @map("write_off_status")
+  remainingQuantity  Decimal?       @map("remaining_quantity") @db.Decimal(10, 2)
+  isPriceAdjusted    Boolean        @default(false) @map("is_price_adjusted")
+  adjustmentReason   String?        @map("adjustment_reason")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+  invoice            Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  room               Room?          @relation(fields: [roomId], references: [id])
+  service            Service?       @relation(fields: [serviceId], references: [id])
+
+  @@index([invoiceId])
+  @@index([serviceId])
+  @@index([writeOffStatus])
+  @@map("invoice_items")
+}
+
+model InvoiceAuditLog {
+  id        String             @id @default(uuid())
+  invoiceId String             @map("invoice_id")
+  itemId    String?            @map("item_id")
+  action    InvoiceAuditAction
+  fieldName String             @map("field_name")
+  oldValue  String?            @map("old_value")
+  newValue  String?            @map("new_value")
+  reason    String?
+  userId    String             @map("user_id")
+  createdAt DateTime           @default(now()) @map("created_at")
+  invoice   Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  user      User               @relation("InvoiceAudit", fields: [userId], references: [id])
+
+  @@index([invoiceId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([action])
+  @@map("invoice_audit_logs")
 }
 
 enum UserRole {
@@ -596,12 +693,11 @@ enum ScheduleType {
   INDIVIDUAL_CLASS
 }
 
-// Единый статус для всех событий календаря
 enum CalendarEventStatus {
-  PLANNED    // Запланировано
-  ONGOING    // В процессе
-  COMPLETED  // Завершено
-  CANCELLED  // Отменено
+  PLANNED
+  ONGOING
+  COMPLETED
+  CANCELLED
 }
 
 enum AttendanceStatus {
@@ -691,108 +787,4 @@ enum InvoiceAuditAction {
   ITEM_ADDED
   ITEM_REMOVED
   CANCELLED
-}
-
-model Invoice {
-  id              String         @id @default(uuid())
-  invoiceNumber   String         @unique @map("invoice_number")
-  clientId        String         @map("client_id")
-  subscriptionId  String?        @map("subscription_id")
-  rentalId        String?        @map("rental_id")
-
-  subtotal        Decimal        @db.Decimal(10, 2)
-  discountAmount  Decimal        @default(0) @map("discount_amount") @db.Decimal(10, 2)
-  totalAmount     Decimal        @map("total_amount") @db.Decimal(10, 2)
-
-  status          InvoiceStatus  @default(PENDING)
-  issuedAt        DateTime       @default(now()) @map("issued_at")
-  dueDate         DateTime?      @map("due_date") @db.Date
-  paidAt          DateTime?      @map("paid_at")
-
-  notes           String?
-  createdBy       String?        @map("created_by")
-
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-
-  client          Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  rental          Rental?        @relation(fields: [rentalId], references: [id], onDelete: SetNull)
-  creator         User?          @relation("InvoiceCreator", fields: [createdBy], references: [id], onDelete: SetNull)
-
-  items           InvoiceItem[]
-  payments        Payment[]
-  auditLogs       InvoiceAuditLog[]
-
-  @@index([clientId])
-  @@index([rentalId])
-  @@index([status])
-  @@index([issuedAt])
-  @@index([dueDate])
-  @@index([clientId, status])
-  @@map("invoices")
-}
-
-model InvoiceItem {
-  id                 String            @id @default(uuid())
-  invoiceId          String            @map("invoice_id")
-  serviceId          String?           @map("service_id")
-
-  serviceType        ServiceType       @map("service_type")
-  serviceName        String            @map("service_name")
-  serviceDescription String?           @map("service_description")
-
-  roomId             String?           @map("room_id")
-
-  quantity           Decimal           @default(1) @db.Decimal(10, 2)
-  unitPrice          Decimal           @map("unit_price") @db.Decimal(10, 2)
-  basePrice          Decimal           @map("base_price") @db.Decimal(10, 2)
-  vatRate            Decimal           @map("vat_rate") @db.Decimal(5, 2)
-  vatAmount          Decimal           @map("vat_amount") @db.Decimal(10, 2)
-  discountPercent    Decimal           @default(0) @map("discount_percent") @db.Decimal(5, 2)
-  discountAmount     Decimal           @default(0) @map("discount_amount") @db.Decimal(10, 2)
-  totalPrice         Decimal           @map("total_price") @db.Decimal(10, 2)
-
-  writeOffTiming     WriteOffTiming    @map("write_off_timing")
-  writeOffStatus     WriteOffStatus    @default(PENDING) @map("write_off_status")
-  remainingQuantity  Decimal?          @map("remaining_quantity") @db.Decimal(10, 2)
-
-  isPriceAdjusted    Boolean           @default(false) @map("is_price_adjusted")
-  adjustmentReason   String?           @map("adjustment_reason")
-
-  createdAt          DateTime          @default(now()) @map("created_at")
-  updatedAt          DateTime          @updatedAt @map("updated_at")
-
-  invoice            Invoice           @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  service            Service?          @relation(fields: [serviceId], references: [id], onDelete: SetNull)
-  room               Room?             @relation(fields: [roomId], references: [id], onDelete: SetNull)
-
-  @@index([invoiceId])
-  @@index([serviceId])
-  @@index([writeOffStatus])
-  @@map("invoice_items")
-}
-
-model InvoiceAuditLog {
-  id          String              @id @default(uuid())
-  invoiceId   String              @map("invoice_id")
-  itemId      String?             @map("item_id")
-
-  action      InvoiceAuditAction
-  fieldName   String              @map("field_name")
-  oldValue    String?             @map("old_value")
-  newValue    String?             @map("new_value")
-
-  reason      String?
-  userId      String              @map("user_id")
-
-  createdAt   DateTime            @default(now()) @map("created_at")
-
-  invoice     Invoice             @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  user        User                @relation("InvoiceAudit", fields: [userId], references: [id])
-
-  @@index([invoiceId])
-  @@index([userId])
-  @@index([createdAt])
-  @@index([action])
-  @@map("invoice_audit_logs")
 }

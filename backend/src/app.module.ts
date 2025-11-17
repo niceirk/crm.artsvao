@@ -24,6 +24,10 @@ import { BenefitCategoriesModule } from './benefit-categories/benefit-categories
 import { ServiceCategoriesModule } from './service-categories/service-categories.module';
 import { ServicesModule } from './services/services.module';
 import { InvoicesModule } from './invoices/invoices.module';
+import { SubscriptionTypesModule } from './subscription-types/subscription-types.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { AttendanceModule } from './attendance/attendance.module';
+import { PaymentsModule } from './payments/payments.module';
 
 @Module({
   imports: [
@@ -51,6 +55,10 @@ import { InvoicesModule } from './invoices/invoices.module';
     ServiceCategoriesModule,
     ServicesModule,
     InvoicesModule,
+    SubscriptionTypesModule,
+    SubscriptionsModule,
+    AttendanceModule,
+    PaymentsModule,
   ],
   controllers: [AppController],
   providers: [
