@@ -49,21 +49,9 @@ export const navigationConfig: NavGroup[] = [
     items: [
       {
         title: 'Расписание',
+        href: '/schedule',
         icon: Calendar,
-        description: 'Управление расписанием',
-        children: [
-          {
-            title: 'Сквозное расписание',
-            href: '/schedule',
-            description: 'Просмотр и редактирование расписания',
-          },
-          {
-            title: 'Планирование',
-            href: '/schedule-planner',
-            description: 'Создание повторяющихся занятий',
-            requiresAdmin: true,
-          },
-        ],
+        description: 'Просмотр и редактирование расписания',
       },
       {
         title: 'Клиенты',

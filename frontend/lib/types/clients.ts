@@ -1,10 +1,14 @@
+export type ClientType = 'INDIVIDUAL' | 'LEGAL_ENTITY';
 export type ClientStatus = 'ACTIVE' | 'INACTIVE' | 'VIP';
 
 export interface Client {
   id: string;
+  clientType: ClientType;
   firstName: string;
   lastName: string;
   middleName?: string | null;
+  companyName?: string | null;
+  inn?: string | null;
   dateOfBirth?: string | null;
   gender?: 'MALE' | 'FEMALE' | null;
   phone: string;
@@ -12,6 +16,10 @@ export interface Client {
   address?: string | null;
   photoUrl?: string | null;
   notes?: string | null;
+  passportNumber?: string | null;
+  birthCertificate?: string | null;
+  snils?: string | null;
+  phoneAdditional?: string | null;
   status: ClientStatus;
   leadSourceId?: string | null;
   leadSource?: {
@@ -19,7 +27,14 @@ export interface Client {
     name: string;
     description?: string | null;
   } | null;
+  benefitCategoryId?: string | null;
+  benefitCategory?: {
+    id: string;
+    name: string;
+    discountPercent: number;
+  } | null;
   discount?: string | null;
+  documents?: ClientDocument[];
   createdAt: string;
   updatedAt: string;
 }
@@ -63,9 +78,12 @@ export interface ClientRelationsResponse {
 }
 
 export interface CreateClientDto {
+  clientType?: ClientType;
   firstName: string;
   lastName: string;
   middleName?: string;
+  companyName?: string;
+  inn?: string;
   dateOfBirth?: string;
   gender?: 'MALE' | 'FEMALE';
   phone?: string;
@@ -73,14 +91,22 @@ export interface CreateClientDto {
   address?: string;
   photoUrl?: string;
   notes?: string;
+  passportNumber?: string;
+  birthCertificate?: string;
+  snils?: string;
+  phoneAdditional?: string;
   leadSourceId?: string;
+  benefitCategoryId?: string;
   discount?: string;
 }
 
 export interface UpdateClientDto {
+  clientType?: ClientType;
   firstName?: string;
   lastName?: string;
   middleName?: string;
+  companyName?: string;
+  inn?: string;
   dateOfBirth?: string;
   gender?: 'MALE' | 'FEMALE';
   phone?: string;
@@ -88,16 +114,26 @@ export interface UpdateClientDto {
   address?: string;
   photoUrl?: string;
   notes?: string;
+  passportNumber?: string;
+  birthCertificate?: string;
+  snils?: string;
+  phoneAdditional?: string;
   status?: ClientStatus;
   leadSourceId?: string;
+  benefitCategoryId?: string;
   discount?: string;
 }
 
 export interface ClientFilterParams {
   search?: string;
   status?: ClientStatus;
-  leadSource?: string;
-  discount?: string;
+  leadSourceId?: string;
+  benefitCategoryId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  subscriptionFilter?: 'all' | 'with' | 'without';
+  sortBy?: 'name' | 'createdAt' | 'dateOfBirth' | 'status';
+  sortOrder?: 'asc' | 'desc';
   page?: number;
   limit?: number;
 }
@@ -111,3 +147,65 @@ export interface ClientsListResponse {
     totalPages: number;
   };
 }
+
+// Типы документов
+export type DocumentType =
+  | 'PASSPORT'
+  | 'BIRTH_CERTIFICATE'
+  | 'DRIVERS_LICENSE'
+  | 'SNILS'
+  | 'FOREIGN_PASSPORT'
+  | 'INN'
+  | 'MEDICAL_CERTIFICATE'
+  | 'MSE_CERTIFICATE'
+  | 'OTHER';
+
+export interface ClientDocument {
+  id: string;
+  clientId: string;
+  documentType: DocumentType;
+  series?: string | null;
+  number?: string | null;
+  issuedBy?: string | null;
+  issuedAt?: string | null;
+  expiresAt?: string | null;
+  departmentCode?: string | null;
+  isPrimary: boolean;
+  citizenship?: string | null;
+  fullDisplay?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateClientDocumentDto {
+  documentType: DocumentType;
+  series?: string;
+  number?: string;
+  issuedBy?: string;
+  issuedAt?: string;
+  expiresAt?: string;
+  departmentCode?: string;
+  isPrimary?: boolean;
+  citizenship?: string;
+  fullDisplay?: string;
+}
+
+export interface UpdateClientDocumentDto {
+  series?: string;
+  number?: string;
+  issuedBy?: string;
+  issuedAt?: string;
+  expiresAt?: string;
+  departmentCode?: string;
+  isPrimary?: boolean;
+  citizenship?: string;
+  fullDisplay?: string;
+}
+
+export interface DocumentTypeConfig {
+  label: string;
+  fields: string[];
+  requiredFields: string[];
+}
+
+export type DocumentTypesConfig = Record<DocumentType, DocumentTypeConfig>;

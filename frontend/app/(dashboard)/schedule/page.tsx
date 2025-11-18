@@ -2,8 +2,10 @@
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, CalendarClock } from 'lucide-react';
 import { useState } from 'react';
+import Link from 'next/link';
+import { useAuth } from '@/hooks/use-auth';
 import { useUpdateSchedule } from '@/hooks/use-schedules';
 import { useUpdateRental } from '@/hooks/use-rentals';
 import { useUpdateEvent } from '@/hooks/use-events';
@@ -22,6 +24,7 @@ import type { Reservation } from '@/lib/api/reservations';
 type CalendarEventType = 'schedule' | 'rental' | 'event' | 'reservation';
 
 export default function SchedulePage() {
+  const { user } = useAuth();
   const [filters, setFilters] = useState<FilterType>({});
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -217,10 +220,20 @@ export default function SchedulePage() {
             Управление расписанием занятий и мероприятий
           </p>
         </div>
-        <Button onClick={() => setIsCreateDialogOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Добавить событие
-        </Button>
+        <div className="flex gap-2">
+          {user?.role === 'ADMIN' && (
+            <Button variant="outline" asChild>
+              <Link href="/schedule-planner">
+                <CalendarClock className="mr-2 h-4 w-4" />
+                Планирование
+              </Link>
+            </Button>
+          )}
+          <Button onClick={() => setIsCreateDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Добавить событие
+          </Button>
+        </div>
       </div>
 
       <ScheduleFilters filters={filters} onFiltersChange={setFilters} />

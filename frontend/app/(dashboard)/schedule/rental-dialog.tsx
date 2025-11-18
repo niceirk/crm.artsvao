@@ -29,6 +29,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { DatePicker } from '@/components/ui/date-picker';
 import { useCreateRental, useUpdateRental } from '@/hooks/use-rentals';
 import { useRooms } from '@/hooks/use-rooms';
 import { Rental } from '@/lib/api/rentals';
@@ -274,7 +275,10 @@ export function RentalDialog({ open, onOpenChange, rental, initialData }: Rental
                   <FormItem>
                     <FormLabel>Дата *</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DatePicker
+                        value={field.value}
+                        onChange={(date) => field.onChange(date || '')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

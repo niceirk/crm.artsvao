@@ -5,6 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ClientActivityService } from '../clients/client-activity.service';
 import { CreateAttendanceDto } from './dto/create-attendance.dto';
 import { UpdateAttendanceDto } from './dto/update-attendance.dto';
 import { AttendanceFilterDto } from './dto/attendance-filter.dto';
@@ -18,7 +19,10 @@ import {
 
 @Injectable()
 export class AttendanceService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private clientActivityService: ClientActivityService,
+  ) {}
 
   async markAttendance(dto: CreateAttendanceDto, userId: string) {
     // 1. Получить Schedule с Group
@@ -144,6 +148,9 @@ export class AttendanceService {
         },
       },
     });
+
+    // Обновить активность клиента и автоматически реактивировать если нужно
+    await this.clientActivityService.reactivateClientIfNeeded(dto.clientId);
 
     return attendance;
   }

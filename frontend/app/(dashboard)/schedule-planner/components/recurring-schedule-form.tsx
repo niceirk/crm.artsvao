@@ -21,6 +21,7 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
 import { useGroups } from '@/hooks/use-groups';
 import { useTeachers } from '@/hooks/use-teachers';
 import { useRooms } from '@/hooks/use-rooms';
@@ -254,7 +255,10 @@ export function RecurringScheduleForm() {
               <FormItem>
                 <FormLabel>Дата начала</FormLabel>
                 <FormControl>
-                  <Input type="date" {...field} />
+                  <DatePicker
+                    value={field.value}
+                    onChange={(date) => field.onChange(date || '')}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -269,7 +273,13 @@ export function RecurringScheduleForm() {
               <FormItem>
                 <FormLabel>Дата окончания</FormLabel>
                 <FormControl>
-                  <Input type="date" {...field} />
+                  <DatePicker
+                    value={field.value}
+                    onChange={(date) => field.onChange(date || '')}
+                    minDate={new Date()}
+                    maxDate={new Date(new Date().getFullYear() + 50, 11, 31)}
+                    toYear={new Date().getFullYear() + 50}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>

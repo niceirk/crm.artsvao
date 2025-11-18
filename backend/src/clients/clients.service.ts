@@ -5,6 +5,7 @@ import { UpdateClientDto } from './dto/update-client.dto';
 import { ClientFilterDto } from './dto/client-filter.dto';
 import { ClientStatus, AuditAction } from '@prisma/client';
 import { AuditLogService } from '../audit-log/audit-log.service';
+import { normalizePhone } from '../common/utils/phone.util';
 
 @Injectable()
 export class ClientsService {
@@ -14,17 +15,30 @@ export class ClientsService {
   ) {}
 
   async create(createClientDto: CreateClientDto, userId: string) {
+    // Normalize phone number
+    const normalizedPhone = createClientDto.phone
+      ? normalizePhone(createClientDto.phone)
+      : '';
+
     const client = await this.prisma.client.create({
       data: {
+        clientType: createClientDto.clientType,
         firstName: createClientDto.firstName,
         lastName: createClientDto.lastName,
         middleName: createClientDto.middleName,
-        phone: createClientDto.phone || '',
+        companyName: createClientDto.companyName,
+        inn: createClientDto.inn,
+        gender: createClientDto.gender,
+        phone: normalizedPhone,
         email: createClientDto.email,
         address: createClientDto.address,
         notes: createClientDto.notes,
         photoUrl: createClientDto.photoUrl,
         leadSourceId: createClientDto.leadSourceId,
+        passportNumber: createClientDto.passportNumber,
+        birthCertificate: createClientDto.birthCertificate,
+        snils: createClientDto.snils,
+        phoneAdditional: createClientDto.phoneAdditional,
         dateOfBirth: createClientDto.dateOfBirth
           ? new Date(createClientDto.dateOfBirth)
           : null,
@@ -47,7 +61,19 @@ export class ClientsService {
   }
 
   async findAll(filterDto: ClientFilterDto) {
-    const { search, status, leadSource, discount, page = 1, limit = 20 } = filterDto;
+    const {
+      search,
+      status,
+      leadSourceId,
+      benefitCategoryId,
+      dateFrom,
+      dateTo,
+      subscriptionFilter,
+      sortBy = 'name',
+      sortOrder = 'asc',
+      page = 1,
+      limit = 20,
+    } = filterDto;
     const skip = (page - 1) * limit;
 
     const where: any = {};
@@ -66,12 +92,63 @@ export class ClientsService {
       where.status = status;
     }
 
-    if (leadSource) {
-      where.leadSourceId = leadSource;
+    if (leadSourceId) {
+      where.leadSourceId = leadSourceId;
     }
 
-    if (discount) {
-      where.discount = discount;
+    if (benefitCategoryId) {
+      where.benefitCategoryId = benefitCategoryId;
+    }
+
+    // Фильтрация по периоду регистрации
+    if (dateFrom || dateTo) {
+      where.createdAt = {};
+      if (dateFrom) {
+        where.createdAt.gte = new Date(dateFrom);
+      }
+      if (dateTo) {
+        // Добавляем 1 день, чтобы включить весь указанный день
+        const endDate = new Date(dateTo);
+        endDate.setDate(endDate.getDate() + 1);
+        where.createdAt.lt = endDate;
+      }
+    }
+
+    // Фильтрация по наличию абонементов
+    if (subscriptionFilter && subscriptionFilter !== 'all') {
+      if (subscriptionFilter === 'with') {
+        where.subscriptions = {
+          some: {},
+        };
+      } else if (subscriptionFilter === 'without') {
+        where.subscriptions = {
+          none: {},
+        };
+      }
+    }
+
+    // Определяем сортировку
+    let orderBy: any;
+    if (sortBy === 'name') {
+      // Сортировка по ФИО: сначала по фамилии, затем по имени
+      orderBy = [
+        { lastName: sortOrder },
+        { firstName: sortOrder },
+        { middleName: sortOrder },
+      ];
+    } else if (sortBy === 'createdAt') {
+      orderBy = { createdAt: sortOrder };
+    } else if (sortBy === 'dateOfBirth') {
+      orderBy = { dateOfBirth: sortOrder };
+    } else if (sortBy === 'status') {
+      orderBy = { status: sortOrder };
+    } else {
+      // По умолчанию - сортировка по ФИО
+      orderBy = [
+        { lastName: 'asc' },
+        { firstName: 'asc' },
+        { middleName: 'asc' },
+      ];
     }
 
     const [clients, total] = await Promise.all([
@@ -79,7 +156,7 @@ export class ClientsService {
         where,
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         include: {
           leadSource: {
             select: {
@@ -197,6 +274,9 @@ export class ClientsService {
           orderBy: { createdAt: 'desc' },
           take: 10,
         },
+        documents: {
+          orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+        },
       },
     });
 
@@ -210,14 +290,20 @@ export class ClientsService {
   async update(id: string, updateClientDto: UpdateClientDto, userId: string) {
     const oldClient = await this.findOne(id); // Check if exists
 
+    // Normalize phone if provided
+    const data: any = { ...updateClientDto };
+    if (updateClientDto.phone) {
+      data.phone = normalizePhone(updateClientDto.phone);
+    }
+    if (updateClientDto.dateOfBirth) {
+      data.dateOfBirth = new Date(updateClientDto.dateOfBirth);
+    }
+    // Gender field is already in updateClientDto, no need for special handling
+    // clientType, companyName, and inn are also already in updateClientDto
+
     const updatedClient = await this.prisma.client.update({
       where: { id },
-      data: {
-        ...updateClientDto,
-        dateOfBirth: updateClientDto.dateOfBirth
-          ? new Date(updateClientDto.dateOfBirth)
-          : undefined,
-      } as any,
+      data,
       include: {
         leadSource: {
           select: {
@@ -291,5 +377,46 @@ export class ClientsService {
       take: 20,
       orderBy: { lastName: 'asc' },
     });
+  }
+
+  /**
+   * Проверяет наличие клиента с таким же телефоном
+   * @param phone - телефон для проверки
+   * @param excludeId - ID клиента, который нужно исключить из поиска (для update)
+   */
+  async checkDuplicate(phone: string, excludeId?: string) {
+    if (!phone) {
+      return null;
+    }
+
+    try {
+      const normalizedPhone = normalizePhone(phone);
+
+      const where: any = {
+        phone: normalizedPhone,
+      };
+
+      if (excludeId) {
+        where.id = { not: excludeId };
+      }
+
+      const duplicate = await this.prisma.client.findFirst({
+        where,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          middleName: true,
+          phone: true,
+          status: true,
+          createdAt: true,
+        },
+      });
+
+      return duplicate;
+    } catch (error) {
+      // If phone format is invalid, return null
+      return null;
+    }
   }
 }

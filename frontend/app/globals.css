@@ -88,3 +88,15 @@
 [data-state="closed"] [data-radix-collapsible-content] {
   animation: collapsible-up 200ms ease-out;
 }
+
+/* Hide scrollbar but keep scrolling functionality */
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari and Opera */
+  }
+}

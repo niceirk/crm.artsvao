@@ -44,13 +44,13 @@ export function Sidebar() {
     <TooltipProvider delayDuration={0}>
       <aside
         className={cn(
-          'fixed left-0 top-0 z-40 h-screen border-r bg-background transition-all duration-300',
+          'fixed left-0 top-0 z-40 h-screen border-r bg-background transition-all duration-300 flex flex-col',
           sidebarCollapsed ? 'w-20' : 'w-64',
           'hidden md:block' // Скрываем на мобильных, там будет drawer
         )}
       >
       {/* Header с логотипом */}
-      <div className="flex h-16 items-center justify-between border-b px-4">
+      <div className="flex h-16 items-center justify-between border-b px-4 flex-shrink-0">
         {!sidebarCollapsed ? (
           <>
             <div className="flex items-center gap-2 font-semibold">
@@ -79,32 +79,37 @@ export function Sidebar() {
       </div>
 
       {/* Навигация */}
-      <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-        {filteredNavigation.map((group, groupIndex) => (
-          <div key={groupIndex} className="pb-4">
-            {!sidebarCollapsed && (
-              <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {group.title}
-              </h3>
-            )}
-            <div className="space-y-1">
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.href || item.title}
-                  item={item}
-                  isActive={isParentActive(item)}
-                  collapsed={sidebarCollapsed}
-                  pathname={pathname}
-                />
-              ))}
+      <div 
+        className="overflow-y-auto p-4 scrollbar-hide" 
+        style={{ height: sidebarCollapsed ? 'calc(100vh - 144px)' : 'calc(100vh - 64px)' }}
+      >
+        <div className="space-y-1">
+          {filteredNavigation.map((group, groupIndex) => (
+            <div key={groupIndex} className="pb-4">
+              {!sidebarCollapsed && (
+                <h3 className="mb-2 px-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  {group.title}
+                </h3>
+              )}
+              <div className="space-y-1">
+                {group.items.map((item) => (
+                  <NavLink
+                    key={item.href || item.title}
+                    item={item}
+                    isActive={isParentActive(item)}
+                    collapsed={sidebarCollapsed}
+                    pathname={pathname}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </nav>
+          ))}
+        </div>
+      </div>
 
       {/* Footer с кнопкой разворачивания в свернутом режиме */}
       {sidebarCollapsed && (
-        <div className="border-t p-4">
+        <div className="border-t p-4 flex-shrink-0">
           <Button
             variant="ghost"
             size="icon"

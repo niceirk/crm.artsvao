@@ -30,6 +30,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { DatePicker } from '@/components/ui/date-picker';
 import { useCreateSchedule, useUpdateSchedule } from '@/hooks/use-schedules';
 import { useRooms } from '@/hooks/use-rooms';
 import { useTeachers } from '@/hooks/use-teachers';
@@ -312,7 +313,10 @@ export function ScheduleDialog({ open, onOpenChange, schedule, initialData }: Sc
                   <FormItem>
                     <FormLabel>Дата *</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DatePicker
+                        value={field.value}
+                        onChange={(date) => field.onChange(date || '')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

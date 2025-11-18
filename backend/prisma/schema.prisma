@@ -21,6 +21,7 @@ model User {
   updatedAt        DateTime             @updatedAt @map("updated_at")
   attendances      Attendance[]
   auditLogs        AuditLog[]
+  clientNotes      ClientNote[]
   events           Event[]
   invoiceAuditLogs InvoiceAuditLog[]    @relation("InvoiceAudit")
   createdInvoices  Invoice[]            @relation("InvoiceCreator")
@@ -132,9 +133,12 @@ model Service {
 
 model Client {
   id                String           @id @default(uuid())
+  clientType        ClientType       @default(INDIVIDUAL) @map("client_type")
   firstName         String           @map("first_name")
   lastName          String           @map("last_name")
   middleName        String?          @map("middle_name")
+  companyName       String?          @map("company_name")
+  inn               String?
   dateOfBirth       DateTime?        @map("date_of_birth") @db.Date
   gender            Gender?
   phone             String
@@ -142,12 +146,19 @@ model Client {
   address           String?
   photoUrl          String?          @map("photo_url")
   notes             String?
+  passportNumber    String?          @map("passport_number") @db.VarChar(20)
+  birthCertificate  String?          @map("birth_certificate") @db.VarChar(50)
+  snils             String?          @db.VarChar(14)
+  phoneAdditional   String?          @map("phone_additional") @db.VarChar(20)
   status            ClientStatus     @default(ACTIVE)
+  lastActivityAt    DateTime?        @map("last_activity_at")
   createdAt         DateTime         @default(now()) @map("created_at")
   updatedAt         DateTime         @updatedAt @map("updated_at")
   leadSourceId      String?          @map("lead_source_id")
   benefitCategoryId String?          @map("benefit_category_id")
   attendances       Attendance[]
+  clientNotes       ClientNote[]
+  documents         ClientDocument[]
   relations         ClientRelation[] @relation("ClientRelations")
   relatedTo         ClientRelation[] @relation("RelatedClientRelations")
   benefitCategory   BenefitCategory? @relation(fields: [benefitCategoryId], references: [id])
@@ -166,6 +177,9 @@ model Client {
   @@index([leadSourceId])
   @@index([benefitCategoryId])
   @@index([status, createdAt])
+  @@index([clientType])
+  @@index([inn])
+  @@index([snils])
   @@map("clients")
 }
 
@@ -179,6 +193,46 @@ model ClientRelation {
   relatedClient   Client       @relation("RelatedClientRelations", fields: [relatedClientId], references: [id], onDelete: Cascade)
 
   @@map("client_relations")
+}
+
+model ClientNote {
+  id        String   @id @default(uuid())
+  clientId  String   @map("client_id")
+  content   String
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [createdBy], references: [id])
+
+  @@index([clientId])
+  @@index([createdBy])
+  @@index([createdAt])
+  @@map("client_notes")
+}
+
+model ClientDocument {
+  id             String       @id @default(uuid())
+  clientId       String       @map("client_id")
+  documentType   DocumentType @map("document_type")
+  series         String?
+  number         String?
+  issuedBy       String?      @map("issued_by")
+  issuedAt       DateTime?    @map("issued_at") @db.Date
+  expiresAt      DateTime?    @map("expires_at") @db.Date
+  departmentCode String?      @map("department_code") @db.VarChar(10)
+  isPrimary      Boolean      @default(false) @map("is_primary")
+  citizenship    String?      @db.VarChar(50)
+  fullDisplay    String?      @map("full_display")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  client         Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, documentType])
+  @@index([clientId])
+  @@index([documentType])
+  @@index([isPrimary])
+  @@map("client_documents")
 }
 
 model Room {
@@ -649,6 +703,11 @@ enum UserStatus {
   BLOCKED
 }
 
+enum ClientType {
+  INDIVIDUAL
+  LEGAL_ENTITY
+}
+
 enum ClientStatus {
   ACTIVE
   INACTIVE
@@ -802,4 +861,16 @@ enum InvoiceAuditAction {
   ITEM_ADDED
   ITEM_REMOVED
   CANCELLED
+}
+
+enum DocumentType {
+  PASSPORT
+  BIRTH_CERTIFICATE
+  DRIVERS_LICENSE
+  SNILS
+  FOREIGN_PASSPORT
+  INN
+  MEDICAL_CERTIFICATE
+  MSE_CERTIFICATE
+  OTHER
 }

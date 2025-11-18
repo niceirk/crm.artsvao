@@ -30,6 +30,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { DatePicker } from '@/components/ui/date-picker';
 import { useCreateEvent, useUpdateEvent } from '@/hooks/use-events';
 import { useEventTypes } from '@/hooks/use-event-types';
 import { useRooms } from '@/hooks/use-rooms';
@@ -280,7 +281,10 @@ export function EventDialog({ open, onOpenChange, event }: EventDialogProps) {
                   <FormItem>
                     <FormLabel>Дата *</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DatePicker
+                        value={field.value}
+                        onChange={(date) => field.onChange(date || '')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

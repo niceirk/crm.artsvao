@@ -40,6 +40,14 @@ export class ClientsController {
     return this.clientsService.search(query);
   }
 
+  @Get('check-duplicate')
+  checkDuplicate(
+    @Query('phone') phone: string,
+    @Query('excludeId') excludeId?: string,
+  ) {
+    return this.clientsService.checkDuplicate(phone, excludeId);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string) {
     return this.clientsService.findOne(id);

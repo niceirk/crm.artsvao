@@ -5,6 +5,7 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { ClientActivityService } from '../clients/client-activity.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
 import { PaymentFilterDto } from './dto/payment-filter.dto';
@@ -12,7 +13,10 @@ import { InvoiceStatus, PaymentMethod, PaymentStatus, Prisma } from '@prisma/cli
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly clientActivityService: ClientActivityService,
+  ) {}
 
   /**
    * Расчет общей суммы оплаченных платежей для счета
@@ -148,6 +152,9 @@ export class PaymentsService {
     if (dto.invoiceId && status === PaymentStatus.COMPLETED) {
       await this.updateInvoiceStatus(dto.invoiceId);
     }
+
+    // Обновить активность клиента и автоматически реактивировать если нужно
+    await this.clientActivityService.reactivateClientIfNeeded(dto.clientId);
 
     return payment;
   }

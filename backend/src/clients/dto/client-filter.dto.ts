@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsEnum, IsInt, Min } from 'class-validator';
+import { IsOptional, IsString, IsEnum, IsInt, Min, IsDateString } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ClientStatus } from '@prisma/client';
 
@@ -13,11 +13,31 @@ export class ClientFilterDto {
 
   @IsOptional()
   @IsString()
-  leadSource?: string;
+  leadSourceId?: string;
 
   @IsOptional()
   @IsString()
-  discount?: string;
+  benefitCategoryId?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
+
+  @IsOptional()
+  @IsEnum(['all', 'with', 'without'])
+  subscriptionFilter?: 'all' | 'with' | 'without';
+
+  @IsOptional()
+  @IsEnum(['name', 'createdAt', 'dateOfBirth', 'status'])
+  sortBy?: 'name' | 'createdAt' | 'dateOfBirth' | 'status';
+
+  @IsOptional()
+  @IsEnum(['asc', 'desc'])
+  sortOrder?: 'asc' | 'desc';
 
   @IsOptional()
   @Type(() => Number)

@@ -42,6 +42,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
 import { useCreateSchedule, useUpdateSchedule, useDeleteSchedule } from '@/hooks/use-schedules';
 import { useCreateRental, useUpdateRental, useDeleteRental } from '@/hooks/use-rentals';
 import { useCreateEvent, useUpdateEvent, useDeleteEvent, useEvents } from '@/hooks/use-events';
@@ -757,7 +758,10 @@ export function CalendarEventDialog({
                   <FormItem>
                     <FormLabel>Дата *</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DatePicker
+                        value={field.value}
+                        onChange={(date) => field.onChange(date || '')}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

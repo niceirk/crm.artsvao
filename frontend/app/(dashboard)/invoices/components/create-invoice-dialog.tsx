@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Table,
   TableBody,
@@ -458,7 +459,13 @@ export function CreateInvoiceDialog({ open, onOpenChange }: CreateInvoiceDialogP
                   <FormItem>
                     <FormLabel>Срок оплаты</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <DatePicker
+                        value={field.value}
+                        onChange={(date) => field.onChange(date || '')}
+                        minDate={new Date()}
+                        maxDate={new Date(new Date().getFullYear() + 50, 11, 31)}
+                        toYear={new Date().getFullYear() + 50}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

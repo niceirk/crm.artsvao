@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -9,6 +10,8 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { ClientsModule } from './clients/clients.module';
 import { ClientRelationsModule } from './client-relations/client-relations.module';
+import { ClientNotesModule } from './client-notes/client-notes.module';
+import { ClientDocumentsModule } from './client-documents/client-documents.module';
 import { LeadSourcesModule } from './lead-sources/lead-sources.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { RoomsModule } from './rooms/rooms.module';
@@ -38,11 +41,14 @@ import { PyrusModule } from './integrations/pyrus/pyrus.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     UsersModule,
     AuthModule,
     ClientsModule,
     ClientRelationsModule,
+    ClientNotesModule,
+    ClientDocumentsModule,
     LeadSourcesModule,
     AuditLogModule,
     RoomsModule,
