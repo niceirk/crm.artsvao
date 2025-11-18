@@ -6,13 +6,10 @@ echo "🚀 Starting ARTSVAO Backend"
 echo "=================================="
 
 echo ""
-echo "📊 Checking database connection..."
-# Wait for database to be ready
-until npx prisma db execute --stdin <<< 'SELECT 1' > /dev/null 2>&1; do
-  echo "⏳ Waiting for database to be ready..."
-  sleep 2
-done
-echo "✅ Database is ready!"
+echo "📊 Waiting for database..."
+# Simple wait for database
+sleep 5
+echo "✅ Database should be ready!"
 
 echo ""
 echo "🔄 Running database migrations..."

@@ -23,6 +23,7 @@ export const useCreateRental = () => {
     mutationFn: (data: CreateRentalDto) => rentalsApi.createRental(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rentals'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       toast.success('Аренда создана');
     },
     onError: (error: any) => {
@@ -73,6 +74,7 @@ export const useUpdateRental = () => {
     onSettled: () => {
       // Always refetch after error or success
       queryClient.invalidateQueries({ queryKey: ['rentals'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
     },
   });
 };
@@ -82,6 +84,7 @@ export const useDeleteRental = () => {
     mutationFn: (id: string) => rentalsApi.deleteRental(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['rentals'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       toast.success('Аренда удалена');
     },
     onError: (error: any) => {

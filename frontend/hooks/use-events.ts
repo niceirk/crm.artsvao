@@ -25,6 +25,7 @@ export const useCreateEvent = () => {
     mutationFn: (data: CreateEventDto) => eventsApi.createEvent(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       toast.success('Мероприятие создано');
     },
     onError: (error: any) => {
@@ -69,6 +70,7 @@ export const useUpdateEvent = () => {
     onSettled: () => {
       // Always refetch after error or success
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
     },
   });
 };
@@ -80,6 +82,7 @@ export const useDeleteEvent = () => {
     mutationFn: (id: string) => eventsApi.deleteEvent(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       toast.success('Мероприятие удалено');
     },
     onError: (error: any) => {

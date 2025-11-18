@@ -36,6 +36,8 @@ export const useCreateSchedule = () => {
     mutationFn: (data: CreateScheduleDto) => schedulesApi.createSchedule(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       toast.success('Занятие создано');
     },
     onError: (error: any) => {
@@ -84,6 +86,8 @@ export const useUpdateSchedule = () => {
     onSettled: () => {
       // Always refetch after error or success
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
     },
   });
 };
@@ -95,6 +99,8 @@ export const useDeleteSchedule = () => {
     mutationFn: (id: string) => schedulesApi.deleteSchedule(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       toast.success('Занятие удалено');
     },
     onError: (error: any) => {
@@ -114,6 +120,8 @@ export const useCreateRecurringSchedule = () => {
     mutationFn: (data: CreateRecurringScheduleDto) => schedulesApi.createRecurring(data),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       toast({
         title: 'Успешно',
         description: `Создано занятий: ${result.created.count}, пропущено: ${result.skipped.count}`,
@@ -136,6 +144,7 @@ export const useBulkUpdateSchedules = () => {
     mutationFn: (data: BulkUpdateScheduleDto) => schedulesApi.bulkUpdate(data),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       toast({
         title: 'Успешно',
         description: `Обновлено занятий: ${result.updated.count}, ошибок: ${result.failed.count}`,
@@ -158,6 +167,7 @@ export const useCopySchedules = () => {
     mutationFn: (data: CopyScheduleDto) => schedulesApi.copySchedules(data),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       toast({
         title: 'Успешно',
         description: `Скопировано занятий: ${result.created.count}, пропущено: ${result.skipped.count}`,
@@ -180,6 +190,7 @@ export const useBulkCancelSchedules = () => {
     mutationFn: (data: BulkCancelScheduleDto) => schedulesApi.bulkCancel(data),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       const message = result.transferred
         ? `Отменено: ${result.cancelled.count}, перенесено: ${result.transferred.count}`
         : `Отменено занятий: ${result.cancelled.count}`;
@@ -202,6 +213,7 @@ export const useBulkDeleteSchedules = () => {
     mutationFn: (data: BulkDeleteScheduleDto) => schedulesApi.bulkDelete(data),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       const message = result.totalCancelledEnrollments > 0
         ? `Удалено занятий: ${result.deleted.count}, отменено записей: ${result.totalCancelledEnrollments}. Занятия возвращены в абонементы клиентов.`
         : `Удалено занятий: ${result.deleted.count}`;

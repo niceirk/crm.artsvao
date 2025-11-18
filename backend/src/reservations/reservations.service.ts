@@ -55,7 +55,7 @@ export class ReservationsService {
     });
   }
 
-  async findAll(filters?: { date?: string; roomId?: string; status?: string }) {
+  async findAll(filters?: { date?: string; roomId?: string | string[]; status?: string }) {
     const where: any = {};
 
     if (filters?.date) {
@@ -63,7 +63,9 @@ export class ReservationsService {
     }
 
     if (filters?.roomId) {
-      where.roomId = filters.roomId;
+      where.roomId = Array.isArray(filters.roomId)
+        ? { in: filters.roomId }
+        : filters.roomId;
     }
 
     if (filters?.status) {

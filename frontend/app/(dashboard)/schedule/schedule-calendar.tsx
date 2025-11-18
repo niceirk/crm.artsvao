@@ -94,6 +94,8 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
   const calendarRef = useRef<FullCalendar>(null);
   const { data: rooms } = useRooms();
   const [currentView, setCurrentView] = useState<string>('resourceTimeGridDay');
+  const [currentDate, setCurrentDate] = useState<Date>(new Date());
+  const [calendarResources, setCalendarResources] = useState<Array<{id: string; title: string}>>([]);
   const [scrollTime, setScrollTime] = useState<string>(() => {
     // Вычисляем начальное время прокрутки
     const now = new Date();
@@ -377,6 +379,60 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     ];
   }, [schedules, rentals, eventItems, reservations, currentView]);
 
+  // Calculate filtered resources
+  const filteredResources = useMemo(() => {
+    if (!rooms) return [];
+
+    const allResources = rooms.map((room) => ({
+      id: room.id,
+      title: `${room.name}${room.number ? ` (${room.number})` : ''}`,
+    }));
+
+    // Если не в режиме "День", показываем все помещения
+    if (currentView !== 'resourceTimeGridDay') {
+      return allResources;
+    }
+
+    // Получаем активную дату из календаря API
+    let activeDate = currentDate;
+    if (calendarRef.current) {
+      const calendarApi = calendarRef.current.getApi();
+      activeDate = calendarApi.getDate();
+    }
+
+    // Фильтруем помещения с событиями на текущую дату
+    const currentDateStr = activeDate.toISOString().split('T')[0];
+    const occupiedRoomIds = new Set<string>();
+
+    calendarEvents.forEach((event) => {
+      if (event.start && event.resourceId) {
+        let eventDateStr: string;
+
+        if (typeof event.start === 'string') {
+          eventDateStr = event.start.split('T')[0];
+        } else if (event.start instanceof Date) {
+          eventDateStr = event.start.toISOString().split('T')[0];
+        } else {
+          return;
+        }
+
+        if (eventDateStr === currentDateStr) {
+          occupiedRoomIds.add(event.resourceId as string);
+        }
+      }
+    });
+
+    const filtered = allResources.filter(r => occupiedRoomIds.has(r.id));
+
+    return filtered;
+  }, [rooms, currentView, currentDate, calendarEvents]);
+
+  // Update calendar resources state when filtered resources change
+  useEffect(() => {
+    setCalendarResources(filteredResources);
+  }, [filteredResources]);
+
+
   // useEffect(() => {
   //   console.log('Events for FullCalendar:', calendarEvents);
   // }, [calendarEvents]);
@@ -438,6 +494,10 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
 
   const handleViewChange = (info: any) => {
     setCurrentView(info.view.type);
+    // Обновляем текущую дату календаря для фильтрации помещений
+    if (info.view.currentStart) {
+      setCurrentDate(new Date(info.view.currentStart));
+    }
   };
 
   const renderEventContent = (eventInfo: EventContentArg) => {
@@ -473,12 +533,6 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     );
   };
 
-  // Prepare resources from rooms
-  const resources = rooms?.map((room) => ({
-    id: room.id,
-    title: `${room.name}${room.number ? ` (${room.number})` : ''}`,
-  })) || [];
-
   return (
     <div className="schedule-calendar">
       <FullCalendar
@@ -504,7 +558,7 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
           resourceTimeGridDay: 'День',
           list: 'Список',
         }}
-        resources={resources}
+        resources={calendarResources}
         schedulerLicenseKey="GPL-My-Project-Is-Open-Source"
         slotMinTime="08:00:00"
         slotMaxTime="22:00:00"

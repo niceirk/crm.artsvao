@@ -340,3 +340,82 @@
 .fc .fc-popover-body {
   padding: 0.5em;
 }
+
+/* Resource column improvements for better readability */
+.fc .fc-col-header-cell.fc-resource {
+  min-width: 150px;
+  max-width: 250px;
+}
+
+.fc .fc-timegrid-col.fc-resource {
+  min-width: 150px;
+}
+
+.fc .fc-datagrid-cell-main {
+  min-width: 120px;
+  padding: 0.5em;
+}
+
+/* Horizontal scroll improvements */
+.fc .fc-scroller-harness {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.fc .fc-scroller-harness::-webkit-scrollbar {
+  height: 12px;
+}
+
+.fc .fc-scroller-harness::-webkit-scrollbar-track {
+  background: var(--fc-neutral-bg-color);
+  border-radius: 6px;
+}
+
+.fc .fc-scroller-harness::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  border: 2px solid var(--fc-neutral-bg-color);
+}
+
+.fc .fc-scroller-harness::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+/* Firefox scrollbar */
+.fc .fc-scroller-harness {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 0, 0, 0.3) var(--fc-neutral-bg-color);
+}
+
+/* Shadow indicator for scroll availability */
+.fc .fc-timegrid-body {
+  position: relative;
+}
+
+.fc .fc-timegrid-body::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  background: linear-gradient(to left, rgba(0, 0, 0, 0.1), transparent);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.fc .fc-timegrid-body.has-scroll::after {
+  opacity: 1;
+}
+
+/* Room toggle button styling */
+.fc .fc-toggleRooms-button {
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.fc .fc-toggleRooms-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}

@@ -61,6 +61,14 @@ export function MultiSelect({
     selected.includes(option.value)
   );
 
+  // Sort options to show selected items first
+  const sortedOptions = React.useMemo(() => {
+    const selectedSet = new Set(selected);
+    const selectedOpts = options.filter(opt => selectedSet.has(opt.value));
+    const unselectedOpts = options.filter(opt => !selectedSet.has(opt.value));
+    return [...selectedOpts, ...unselectedOpts];
+  }, [options, selected]);
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
@@ -82,14 +90,21 @@ export function MultiSelect({
                 className="mr-1 flex items-center gap-1"
               >
                 <span className="truncate max-w-[150px]">{option.label}</span>
-                <X
-                  className="h-3 w-3 text-muted-foreground hover:text-foreground cursor-pointer flex-shrink-0"
+                <button
+                  type="button"
+                  className="ml-1 ring-offset-background rounded-full outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     handleUnselect(option.value);
                   }}
-                />
+                >
+                  <X className="h-3 w-3 text-muted-foreground hover:text-foreground" />
+                </button>
               </Badge>
             ))}
             {selected.length > 2 && (
@@ -107,7 +122,7 @@ export function MultiSelect({
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
-              {options.map((option) => (
+              {sortedOptions.map((option) => (
                 <CommandItem
                   key={option.value}
                   onSelect={() => handleSelect(option.value)}

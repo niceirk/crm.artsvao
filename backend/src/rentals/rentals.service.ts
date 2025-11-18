@@ -111,14 +111,16 @@ export class RentalsService {
     return rental;
   }
 
-  async findAll(queryParams?: { date?: string; roomId?: string; status?: string }) {
+  async findAll(queryParams?: { date?: string; roomId?: string | string[]; status?: string }) {
     const where: any = {};
 
     if (queryParams?.date) {
       where.date = new Date(queryParams.date);
     }
     if (queryParams?.roomId) {
-      where.roomId = queryParams.roomId;
+      where.roomId = Array.isArray(queryParams.roomId)
+        ? { in: queryParams.roomId }
+        : queryParams.roomId;
     }
     if (queryParams?.status) {
       where.status = queryParams.status;

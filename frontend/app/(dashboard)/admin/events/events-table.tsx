@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { MoreHorizontal, Pencil, Trash2, Calendar } from 'lucide-react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { MoreHorizontal, Pencil, Trash2, Calendar, Eye, ArrowUpDown } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -48,18 +50,63 @@ const statusLabels: Record<string, string> = {
   CANCELLED: 'Отменено',
 };
 
+type SortField = 'name' | 'date' | 'participants' | 'budget';
+type SortDirection = 'asc' | 'desc';
+
 interface EventsTableProps {
   events: Event[];
   isLoading: boolean;
 }
 
 export function EventsTable({ events, isLoading }: EventsTableProps) {
+  const router = useRouter();
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   const deleteEvent = useDeleteEvent();
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const sortedEvents = [...events].sort((a, b) => {
+    let comparison = 0;
+
+    switch (sortField) {
+      case 'name':
+        comparison = a.name.localeCompare(b.name, 'ru');
+        break;
+      case 'date':
+        comparison = new Date(a.date).getTime() - new Date(b.date).getTime();
+        break;
+      case 'participants':
+        comparison = (a.participants || 0) - (b.participants || 0);
+        break;
+      case 'budget':
+        comparison = (a.budget || 0) - (b.budget || 0);
+        break;
+    }
+
+    return sortDirection === 'asc' ? comparison : -comparison;
+  });
+
+  const handleRowClick = (eventId: string, e: React.MouseEvent) => {
+    // Don't navigate if clicking on a button or link
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('a')) {
+      return;
+    }
+    router.push(`/admin/events/${eventId}`);
+  };
 
   const handleEdit = (event: Event) => {
     setSelectedEvent(event);
@@ -111,6 +158,14 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
       .join(' ');
   };
 
+  const getRoomName = (event: Event) => {
+    if (!event.room) return '—';
+    if (event.room.number) {
+      return `${event.room.name} (${event.room.number})`;
+    }
+    return event.room.name;
+  };
+
   if (isLoading) {
     return <div className="text-center py-8">Загрузка...</div>;
   }
@@ -127,37 +182,54 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
     );
   }
 
+  const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
+    <TableHead>
+      <Button
+        variant="ghost"
+        onClick={() => handleSort(field)}
+        className="h-8 px-2 lg:px-3 hover:bg-transparent font-medium"
+      >
+        {children}
+        <ArrowUpDown className="ml-2 h-4 w-4" />
+      </Button>
+    </TableHead>
+  );
+
   return (
     <>
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Название</TableHead>
+              <SortableHeader field="name">Название</SortableHeader>
               <TableHead>Тип</TableHead>
-              <TableHead>Дата</TableHead>
+              <TableHead>Помещение</TableHead>
+              <SortableHeader field="date">Дата</SortableHeader>
               <TableHead>Время</TableHead>
               <TableHead>Ответственный</TableHead>
-              <TableHead>Участников</TableHead>
-              <TableHead>Бюджет</TableHead>
+              <SortableHeader field="participants">Участников</SortableHeader>
               <TableHead>Статус</TableHead>
               <TableHead className="w-[70px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {events.map((event) => (
-              <TableRow key={event.id}>
-                <TableCell className="font-medium">{event.name}</TableCell>
+            {sortedEvents.map((event) => (
+              <TableRow
+                key={event.id}
+                onClick={(e) => handleRowClick(event.id, e)}
+                className="cursor-pointer hover:bg-muted/50"
+              >
+                <TableCell className="font-medium">
+                  {event.name}
+                </TableCell>
                 <TableCell>{event.eventType?.name || '—'}</TableCell>
+                <TableCell>{getRoomName(event)}</TableCell>
                 <TableCell>{formatDate(event.date)}</TableCell>
                 <TableCell>
                   {formatTime(event.startTime)} - {formatTime(event.endTime)}
                 </TableCell>
                 <TableCell>{getResponsibleName(event)}</TableCell>
                 <TableCell>{event.participants || '—'}</TableCell>
-                <TableCell>
-                  {event.budget ? `${event.budget.toLocaleString()} ₽` : '—'}
-                </TableCell>
                 <TableCell>
                   <Badge variant={statusColors[event.status]}>
                     {statusLabels[event.status]}
@@ -173,6 +245,12 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Действия</DropdownMenuLabel>
                       <DropdownMenuSeparator />
+                      <DropdownMenuItem asChild>
+                        <Link href={`/admin/events/${event.id}`}>
+                          <Eye className="mr-2 h-4 w-4" />
+                          Просмотреть
+                        </Link>
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => handleEdit(event)}>
                         <Pencil className="mr-2 h-4 w-4" />
                         Редактировать

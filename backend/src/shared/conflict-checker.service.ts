@@ -20,6 +20,7 @@ export class ConflictCheckerService {
   /**
    * Универсальная проверка конфликтов для всех типов событий
    * Проверяет конфликты в Schedule, Rental, Event и Reservation таблицах
+   * ОПТИМИЗИРОВАНО: вместо N×4 запросов делается 4 параллельных запроса для всех комнат
    */
   async checkConflicts(params: ConflictCheckParams): Promise<void> {
     const {
@@ -36,44 +37,68 @@ export class ConflictCheckerService {
 
     const checkDate = new Date(date);
 
-    // Проверяем конфликты для каждой комнаты
-    for (const roomId of roomIds) {
-      // 1. Проверка конфликтов с Schedules (занятиями)
-      await this.checkScheduleConflicts(
-        checkDate,
-        startTime,
-        endTime,
-        roomId,
-        excludeScheduleId,
-      );
+    // Оптимизация: делаем все запросы параллельно для всех комнат сразу
+    const [schedules, rentals, events, reservations] = await Promise.all([
+      // 1. Загружаем все занятия для всех комнат
+      this.prisma.schedule.findMany({
+        where: {
+          date: checkDate,
+          roomId: { in: roomIds },
+          id: excludeScheduleId ? { not: excludeScheduleId } : undefined,
+          status: { not: 'CANCELLED' },
+        },
+        include: {
+          group: { select: { name: true } },
+          room: { select: { name: true } },
+        },
+      }),
 
-      // 2. Проверка конфликтов с Rentals (арендой)
-      await this.checkRentalConflicts(
-        checkDate,
-        startTime,
-        endTime,
-        roomId,
-        excludeRentalId,
-      );
+      // 2. Загружаем всю аренду для всех комнат
+      this.prisma.rental.findMany({
+        where: {
+          date: checkDate,
+          roomId: { in: roomIds },
+          id: excludeRentalId ? { not: excludeRentalId } : undefined,
+          status: { not: 'CANCELLED' },
+        },
+        include: {
+          room: { select: { name: true } },
+        },
+      }),
 
-      // 3. Проверка конфликтов с Events (мероприятиями)
-      await this.checkEventConflicts(
-        checkDate,
-        startTime,
-        endTime,
-        roomId,
-        excludeEventId,
-      );
+      // 3. Загружаем все мероприятия для всех комнат
+      this.prisma.event.findMany({
+        where: {
+          date: checkDate,
+          roomId: { in: roomIds },
+          id: excludeEventId ? { not: excludeEventId } : undefined,
+          status: { not: 'CANCELLED' },
+        },
+        include: {
+          eventType: { select: { name: true } },
+          room: { select: { name: true } },
+        },
+      }),
 
-      // 4. Проверка конфликтов с Reservations (резервами)
-      await this.checkReservationConflicts(
-        checkDate,
-        startTime,
-        endTime,
-        roomId,
-        excludeReservationId,
-      );
-    }
+      // 4. Загружаем все резервы для всех комнат
+      this.prisma.reservation.findMany({
+        where: {
+          date: checkDate,
+          roomId: { in: roomIds },
+          id: excludeReservationId ? { not: excludeReservationId } : undefined,
+          status: { not: 'CANCELLED' },
+        },
+        include: {
+          room: { select: { name: true } },
+        },
+      }),
+    ]);
+
+    // Проверяем конфликты в загруженных данных
+    this.checkScheduleTimeConflicts(schedules, startTime, endTime);
+    this.checkRentalTimeConflicts(rentals, startTime, endTime);
+    this.checkEventTimeConflicts(events, startTime, endTime);
+    this.checkReservationTimeConflicts(reservations, startTime, endTime);
 
     // 5. Если указан преподаватель - проверяем конфликты по преподавателю
     if (teacherId) {
@@ -88,27 +113,13 @@ export class ConflictCheckerService {
   }
 
   /**
-   * Проверка конфликтов с занятиями (Schedules)
+   * Проверка конфликтов времени с занятиями
    */
-  private async checkScheduleConflicts(
-    date: Date,
+  private checkScheduleTimeConflicts(
+    schedules: any[],
     startTime: string,
     endTime: string,
-    roomId: string,
-    excludeScheduleId?: string,
-  ): Promise<void> {
-    const schedules = await this.prisma.schedule.findMany({
-      where: {
-        date,
-        roomId,
-        id: excludeScheduleId ? { not: excludeScheduleId } : undefined,
-        status: { not: 'CANCELLED' },
-      },
-      include: {
-        group: { select: { name: true } },
-      },
-    });
-
+  ): void {
     for (const schedule of schedules) {
       const scheduleStart = this.extractTimeString(schedule.startTime);
       const scheduleEnd = this.extractTimeString(schedule.endTime);
@@ -117,107 +128,73 @@ export class ConflictCheckerService {
         const groupInfo = schedule.group
           ? ` (группа: ${schedule.group.name})`
           : ' (индивидуальное занятие)';
+        const roomInfo = schedule.room ? ` в комнате "${schedule.room.name}"` : '';
         throw new ConflictException(
-          `Комната уже занята занятием в это время${groupInfo}: ${scheduleStart} - ${scheduleEnd}`,
+          `Комната уже занята занятием${groupInfo}${roomInfo} в это время: ${scheduleStart} - ${scheduleEnd}`,
         );
       }
     }
   }
 
   /**
-   * Проверка конфликтов с арендой (Rentals)
+   * Проверка конфликтов времени с арендой
    */
-  private async checkRentalConflicts(
-    date: Date,
+  private checkRentalTimeConflicts(
+    rentals: any[],
     startTime: string,
     endTime: string,
-    roomId: string,
-    excludeRentalId?: string,
-  ): Promise<void> {
-    const rentals = await this.prisma.rental.findMany({
-      where: {
-        date,
-        roomId,
-        id: excludeRentalId ? { not: excludeRentalId } : undefined,
-        status: { not: 'CANCELLED' },
-      },
-    });
-
+  ): void {
     for (const rental of rentals) {
       const rentalStart = this.extractTimeString(rental.startTime);
       const rentalEnd = this.extractTimeString(rental.endTime);
 
       if (this.checkTimeOverlap(startTime, endTime, rentalStart, rentalEnd)) {
+        const roomInfo = rental.room ? ` в комнате "${rental.room.name}"` : '';
         throw new ConflictException(
-          `Комната уже сдана в аренду в это время: ${rentalStart} - ${rentalEnd}`,
+          `Комната${roomInfo} уже сдана в аренду в это время: ${rentalStart} - ${rentalEnd}`,
         );
       }
     }
   }
 
   /**
-   * Проверка конфликтов с мероприятиями (Events)
+   * Проверка конфликтов времени с мероприятиями
    */
-  private async checkEventConflicts(
-    date: Date,
+  private checkEventTimeConflicts(
+    events: any[],
     startTime: string,
     endTime: string,
-    roomId: string,
-    excludeEventId?: string,
-  ): Promise<void> {
-    const events = await this.prisma.event.findMany({
-      where: {
-        date,
-        roomId: roomId,
-        id: excludeEventId ? { not: excludeEventId } : undefined,
-        status: { not: 'CANCELLED' },
-      },
-      include: {
-        eventType: { select: { name: true } },
-      },
-    });
-
+  ): void {
     for (const event of events) {
       const eventStart = this.extractTimeString(event.startTime);
       const eventEnd = this.extractTimeString(event.endTime);
 
       if (this.checkTimeOverlap(startTime, endTime, eventStart, eventEnd)) {
-        const eventInfo = event.eventType
-          ? ` (${event.eventType.name})`
-          : '';
+        const eventInfo = event.eventType ? ` (${event.eventType.name})` : '';
+        const roomInfo = event.room ? ` в комнате "${event.room.name}"` : '';
         throw new ConflictException(
-          `Комната уже занята мероприятием "${event.name}"${eventInfo} в это время: ${eventStart} - ${eventEnd}`,
+          `Комната${roomInfo} уже занята мероприятием "${event.name}"${eventInfo} в это время: ${eventStart} - ${eventEnd}`,
         );
       }
     }
   }
 
   /**
-   * Проверка конфликтов с резервами (Reservations)
+   * Проверка конфликтов времени с резервами
    */
-  private async checkReservationConflicts(
-    date: Date,
+  private checkReservationTimeConflicts(
+    reservations: any[],
     startTime: string,
     endTime: string,
-    roomId: string,
-    excludeReservationId?: string,
-  ): Promise<void> {
-    const reservations = await this.prisma.reservation.findMany({
-      where: {
-        date,
-        roomId,
-        id: excludeReservationId ? { not: excludeReservationId } : undefined,
-        status: { not: 'CANCELLED' },
-      },
-    });
-
+  ): void {
     for (const reservation of reservations) {
       const reservationStart = this.extractTimeString(reservation.startTime);
       const reservationEnd = this.extractTimeString(reservation.endTime);
 
       if (this.checkTimeOverlap(startTime, endTime, reservationStart, reservationEnd)) {
+        const roomInfo = reservation.room ? ` в комнате "${reservation.room.name}"` : '';
         throw new ConflictException(
-          `Комната уже зарезервирована в это время: ${reservationStart} - ${reservationEnd}`,
+          `Комната${roomInfo} уже зарезервирована в это время: ${reservationStart} - ${reservationEnd}`,
         );
       }
     }

@@ -23,6 +23,7 @@ export const useCreateReservation = () => {
     mutationFn: (data: CreateReservationDto) => reservationsApi.createReservation(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reservations'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       toast.success('Резерв создан');
     },
     onError: (error: any) => {
@@ -73,6 +74,7 @@ export const useUpdateReservation = () => {
     onSettled: () => {
       // Always refetch after error or success
       queryClient.invalidateQueries({ queryKey: ['reservations'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
     },
   });
 };
@@ -82,6 +84,7 @@ export const useDeleteReservation = () => {
     mutationFn: (id: string) => reservationsApi.deleteReservation(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reservations'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       toast.success('Резерв удалён');
     },
     onError: (error: any) => {

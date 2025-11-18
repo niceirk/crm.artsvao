@@ -92,20 +92,26 @@ export class SchedulesService {
     });
   }
 
-  async findAll(queryParams?: { date?: string; roomId?: string; teacherId?: string; groupId?: string }) {
+  async findAll(queryParams?: { date?: string; roomId?: string | string[]; teacherId?: string | string[]; groupId?: string | string[] }) {
     const where: any = {};
 
     if (queryParams?.date) {
       where.date = new Date(queryParams.date);
     }
     if (queryParams?.roomId) {
-      where.roomId = queryParams.roomId;
+      where.roomId = Array.isArray(queryParams.roomId)
+        ? { in: queryParams.roomId }
+        : queryParams.roomId;
     }
     if (queryParams?.teacherId) {
-      where.teacherId = queryParams.teacherId;
+      where.teacherId = Array.isArray(queryParams.teacherId)
+        ? { in: queryParams.teacherId }
+        : queryParams.teacherId;
     }
     if (queryParams?.groupId) {
-      where.groupId = queryParams.groupId;
+      where.groupId = Array.isArray(queryParams.groupId)
+        ? { in: queryParams.groupId }
+        : queryParams.groupId;
     }
 
     return this.prisma.schedule.findMany({

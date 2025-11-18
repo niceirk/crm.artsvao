@@ -7,6 +7,7 @@ import {
   Min,
   IsEnum,
   IsDateString,
+  IsBoolean,
 } from 'class-validator';
 import { CalendarEventStatus } from '@prisma/client';
 
@@ -17,6 +18,10 @@ export class CreateEventDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @IsString()
+  @IsOptional()
+  fullDescription?: string;
 
   @IsString()
   @IsOptional()
@@ -64,4 +69,24 @@ export class CreateEventDto {
   @Min(0)
   @IsOptional()
   budget?: number;
+
+  @IsString()
+  @IsOptional()
+  externalId?: string;
+
+  @IsString()
+  @IsOptional()
+  timepadLink?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isPaid?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isGovernmentTask?: boolean;
+
+  @IsString()
+  @IsOptional()
+  eventFormat?: string;
 }

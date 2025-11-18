@@ -43,9 +43,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useCreateSchedule, useUpdateSchedule, useDeleteSchedule } from '@/hooks/use-schedules';
-import { useCreateRental, useUpdateRental } from '@/hooks/use-rentals';
-import { useCreateEvent, useUpdateEvent, useEvents } from '@/hooks/use-events';
-import { useCreateReservation, useUpdateReservation } from '@/hooks/use-reservations';
+import { useCreateRental, useUpdateRental, useDeleteRental } from '@/hooks/use-rentals';
+import { useCreateEvent, useUpdateEvent, useDeleteEvent, useEvents } from '@/hooks/use-events';
+import { useCreateReservation, useUpdateReservation, useDeleteReservation } from '@/hooks/use-reservations';
 import { useGroups } from '@/hooks/use-groups';
 import { useTeachers } from '@/hooks/use-teachers';
 import { useRooms } from '@/hooks/use-rooms';
@@ -136,10 +136,13 @@ export function CalendarEventDialog({
   const deleteSchedule = useDeleteSchedule();
   const createRental = useCreateRental();
   const updateRental = useUpdateRental();
+  const deleteRental = useDeleteRental();
   const createEvent = useCreateEvent();
   const updateEvent = useUpdateEvent();
+  const deleteEvent = useDeleteEvent();
   const createReservation = useCreateReservation();
   const updateReservation = useUpdateReservation();
+  const deleteReservation = useDeleteReservation();
 
   const { data: groups } = useGroups();
   const { data: teachers } = useTeachers();
@@ -829,6 +832,36 @@ export function CalendarEventDialog({
                     Удалить
                   </Button>
                 )}
+                {isEditing && selectedEventType === 'rental' && rental && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={deleteRental.isPending}
+                  >
+                    Удалить
+                  </Button>
+                )}
+                {isEditing && selectedEventType === 'event' && event && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={deleteEvent.isPending}
+                  >
+                    Удалить
+                  </Button>
+                )}
+                {isEditing && selectedEventType === 'reservation' && reservation && (
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => setShowDeleteConfirm(true)}
+                    disabled={deleteReservation.isPending}
+                  >
+                    Удалить
+                  </Button>
+                )}
               </div>
               <div className="flex gap-2">
                 <Button
@@ -863,23 +896,54 @@ export function CalendarEventDialog({
     <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Удалить занятие?</AlertDialogTitle>
+          <AlertDialogTitle>
+            Удалить {selectedEventType === 'schedule' ? 'занятие' : selectedEventType === 'rental' ? 'аренду' : selectedEventType === 'event' ? 'мероприятие' : 'резерв'}?
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            Это действие нельзя отменить. Занятие будет удалено, а записи клиентов отменены.
-            Все занятия будут автоматически возвращены в абонементы клиентов.
-            {schedule?._count?.attendances && schedule._count.attendances > 0 && (
-              <span className="block mt-2 font-medium text-foreground">
-                Будет отменено записей: {schedule._count.attendances}
-              </span>
+            Это действие нельзя отменить.
+            {selectedEventType === 'schedule' && schedule && (
+              <>
+                Занятие будет удалено, а записи клиентов отменены.
+                Все занятия будут автоматически возвращены в абонементы клиентов.
+                {schedule._count?.attendances && schedule._count.attendances > 0 && (
+                  <span className="block mt-2 font-medium text-foreground">
+                    Будет отменено записей: {schedule._count.attendances}
+                  </span>
+                )}
+              </>
             )}
+            {selectedEventType === 'rental' && 'Аренда будет удалена без возможности восстановления.'}
+            {selectedEventType === 'event' && 'Мероприятие будет удалено без возможности восстановления.'}
+            {selectedEventType === 'reservation' && 'Резерв будет удален без возможности восстановления.'}
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Отмена</AlertDialogCancel>
           <AlertDialogAction
             onClick={() => {
-              if (schedule) {
+              if (schedule && selectedEventType === 'schedule') {
                 deleteSchedule.mutate(schedule.id, {
+                  onSuccess: () => {
+                    setShowDeleteConfirm(false);
+                    onOpenChange(false);
+                  },
+                });
+              } else if (rental && selectedEventType === 'rental') {
+                deleteRental.mutate(rental.id, {
+                  onSuccess: () => {
+                    setShowDeleteConfirm(false);
+                    onOpenChange(false);
+                  },
+                });
+              } else if (event && selectedEventType === 'event') {
+                deleteEvent.mutate(event.id, {
+                  onSuccess: () => {
+                    setShowDeleteConfirm(false);
+                    onOpenChange(false);
+                  },
+                });
+              } else if (reservation && selectedEventType === 'reservation') {
+                deleteReservation.mutate(reservation.id, {
                   onSuccess: () => {
                     setShowDeleteConfirm(false);
                     onOpenChange(false);

@@ -79,7 +79,7 @@ export class EventsService {
     });
   }
 
-  async findAll(filters?: { date?: string; status?: string; eventTypeId?: string }) {
+  async findAll(filters?: { date?: string; status?: string; eventTypeId?: string | string[] }) {
     const where: any = {};
 
     if (filters?.date) {
@@ -91,7 +91,9 @@ export class EventsService {
     }
 
     if (filters?.eventTypeId) {
-      where.eventTypeId = filters.eventTypeId;
+      where.eventTypeId = Array.isArray(filters.eventTypeId)
+        ? { in: filters.eventTypeId }
+        : filters.eventTypeId;
     }
 
     // Автоматически обновляем статусы завершенных событий

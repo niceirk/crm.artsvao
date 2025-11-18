@@ -16,6 +16,7 @@ import {
   ClipboardList,
   FileStack,
   CreditCard,
+  Download,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -143,18 +144,28 @@ export const navigationConfig: NavGroup[] = [
         requiresAdmin: true,
       },
       {
-        title: 'Типы мероприятий',
-        href: '/admin/event-types',
-        icon: CalendarDays,
-        description: 'Справочник типов мероприятий',
-        requiresAdmin: true,
-      },
-      {
         title: 'Мероприятия',
-        href: '/admin/events',
         icon: CalendarDays,
         description: 'Управление мероприятиями',
-        requiresAdmin: false,
+        children: [
+          {
+            title: 'Все мероприятия',
+            href: '/admin/events',
+            description: 'Список всех мероприятий',
+          },
+          {
+            title: 'Типы мероприятий',
+            href: '/admin/event-types',
+            description: 'Справочник типов мероприятий',
+            requiresAdmin: true,
+          },
+          {
+            title: 'Импорт из Pyrus',
+            href: '/integrations/pyrus',
+            description: 'Импорт мероприятий из CRM Pyrus',
+            requiresAdmin: true,
+          },
+        ],
       },
     ],
   },

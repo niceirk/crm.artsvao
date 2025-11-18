@@ -28,6 +28,9 @@ import { SubscriptionTypesModule } from './subscription-types/subscription-types
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { PaymentsModule } from './payments/payments.module';
+import { CalendarModule } from './calendar/calendar.module';
+import { HealthModule } from './health/health.module';
+import { PyrusModule } from './integrations/pyrus/pyrus.module';
 
 @Module({
   imports: [
@@ -59,6 +62,9 @@ import { PaymentsModule } from './payments/payments.module';
     SubscriptionsModule,
     AttendanceModule,
     PaymentsModule,
+    CalendarModule,
+    HealthModule,
+    PyrusModule,
   ],
   controllers: [AppController],
   providers: [

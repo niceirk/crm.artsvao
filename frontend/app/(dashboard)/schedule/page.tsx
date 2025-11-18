@@ -4,10 +4,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Plus } from 'lucide-react';
 import { useState } from 'react';
-import { useSchedules, useUpdateSchedule } from '@/hooks/use-schedules';
-import { useRentals, useUpdateRental } from '@/hooks/use-rentals';
-import { useEvents, useUpdateEvent } from '@/hooks/use-events';
-import { useReservations, useUpdateReservation } from '@/hooks/use-reservations';
+import { useUpdateSchedule } from '@/hooks/use-schedules';
+import { useUpdateRental } from '@/hooks/use-rentals';
+import { useUpdateEvent } from '@/hooks/use-events';
+import { useUpdateReservation } from '@/hooks/use-reservations';
+import { useCalendarEvents } from '@/hooks/use-calendar';
 import { ScheduleCalendar } from './schedule-calendar';
 import { CalendarEventDialog } from './calendar-event-dialog';
 import { ScheduleFilters } from './schedule-filters';
@@ -35,16 +36,17 @@ export default function SchedulePage() {
   // Separate eventTypeId from other filters for API calls
   const { eventTypeId, ...apiFilters } = filters;
 
-  const { data: schedules, isLoading: isLoadingSchedules } = useSchedules(apiFilters);
-  const { data: rentals, isLoading: isLoadingRentals } = useRentals(apiFilters);
-  const { data: events, isLoading: isLoadingEvents } = useEvents(apiFilters);
-  const { data: reservations, isLoading: isLoadingReservations } = useReservations(apiFilters);
+  // Оптимизация: используем один запрос вместо 4 отдельных
+  const { data: calendarData, isLoading } = useCalendarEvents(apiFilters);
+  const schedules = calendarData?.schedules || [];
+  const rentals = calendarData?.rentals || [];
+  const events = calendarData?.events || [];
+  const reservations = calendarData?.reservations || [];
+
   const updateScheduleMutation = useUpdateSchedule();
   const updateRentalMutation = useUpdateRental();
   const updateEventMutation = useUpdateEvent();
   const updateReservationMutation = useUpdateReservation();
-
-  const isLoading = isLoadingSchedules || isLoadingRentals || isLoadingEvents || isLoadingReservations;
 
   // Client-side filtering by event type
   const selectedEventTypes = eventTypeId ? (Array.isArray(eventTypeId) ? eventTypeId : [eventTypeId]) : [];

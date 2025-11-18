@@ -192,6 +192,8 @@ model Room {
   hourlyRate   Decimal       @map("hourly_rate") @db.Decimal(10, 2)
   dailyRate    Decimal?      @map("daily_rate") @db.Decimal(10, 2)
   status       RoomStatus    @default(AVAILABLE)
+  pyrusId      String?       @unique @map("pyrus_id")
+  lastSyncedAt DateTime?     @map("last_synced_at")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
   events       Event[]
@@ -366,6 +368,7 @@ model Subscription {
   @@index([status])
   @@index([validMonth])
   @@index([startDate, endDate])
+  @@index([remainingVisits])
   @@map("subscriptions")
 }
 
@@ -431,6 +434,7 @@ model Event {
   id                String              @id @default(uuid())
   name              String
   description       String?
+  fullDescription   String?             @map("full_description")
   date              DateTime            @db.Date
   startTime         DateTime            @map("start_time") @db.Time(6)
   endTime           DateTime            @map("end_time") @db.Time(6)
@@ -445,6 +449,11 @@ model Event {
   notes             String?
   participants      Int?
   status            CalendarEventStatus @default(PLANNED)
+  externalId        String?             @unique @map("external_id")
+  timepadLink       String?             @map("timepad_link")
+  isPaid            Boolean             @default(false) @map("is_paid")
+  isGovernmentTask  Boolean             @default(false) @map("is_government_task")
+  eventFormat       String?             @map("event_format")
   eventType         EventType?          @relation(fields: [eventTypeId], references: [id])
   responsibleUser   User?               @relation(fields: [responsibleUserId], references: [id])
   room              Room                @relation(fields: [roomId], references: [id])
@@ -457,11 +466,15 @@ model Event {
 }
 
 model EventType {
-  id        String   @id @default(uuid())
-  name      String   @unique
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  events    Event[]
+  id           String    @id @default(uuid())
+  name         String    @unique
+  description  String?
+  color        String?
+  pyrusId      String?   @unique @map("pyrus_id")
+  lastSyncedAt DateTime? @map("last_synced_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  events       Event[]
 
   @@map("event_types")
 }
@@ -600,6 +613,8 @@ model InvoiceItem {
   @@index([invoiceId])
   @@index([serviceId])
   @@index([writeOffStatus])
+  @@index([writeOffTiming])
+  @@index([remainingQuantity])
   @@map("invoice_items")
 }
 
