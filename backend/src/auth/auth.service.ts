@@ -2,13 +2,17 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
+  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { LoginDto } from './dto/login.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 
 @Injectable()
@@ -154,5 +158,90 @@ export class AuthService {
   async logout(userId: string) {
     // TODO: Invalidate refresh token in database or Redis
     return { message: 'Logged out successfully' };
+  }
+
+  /**
+   * Создание токена восстановления пароля
+   */
+  async forgotPassword(dto: ForgotPasswordDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+
+    // Не раскрываем информацию о существовании пользователя в системе
+    if (!user) {
+      return {
+        message: 'Если email существует в системе, на него отправлено письмо с инструкциями',
+      };
+    }
+
+    // Генерируем криптографически стойкий токен
+    const token = crypto.randomBytes(32).toString('hex');
+
+    // Токен действителен 1 час
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 1);
+
+    // Создаем токен восстановления
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        token,
+        expiresAt,
+      },
+    });
+
+    // TODO: Отправить email с токеном восстановления
+    // Для разработки выводим токен в консоль
+    console.log(`Password reset token for ${user.email}: ${token}`);
+    console.log(`Reset link: http://localhost:3001/reset-password?token=${token}`);
+
+    return {
+      message: 'Если email существует в системе, на него отправлено письмо с инструкциями',
+    };
+  }
+
+  /**
+   * Сброс пароля по токену
+   */
+  async resetPassword(dto: ResetPasswordDto) {
+    // Ищем токен
+    const resetToken = await this.prisma.passwordResetToken.findUnique({
+      where: { token: dto.token },
+      include: { user: true },
+    });
+
+    if (!resetToken) {
+      throw new BadRequestException('Неверный или истекший токен восстановления');
+    }
+
+    // Проверяем, не использован ли токен
+    if (resetToken.usedAt) {
+      throw new BadRequestException('Токен уже использован');
+    }
+
+    // Проверяем срок действия
+    if (new Date() > resetToken.expiresAt) {
+      throw new BadRequestException('Токен истек');
+    }
+
+    // Хешируем новый пароль
+    const passwordHash = await bcrypt.hash(dto.newPassword, 10);
+
+    // Обновляем пароль пользователя
+    await this.prisma.user.update({
+      where: { id: resetToken.userId },
+      data: { passwordHash },
+    });
+
+    // Помечаем токен как использованный
+    await this.prisma.passwordResetToken.update({
+      where: { id: resetToken.id },
+      data: { usedAt: new Date() },
+    });
+
+    return {
+      message: 'Пароль успешно изменен',
+    };
   }
 }

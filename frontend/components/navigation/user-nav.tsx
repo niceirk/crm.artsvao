@@ -12,7 +12,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { SERVER_URL } from '@/lib/api/client';
 import { User, Settings, LogOut, Shield } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
@@ -30,6 +31,12 @@ export function UserNav() {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-9 w-9 rounded-full">
           <Avatar className="h-9 w-9">
+            {user.avatarUrl && (
+              <AvatarImage
+                src={`${SERVER_URL}${user.avatarUrl}`}
+                alt={`${user.firstName} ${user.lastName}`}
+              />
+            )}
             <AvatarFallback className="bg-primary text-primary-foreground">
               {initials}
             </AvatarFallback>

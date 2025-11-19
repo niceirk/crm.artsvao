@@ -33,7 +33,7 @@ export class CreateClientDto {
   gender?: Gender;
 
   @IsOptional()
-  @IsPhoneNumber('RU')
+  @IsPhoneNumber()
   phone?: string;
 
   @IsOptional()
@@ -83,7 +83,7 @@ export class CreateClientDto {
   snils?: string;
 
   @IsOptional()
-  @IsPhoneNumber('RU')
+  @IsPhoneNumber()
   phoneAdditional?: string;
 
   @IsOptional()

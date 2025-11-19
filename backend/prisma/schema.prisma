@@ -16,6 +16,7 @@ model User {
   firstName        String               @map("first_name")
   lastName         String               @map("last_name")
   status           UserStatus           @default(BLOCKED)
+  avatarUrl        String?              @map("avatar_url")
   lastLoginAt      DateTime?            @map("last_login_at")
   createdAt        DateTime             @default(now()) @map("created_at")
   updatedAt        DateTime             @updatedAt @map("updated_at")

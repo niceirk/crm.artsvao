@@ -5,6 +5,10 @@ export interface User {
   lastName: string;
   role: 'ADMIN' | 'MANAGER';
   status: 'ACTIVE' | 'BLOCKED';
+  avatarUrl: string | null;
+  lastLoginAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface LoginCredentials {

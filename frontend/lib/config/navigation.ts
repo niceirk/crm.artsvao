@@ -161,6 +161,13 @@ export const navigationConfig: NavGroup[] = [
     title: 'Система',
     items: [
       {
+        title: 'Пользователи',
+        href: '/users',
+        icon: Users,
+        description: 'Управление пользователями системы',
+        requiresAdmin: true, // Только для админа
+      },
+      {
         title: 'Design System',
         href: '/design-system',
         icon: Palette,

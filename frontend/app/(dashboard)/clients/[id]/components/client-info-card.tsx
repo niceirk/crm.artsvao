@@ -17,7 +17,9 @@ import { Calendar, User, Phone, Mail, FileText } from 'lucide-react';
 import type { Client } from '@/lib/types/clients';
 import { useUpdateClient } from '@/hooks/useClients';
 import { useActiveLeadSources } from '@/hooks/useLeadSources';
+import { useActiveBenefitCategories } from '@/hooks/useBenefitCategories';
 import { ClientDocumentsCard } from './client-documents-card';
+import { cleanPhoneNumber } from '@/lib/utils/phone';
 
 interface ClientInfoCardProps {
   client: Client;
@@ -55,6 +57,7 @@ const clientSchema = z.object({
   email: z.string().email('Неверный формат email').optional().or(z.literal('')),
   notes: z.string().optional(),
   leadSourceId: z.string().optional(),
+  benefitCategoryId: z.string().optional(),
   status: z.enum(['ACTIVE', 'INACTIVE', 'VIP']),
 });
 
@@ -63,6 +66,7 @@ type ClientFormData = z.infer<typeof clientSchema>;
 export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, onCancel, onSaveRequest }: ClientInfoCardProps) {
   const updateClient = useUpdateClient();
   const { data: leadSources } = useActiveLeadSources();
+  const { data: benefitCategories } = useActiveBenefitCategories();
 
   const {
     register,
@@ -90,6 +94,7 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
       email: client.email || '',
       notes: client.notes || '',
       leadSourceId: client.leadSourceId || '',
+      benefitCategoryId: client.benefitCategoryId || '',
       status: client.status,
     },
   });
@@ -113,6 +118,7 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
   const statusValue = watch('status');
   const genderValue = watch('gender');
   const leadSourceIdValue = watch('leadSourceId');
+  const benefitCategoryIdValue = watch('benefitCategoryId');
 
   // Сбрасываем форму при изменении клиента или выходе из режима редактирования
   useEffect(() => {
@@ -133,6 +139,7 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
         email: client.email || '',
         notes: client.notes || '',
         leadSourceId: client.leadSourceId || '',
+        benefitCategoryId: client.benefitCategoryId || '',
         status: client.status,
       });
     }
@@ -179,6 +186,8 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
         id: client.id,
         data: {
           ...data,
+          phone: cleanPhoneNumber(data.phone) || data.phone,
+          phoneAdditional: cleanPhoneNumber(data.phoneAdditional) || null,
           middleName: data.middleName || null,
           companyName: data.companyName || null,
           inn: data.inn || null,
@@ -186,10 +195,10 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
           dateOfBirth: data.dateOfBirth || null,
           address: data.address || null,
           snils: data.snils || null,
-          phoneAdditional: data.phoneAdditional || null,
           email: data.email || null,
           notes: data.notes || null,
           leadSourceId: data.leadSourceId || null,
+          benefitCategoryId: data.benefitCategoryId || null,
         },
       });
       onRefresh?.();
@@ -411,6 +420,23 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
             </div>
 
             <div>
+              <Label htmlFor="benefitCategoryId">Льготная категория</Label>
+              <Select value={benefitCategoryIdValue || 'NONE'} onValueChange={(value) => setValue('benefitCategoryId', value === 'NONE' ? '' : value)}>
+                <SelectTrigger id="benefitCategoryId">
+                  <SelectValue placeholder="Не указана" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">Не указана</SelectItem>
+                  {benefitCategories?.map((category) => (
+                    <SelectItem key={category.id} value={category.id}>
+                      {category.name} ({category.discountPercent}%)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
               <Label htmlFor="notes">Заметки</Label>
               <Textarea id="notes" {...register('notes')} rows={4} />
             </div>
@@ -546,7 +572,7 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
         </div>
 
         {/* Статус и источник */}
-        {(client.status || client.leadSourceId) && (
+        {(client.status || client.leadSourceId || client.benefitCategoryId) && (
           <div className="pt-4 border-t space-y-3">
             {client.status && (
               <div>
@@ -560,6 +586,14 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
               <div>
                 <Label className="text-muted-foreground">Источник привлечения</Label>
                 <p className="text-sm font-medium">{client.leadSource.name}</p>
+              </div>
+            )}
+            {client.benefitCategory && (
+              <div>
+                <Label className="text-muted-foreground">Льготная категория</Label>
+                <p className="text-sm font-medium">
+                  {client.benefitCategory.name} ({client.benefitCategory.discountPercent}%)
+                </p>
               </div>
             )}
           </div>

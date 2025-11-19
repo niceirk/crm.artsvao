@@ -2,6 +2,8 @@ import axios from 'axios';
 import { useAuthStore } from '../store/auth-store';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
+// Базовый URL сервера без /api (для статических файлов)
+export const SERVER_URL = API_URL.replace('/api', '');
 
 export const apiClient = axios.create({
   baseURL: API_URL,

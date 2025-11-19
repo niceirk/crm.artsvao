@@ -41,7 +41,12 @@ export function DatePicker({
 
   // Правильное преобразование строки даты в объект Date (без проблем с временными зонами)
   const dateValue = value ? (() => {
-    const dateStr = typeof value === 'string' ? value : value.toISOString().split('T')[0];
+    // Если value это Date, конвертируем в строку
+    let dateStr = typeof value === 'string' ? value : value.toISOString();
+
+    // Убираем время, если оно есть (для ISO формата 2000-01-15T00:00:00.000Z)
+    dateStr = dateStr.split('T')[0];
+
     const [year, month, day] = dateStr.split('-').map(Number);
     return new Date(year, month - 1, day);
   })() : undefined;
@@ -119,7 +124,7 @@ export function DatePicker({
             {...inputProps}
             type="text"
             className={cn(
-              'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pr-10 text-base transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm'
+              'flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pr-10 text-base transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:border-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm'
             )}
           />
         )}
