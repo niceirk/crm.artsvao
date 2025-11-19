@@ -13,6 +13,7 @@ import {
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { SyncEventsDto, SyncResult } from './dto/sync-events.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 
@@ -54,5 +55,11 @@ export class EventsController {
   @UseGuards(AdminGuard)
   remove(@Param('id') id: string) {
     return this.eventsService.remove(id);
+  }
+
+  @Post('sync')
+  @UseGuards(AdminGuard)
+  async syncEvents(@Body(ValidationPipe) syncEventsDto: SyncEventsDto): Promise<SyncResult> {
+    return this.eventsService.syncEvents(syncEventsDto.eventIds);
   }
 }

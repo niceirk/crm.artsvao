@@ -28,18 +28,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    env_file:
+      - .env.production
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      JWT_EXPIRATION: ${JWT_EXPIRATION}
-      JWT_REFRESH_EXPIRATION: ${JWT_REFRESH_EXPIRATION}
-      PYRUS_LOGIN: ${PYRUS_LOGIN}
-      PYRUS_SECURITY_KEY: ${PYRUS_SECURITY_KEY}
-      PYRUS_FORM_ID: ${PYRUS_FORM_ID}
-      YOOKASSA_SHOP_ID: ${YOOKASSA_SHOP_ID}
-      YOOKASSA_SECRET_KEY: ${YOOKASSA_SECRET_KEY}
       NODE_ENV: production
       PORT: 3000
     networks:

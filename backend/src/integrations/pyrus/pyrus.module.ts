@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 import { PyrusService } from './pyrus.service';
@@ -14,7 +14,7 @@ import { EventsModule } from '../../events/events.module';
     }),
     ConfigModule,
     PrismaModule,
-    EventsModule,
+    forwardRef(() => EventsModule),
   ],
   controllers: [PyrusController],
   providers: [PyrusService],

@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { MoreHorizontal, Pencil, Trash2, Calendar, Eye, ArrowUpDown } from 'lucide-react';
+import { MoreHorizontal, Pencil, Trash2, Calendar, Eye, ArrowUpDown, RefreshCw, X } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -20,8 +20,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -33,8 +41,9 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Event } from '@/lib/api/events';
-import { useDeleteEvent } from '@/hooks/use-events';
+import { useDeleteEvent, useUpdateEvent, useSyncEvents } from '@/hooks/use-events';
 import { EventDialog } from './event-dialog';
+import { CalendarEventStatus } from '@/lib/api/calendar-event-status';
 
 const statusColors: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
   PLANNED: 'default',
@@ -67,7 +76,90 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
+  // Multiple selection state
+  const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
+  const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
+  const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
+
   const deleteEvent = useDeleteEvent();
+  const updateEvent = useUpdateEvent();
+  const syncEvents = useSyncEvents();
+
+  // Handle checkbox selection with Shift support
+  const handleSelectEvent = (eventId: string, index: number, shiftKey: boolean) => {
+    const newSelected = new Set(selectedEventIds);
+
+    if (shiftKey && lastSelectedIndex !== null) {
+      // Select range
+      const start = Math.min(lastSelectedIndex, index);
+      const end = Math.max(lastSelectedIndex, index);
+      for (let i = start; i <= end; i++) {
+        newSelected.add(sortedEvents[i].id);
+      }
+    } else {
+      // Toggle single selection
+      if (newSelected.has(eventId)) {
+        newSelected.delete(eventId);
+      } else {
+        newSelected.add(eventId);
+      }
+    }
+
+    setSelectedEventIds(newSelected);
+    setLastSelectedIndex(index);
+  };
+
+  // Select/deselect all
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedEventIds(new Set(sortedEvents.map(e => e.id)));
+    } else {
+      setSelectedEventIds(new Set());
+    }
+  };
+
+  // Clear selection
+  const clearSelection = () => {
+    setSelectedEventIds(new Set());
+    setLastSelectedIndex(null);
+  };
+
+  // Bulk delete
+  const handleBulkDelete = async () => {
+    try {
+      await Promise.all(
+        Array.from(selectedEventIds).map(id => deleteEvent.mutateAsync(id))
+      );
+      clearSelection();
+      setIsBulkDeleteDialogOpen(false);
+    } catch (error) {
+      // Errors are handled by mutation
+    }
+  };
+
+  // Bulk status change
+  const handleBulkStatusChange = async (status: CalendarEventStatus) => {
+    try {
+      await Promise.all(
+        Array.from(selectedEventIds).map(id =>
+          updateEvent.mutateAsync({ id, data: { status } })
+        )
+      );
+      clearSelection();
+    } catch (error) {
+      // Errors are handled by mutation
+    }
+  };
+
+  // Bulk sync with Pyrus
+  const handleBulkSync = async () => {
+    try {
+      await syncEvents.mutateAsync(Array.from(selectedEventIds));
+      clearSelection();
+    } catch (error) {
+      // Errors are handled by mutation
+    }
+  };
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -100,9 +192,9 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
   });
 
   const handleRowClick = (eventId: string, e: React.MouseEvent) => {
-    // Don't navigate if clicking on a button or link
+    // Don't navigate if clicking on a button, link, or checkbox
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('a')) {
+    if (target.closest('button') || target.closest('a') || target.closest('[role="checkbox"]')) {
       return;
     }
     router.push(`/admin/events/${eventId}`);
@@ -195,12 +287,74 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
     </TableHead>
   );
 
+  const selectedCount = selectedEventIds.size;
+  const allSelected = selectedCount > 0 && selectedCount === sortedEvents.length;
+  const someSelected = selectedCount > 0 && selectedCount < sortedEvents.length;
+
   return (
     <>
+      {/* Bulk Actions Toolbar */}
+      {selectedCount > 0 && (
+        <div className="mb-4 flex items-center gap-3 rounded-lg border bg-muted/50 p-3">
+          <span className="text-sm font-medium">
+            Выбрано: {selectedCount}
+          </span>
+          <div className="flex items-center gap-2">
+            <Select onValueChange={(value) => handleBulkStatusChange(value as CalendarEventStatus)}>
+              <SelectTrigger className="h-9 w-[180px]">
+                <SelectValue placeholder="Изменить статус" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="PLANNED">Запланировано</SelectItem>
+                <SelectItem value="ONGOING">В процессе</SelectItem>
+                <SelectItem value="COMPLETED">Завершено</SelectItem>
+                <SelectItem value="CANCELLED">Отменено</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBulkSync}
+              disabled={syncEvents.isPending}
+              className="h-9"
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${syncEvents.isPending ? 'animate-spin' : ''}`} />
+              {syncEvents.isPending ? 'Синхронизация...' : 'Синхронизировать'}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setIsBulkDeleteDialogOpen(true)}
+              className="h-9"
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Удалить
+            </Button>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={clearSelection}
+            className="ml-auto h-9"
+          >
+            <X className="mr-2 h-4 w-4" />
+            Отменить
+          </Button>
+        </div>
+      )}
+
       <div className="rounded-md border">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[50px]">
+                <Checkbox
+                  checked={allSelected}
+                  indeterminate={someSelected}
+                  onCheckedChange={handleSelectAll}
+                  aria-label="Выбрать все"
+                />
+              </TableHead>
               <SortableHeader field="name">Название</SortableHeader>
               <TableHead>Тип</TableHead>
               <TableHead>Помещение</TableHead>
@@ -213,12 +367,23 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedEvents.map((event) => (
+            {sortedEvents.map((event, index) => (
               <TableRow
                 key={event.id}
                 onClick={(e) => handleRowClick(event.id, e)}
                 className="cursor-pointer hover:bg-muted/50"
               >
+                <TableCell>
+                  <Checkbox
+                    checked={selectedEventIds.has(event.id)}
+                    onCheckedChange={(checked) => {
+                      const shiftKey = (window.event as MouseEvent)?.shiftKey || false;
+                      handleSelectEvent(event.id, index, shiftKey);
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    aria-label={`Выбрать ${event.name}`}
+                  />
+                </TableCell>
                 <TableCell className="font-medium">
                   {event.name}
                 </TableCell>
@@ -292,6 +457,30 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
               onClick={(e) => {
                 e.preventDefault();
                 confirmDelete();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Удалить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isBulkDeleteDialogOpen} onOpenChange={setIsBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить выбранные мероприятия?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы уверены, что хотите удалить {selectedCount} {selectedCount === 1 ? 'мероприятие' : selectedCount < 5 ? 'мероприятия' : 'мероприятий'}?
+              Это действие необратимо.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                handleBulkDelete();
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >

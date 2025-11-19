@@ -1,19 +1,20 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Loader2, RefreshCw, Download, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Loader2, RefreshCw, Download, CheckCircle, XCircle, AlertCircle, X } from 'lucide-react';
 import {
   fetchPyrusTasks,
   importPyrusTasks,
   PyrusTaskPreview,
   ImportResult,
   testPyrusConnection,
-  syncRoomsFromPyrus,
 } from '@/lib/api/pyrus';
 import {
   Table,
@@ -23,24 +24,47 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 export default function PyrusImportPage() {
   const [tasks, setTasks] = useState<PyrusTaskPreview[]>([]);
   const [selectedTasks, setSelectedTasks] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [syncingRooms, setSyncingRooms] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
-  const [roomsSyncResult, setRoomsSyncResult] = useState<{ created: number; updated: number; errors: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<{
     success: boolean;
     message: string;
   } | null>(null);
 
+  // Фильтры
+  const [filterMonth, setFilterMonth] = useState<string>('');
+  const [filterYear, setFilterYear] = useState<string>('');
+  const [filterDateFrom, setFilterDateFrom] = useState<string>('');
+  const [filterDateTo, setFilterDateTo] = useState<string>('');
+  const [filtering, setFiltering] = useState(false);
+
   useEffect(() => {
     checkConnection();
   }, []);
+
+  // Показать индикатор загрузки при изменении фильтров
+  useEffect(() => {
+    if (filterMonth || filterYear || filterDateFrom || filterDateTo) {
+      setFiltering(true);
+      const timer = setTimeout(() => {
+        setFiltering(false);
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [filterMonth, filterYear, filterDateFrom, filterDateTo]);
 
   const checkConnection = async () => {
     try {
@@ -73,7 +97,7 @@ export default function PyrusImportPage() {
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedTasks(new Set(tasks.map((task) => task.id)));
+      setSelectedTasks(new Set(filteredTasks.map((task) => task.id)));
     } else {
       setSelectedTasks(new Set());
     }
@@ -96,7 +120,7 @@ export default function PyrusImportPage() {
 
     try {
       const result = await importPyrusTasks(
-        selectedTasks.size > 0 ? Array.from(selectedTasks) : undefined,
+        selectedTasks.size > 0 ? Array.from(selectedTasks) : filteredTasks.map(t => t.id),
       );
       setImportResult(result);
 
@@ -108,21 +132,6 @@ export default function PyrusImportPage() {
       setError(err.response?.data?.message || 'Не удалось импортировать события');
     } finally {
       setImporting(false);
-    }
-  };
-
-  const handleSyncRooms = async () => {
-    setSyncingRooms(true);
-    setRoomsSyncResult(null);
-    setError(null);
-
-    try {
-      const result = await syncRoomsFromPyrus();
-      setRoomsSyncResult(result);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Не удалось синхронизировать помещения');
-    } finally {
-      setSyncingRooms(false);
     }
   };
 
@@ -159,6 +168,91 @@ export default function PyrusImportPage() {
     return null;
   };
 
+  // Получить дату мероприятия как Date объект
+  const getEventDateObject = (task: PyrusTaskPreview): Date | null => {
+    for (const field of task.fields) {
+      if (field.type === 'date' && field.value) {
+        return new Date(field.value);
+      }
+    }
+    return null;
+  };
+
+  // Фильтрация задач
+  const filteredTasks = useMemo(() => {
+    console.log('=== Фильтрация задач Pyrus ===');
+    console.log(`Всего задач: ${tasks.length}`);
+    console.log(`Активные фильтры:`, { filterMonth, filterYear, filterDateFrom, filterDateTo });
+
+    const result = tasks.filter((task) => {
+      const eventDate = getEventDateObject(task);
+
+      // Если нет даты мероприятия, показываем только если нет активных фильтров
+      if (!eventDate) {
+        const show = !filterMonth && !filterYear && !filterDateFrom && !filterDateTo;
+        if (!show) {
+          console.log(`Задача ${task.id}: НЕТ ДАТЫ - СКРЫТА (есть активные фильтры)`);
+        }
+        return show;
+      }
+
+      // Фильтр по месяцу и году
+      if (filterMonth || filterYear) {
+        const taskMonth = eventDate.getMonth() + 1; // 1-12
+        const taskYear = eventDate.getFullYear();
+
+        if (filterMonth && taskMonth !== parseInt(filterMonth)) {
+          console.log(`Задача ${task.id}: дата ${eventDate.toISOString().split('T')[0]} - СКРЫТА (месяц ${taskMonth} != ${filterMonth})`);
+          return false;
+        }
+        if (filterYear && taskYear !== parseInt(filterYear)) {
+          console.log(`Задача ${task.id}: дата ${eventDate.toISOString().split('T')[0]} - СКРЫТА (год ${taskYear} != ${filterYear})`);
+          return false;
+        }
+      }
+
+      // Фильтр по диапазону дат
+      if (filterDateFrom) {
+        const fromDate = new Date(filterDateFrom);
+        fromDate.setHours(0, 0, 0, 0);
+        if (eventDate < fromDate) {
+          console.log(`Задача ${task.id}: дата ${eventDate.toISOString().split('T')[0]} - СКРЫТА (раньше чем ${filterDateFrom})`);
+          return false;
+        }
+      }
+
+      if (filterDateTo) {
+        const toDate = new Date(filterDateTo);
+        toDate.setHours(23, 59, 59, 999);
+        if (eventDate > toDate) {
+          console.log(`Задача ${task.id}: дата ${eventDate.toISOString().split('T')[0]} - СКРЫТА (позже чем ${filterDateTo})`);
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    console.log(`Отфильтровано задач: ${result.length}`);
+    console.log('=== Конец фильтрации ===');
+    return result;
+  }, [tasks, filterMonth, filterYear, filterDateFrom, filterDateTo]);
+
+  // Очистить все фильтры
+  const clearFilters = () => {
+    setFilterMonth('');
+    setFilterYear('');
+    setFilterDateFrom('');
+    setFilterDateTo('');
+  };
+
+  // Проверка наличия активных фильтров
+  const hasActiveFilters = filterMonth || filterYear || filterDateFrom || filterDateTo;
+
+  // Генерация списка годов (текущий год ± 5 лет)
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 11 }, (_, i) => currentYear - 5 + i);
+
   return (
     <div className="space-y-6">
       <div>
@@ -180,36 +274,6 @@ export default function PyrusImportPage() {
             {connectionStatus.success ? 'Подключение установлено' : 'Ошибка подключения'}
           </AlertTitle>
           <AlertDescription>{connectionStatus.message}</AlertDescription>
-        </Alert>
-      )}
-
-      {/* Результаты синхронизации помещений */}
-      {roomsSyncResult && (
-        <Alert className="border-blue-500">
-          <CheckCircle className="h-4 w-4" />
-          <AlertTitle>Синхронизация помещений завершена</AlertTitle>
-          <AlertDescription>
-            <div className="space-y-2 mt-2">
-              <div>
-                Создано новых помещений: <strong>{roomsSyncResult.created}</strong>
-              </div>
-              <div>
-                Обнаружено существующих: <strong>{roomsSyncResult.updated}</strong>
-              </div>
-              {roomsSyncResult.errors.length > 0 && (
-                <div className="mt-3">
-                  <div className="font-semibold mb-2">Ошибки:</div>
-                  <ul className="list-disc list-inside space-y-1">
-                    {roomsSyncResult.errors.map((err, idx) => (
-                      <li key={idx} className="text-sm">
-                        {err}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </AlertDescription>
         </Alert>
       )}
 
@@ -260,6 +324,107 @@ export default function PyrusImportPage() {
         </Alert>
       )}
 
+      {/* Фильтры */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Фильтры по дате мероприятий</CardTitle>
+          <CardDescription>
+            Укажите период или месяц для фильтрации мероприятий
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-4">
+            {/* Фильтр по году */}
+            <div className="space-y-2">
+              <Label htmlFor="filter-year">Год</Label>
+              <Select value={filterYear} onValueChange={setFilterYear}>
+                <SelectTrigger id="filter-year">
+                  <SelectValue placeholder="Выберите год" />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map((year) => (
+                    <SelectItem key={year} value={year.toString()}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Фильтр по месяцу */}
+            <div className="space-y-2">
+              <Label htmlFor="filter-month">Месяц</Label>
+              <Select value={filterMonth} onValueChange={setFilterMonth}>
+                <SelectTrigger id="filter-month">
+                  <SelectValue placeholder="Выберите месяц" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Январь</SelectItem>
+                  <SelectItem value="2">Февраль</SelectItem>
+                  <SelectItem value="3">Март</SelectItem>
+                  <SelectItem value="4">Апрель</SelectItem>
+                  <SelectItem value="5">Май</SelectItem>
+                  <SelectItem value="6">Июнь</SelectItem>
+                  <SelectItem value="7">Июль</SelectItem>
+                  <SelectItem value="8">Август</SelectItem>
+                  <SelectItem value="9">Сентябрь</SelectItem>
+                  <SelectItem value="10">Октябрь</SelectItem>
+                  <SelectItem value="11">Ноябрь</SelectItem>
+                  <SelectItem value="12">Декабрь</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Фильтр по дате от */}
+            <div className="space-y-2">
+              <Label htmlFor="filter-date-from">Дата от</Label>
+              <Input
+                id="filter-date-from"
+                type="date"
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
+              />
+            </div>
+
+            {/* Фильтр по дате до */}
+            <div className="space-y-2">
+              <Label htmlFor="filter-date-to">Дата до</Label>
+              <Input
+                id="filter-date-to"
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+              />
+            </div>
+          </div>
+
+          {hasActiveFilters && (
+            <div className="mt-4 flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearFilters}
+                className="gap-1"
+                disabled={filtering}
+              >
+                <X className="h-3 w-3" />
+                Очистить фильтры
+              </Button>
+              {filtering ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Применение фильтров...</span>
+                </div>
+              ) : (
+                <span className="text-sm text-muted-foreground">
+                  Найдено мероприятий: {filteredTasks.length} из {tasks.length}
+                </span>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Панель управления */}
       <Card>
         <CardHeader>
@@ -267,20 +432,14 @@ export default function PyrusImportPage() {
             <div>
               <CardTitle>Задачи из Pyrus</CardTitle>
               <CardDescription>
-                {tasks.length > 0
-                  ? `Найдено задач: ${tasks.length}`
+                {filteredTasks.length > 0
+                  ? `Показано задач: ${filteredTasks.length}${tasks.length !== filteredTasks.length ? ` из ${tasks.length}` : ''}`
+                  : tasks.length > 0
+                  ? 'Нет задач, соответствующих фильтрам'
                   : 'Нажмите "Обновить" для загрузки задач'}
               </CardDescription>
             </div>
             <div className="flex gap-2">
-              <Button onClick={handleSyncRooms} disabled={syncingRooms || !connectionStatus?.success} variant="secondary">
-                {syncingRooms ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-2 h-4 w-4" />
-                )}
-                Синхронизировать помещения
-              </Button>
               <Button onClick={loadTasks} disabled={loading || importing} variant="outline">
                 {loading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -291,7 +450,7 @@ export default function PyrusImportPage() {
               </Button>
               <Button
                 onClick={handleImport}
-                disabled={importing || loading || !connectionStatus?.success}
+                disabled={importing || loading || !connectionStatus?.success || filteredTasks.length === 0}
               >
                 {importing ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -300,7 +459,7 @@ export default function PyrusImportPage() {
                 )}
                 {selectedTasks.size > 0
                   ? `Импортировать выбранные (${selectedTasks.size})`
-                  : 'Импортировать все'}
+                  : `Импортировать все (${filteredTasks.length})`}
               </Button>
             </div>
           </div>
@@ -316,6 +475,10 @@ export default function PyrusImportPage() {
                 ? 'Нет доступных задач для импорта'
                 : 'Проверьте настройки подключения к Pyrus'}
             </div>
+          ) : filteredTasks.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              Нет мероприятий, соответствующих выбранным фильтрам
+            </div>
           ) : (
             <div className="border rounded-lg">
               <Table>
@@ -323,7 +486,7 @@ export default function PyrusImportPage() {
                   <TableRow>
                     <TableHead className="w-12">
                       <Checkbox
-                        checked={selectedTasks.size === tasks.length && tasks.length > 0}
+                        checked={selectedTasks.size === filteredTasks.length && filteredTasks.length > 0}
                         onCheckedChange={handleSelectAll}
                       />
                     </TableHead>
@@ -335,7 +498,7 @@ export default function PyrusImportPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {tasks.map((task) => {
+                  {filteredTasks.map((task) => {
                     const eventName = getEventName(task);
                     const eventDate = getEventDate(task);
 

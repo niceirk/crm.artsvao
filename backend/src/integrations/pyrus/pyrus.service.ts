@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
@@ -80,6 +80,7 @@ export class PyrusService {
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
     private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => EventsService))
     private readonly eventsService: EventsService,
   ) {}
 
@@ -198,11 +199,27 @@ export class PyrusService {
   }
 
   /**
-   * Получить значение поля из задачи Pyrus
+   * Получить значение поля из задачи Pyrus (рекурсивный поиск)
+   * Ищет поле по ID на любом уровне вложенности (включая вложенные title поля)
    */
   private getFieldValue(fields: PyrusField[], fieldId: number): any {
+    // Поиск на текущем уровне
     const field = fields.find((f) => f.id === fieldId);
-    return field?.value;
+    if (field) {
+      return field.value;
+    }
+
+    // Рекурсивный поиск во вложенных полях (title type)
+    for (const f of fields) {
+      if (f.type === 'title' && f.value && typeof f.value === 'object' && f.value.fields) {
+        const nestedValue = this.getFieldValue(f.value.fields, fieldId);
+        if (nestedValue !== undefined) {
+          return nestedValue;
+        }
+      }
+    }
+
+    return undefined;
   }
 
   /**
@@ -271,7 +288,7 @@ export class PyrusService {
     const isPaidValue = this.getFieldValue(fields, 24); // Платное мероприятие (flag)
     const isGovernmentTaskValue = this.getFieldValue(fields, 15); // Государственное задание (flag)
     const responsiblePerson = this.getFieldValue(fields, 11); // Ответственный (person)
-    const eventFormat = this.getFieldValue(fields, 36); // Формат мероприятия (catalog)
+    const eventTypeValue = this.getFieldValue(fields, 36); // Тип мероприятия (catalog)
 
     // Парсинг даты
     const dateObj = dateValue ? new Date(dateValue) : new Date();
@@ -337,6 +354,70 @@ export class PyrusService {
       roomId = firstRoom.id;
     }
 
+    // Обработка емкости мероприятия (поле 26)
+    if (maxCapacityValue) {
+      this.logger.log(`Ёмкость мероприятия из Pyrus (поле 26): ${maxCapacityValue}`);
+    }
+
+    // Обработка типа мероприятия (catalog поле ID 36)
+    let eventTypeId: string | null = null;
+
+    if (eventTypeValue && typeof eventTypeValue === 'object' && eventTypeValue.values) {
+      const eventTypeName = eventTypeValue.values[0]; // Первое значение из catalog
+      if (eventTypeName) {
+        this.logger.log(`Тип мероприятия из Pyrus (поле 36): "${eventTypeName}"`);
+
+        // Ищем тип мероприятия в БД по названию (точное совпадение)
+        let eventType = await this.prisma.eventType.findFirst({
+          where: {
+            name: {
+              equals: eventTypeName,
+              mode: 'insensitive',
+            },
+          },
+        });
+
+        // Если не найден - создаем новый тип мероприятия
+        if (!eventType) {
+          this.logger.log(`Тип мероприятия "${eventTypeName}" не найден в БД, создаем новый`);
+          eventType = await this.prisma.eventType.create({
+            data: {
+              name: eventTypeName,
+            },
+          });
+          this.logger.log(`Создан новый тип мероприятия: ID=${eventType.id}, name="${eventType.name}"`);
+        } else {
+          this.logger.log(`Найден существующий тип мероприятия: ID=${eventType.id}, name="${eventType.name}"`);
+        }
+
+        eventTypeId = eventType.id;
+      }
+    }
+
+    // Обработка ответственного (person поле ID 11)
+    let responsibleUserId: string | null = null;
+
+    if (responsiblePerson && typeof responsiblePerson === 'object') {
+      // Поле person в Pyrus имеет структуру: { id: number, email: string, name: string, ... }
+      const email = responsiblePerson.email;
+
+      if (email) {
+        this.logger.log(`Ответственный из Pyrus (поле 11): email="${email}"`);
+
+        // Ищем пользователя в БД по email
+        const user = await this.prisma.user.findUnique({
+          where: { email },
+        });
+
+        if (user) {
+          responsibleUserId = user.id;
+          this.logger.log(`Найден ответственный пользователь: ID=${user.id}, email="${user.email}"`);
+        } else {
+          this.logger.warn(`Пользователь с email="${email}" не найден в БД. Ответственный не будет установлен.`);
+        }
+      }
+    }
+
     // Парсинг boolean полей (flag в Pyrus)
     const isPaid = this.parseBooleanField(isPaidValue);
     const isGovernmentTask = this.parseBooleanField(isGovernmentTaskValue);
@@ -349,15 +430,16 @@ export class PyrusService {
       startTime,
       endTime,
       roomId,
+      eventTypeId: eventTypeId || undefined, // Тип мероприятия из справочника (поле 36)
       maxCapacity: maxCapacityValue ? parseInt(maxCapacityValue.toString()) : null,
       timepadLink: timepadLink || null,
       isPaid,
       isGovernmentTask,
-      eventFormat: eventFormat || null,
+      eventFormat: null, // Это поле больше не используется, т.к. данные теперь в eventTypeId
       participants: null, // Можно извлечь из отчётности если нужно
       budget: null, // Нет этого поля в форме Pyrus
       notes: null,
-      responsibleUserId: null, // TODO: маппинг пользователя из поля 11 (responsiblePerson)
+      responsibleUserId: responsibleUserId || undefined, // Ответственный из поля 11 (person)
       externalId: task.id.toString(),
       status: 'PLANNED',
     };
@@ -379,7 +461,10 @@ export class PyrusService {
 
     if (dto.taskIds && dto.taskIds.length > 0) {
       // Получаем все задачи и фильтруем по ID
-      const allTasks = await this.getFormTasks();
+      const allTasks = await this.getFormTasks({
+        item_count: 20000, // Максимальный лимит Pyrus API
+        include_archived: 'y', // Включить все задачи, включая архивные
+      });
       tasks = allTasks.filter((task) => dto.taskIds.includes(task.id));
     } else {
       // Получаем все активные задачи

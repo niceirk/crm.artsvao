@@ -1,9 +1,11 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
+import { SyncResult } from './dto/sync-events.dto';
 import { ConflictCheckerService } from '../shared/conflict-checker.service';
 import { EmailService } from '../email/email.service';
+import { PyrusService } from '../integrations/pyrus/pyrus.service';
 
 @Injectable()
 export class EventsService {
@@ -13,6 +15,8 @@ export class EventsService {
     private prisma: PrismaService,
     private conflictChecker: ConflictCheckerService,
     private emailService: EmailService,
+    @Inject(forwardRef(() => PyrusService))
+    private pyrusService: PyrusService,
   ) {}
 
   async create(createEventDto: CreateEventDto) {
@@ -423,5 +427,105 @@ export class EventsService {
       this.logger.error(`Failed to send event notifications:`, error);
       // Не блокируем операцию - уведомления являются дополнительной функциональностью
     }
+  }
+
+  /**
+   * Sync events with Pyrus
+   */
+  async syncEvents(eventIds: string[]): Promise<SyncResult> {
+    const result: SyncResult = {
+      success: 0,
+      failed: 0,
+      errors: [],
+      details: [],
+    };
+
+    this.logger.log(`Starting sync for ${eventIds.length} events...`);
+
+    // Get events to sync
+    const events = await this.prisma.event.findMany({
+      where: {
+        id: {
+          in: eventIds,
+        },
+      },
+      select: {
+        id: true,
+        externalId: true,
+        name: true,
+      },
+    });
+
+    // Filter events that have externalId (connected to Pyrus)
+    const eventsWithExternalId = events.filter(e => e.externalId);
+
+    if (eventsWithExternalId.length === 0) {
+      this.logger.warn('No events with externalId found');
+      return result;
+    }
+
+    this.logger.log(`Found ${eventsWithExternalId.length} events with externalId`);
+
+    try {
+      // Get all tasks from Pyrus
+      const allTasks = await this.pyrusService['getFormTasks']();
+
+      // Create a map of externalId to task
+      const tasksMap = new Map(allTasks.map(task => [task.id.toString(), task]));
+
+      // Sync each event
+      for (const event of eventsWithExternalId) {
+        try {
+          const pyrusTask = tasksMap.get(event.externalId);
+
+          if (!pyrusTask) {
+            result.failed++;
+            result.errors.push({
+              eventId: event.id,
+              error: `Task with externalId ${event.externalId} not found in Pyrus`,
+            });
+            result.details.push({
+              eventId: event.id,
+              externalId: event.externalId,
+              synced: false,
+            });
+            continue;
+          }
+
+          // Map Pyrus task to event DTO
+          const eventData = await this.pyrusService['mapPyrusTaskToEvent'](pyrusTask);
+
+          // Update event
+          await this.update(event.id, eventData);
+
+          result.success++;
+          result.details.push({
+            eventId: event.id,
+            externalId: event.externalId,
+            synced: true,
+          });
+
+          this.logger.log(`Synced event ${event.id} with Pyrus task ${event.externalId}`);
+        } catch (error) {
+          result.failed++;
+          result.errors.push({
+            eventId: event.id,
+            error: error.message || 'Unknown error',
+          });
+          result.details.push({
+            eventId: event.id,
+            externalId: event.externalId,
+            synced: false,
+          });
+          this.logger.error(`Error syncing event ${event.id}`, error.message);
+        }
+      }
+    } catch (error) {
+      this.logger.error('Error fetching tasks from Pyrus', error.message);
+      throw new BadRequestException('Failed to fetch tasks from Pyrus: ' + error.message);
+    }
+
+    this.logger.log(`Sync completed: success=${result.success}, failed=${result.failed}`);
+    return result;
   }
 }

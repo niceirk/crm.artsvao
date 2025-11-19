@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { eventsApi, type Event, type CreateEventDto, type UpdateEventDto, type EventFilters } from '@/lib/api/events';
+import { eventsApi, type Event, type CreateEventDto, type UpdateEventDto, type EventFilters, type SyncEventsResult } from '@/lib/api/events';
 import { toast } from '@/lib/utils/toast';
 
 export const useEvents = (filters?: EventFilters) => {
@@ -87,6 +87,29 @@ export const useDeleteEvent = () => {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message || 'Ошибка удаления мероприятия');
+    },
+  });
+};
+
+export const useSyncEvents = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (eventIds: string[]) => eventsApi.syncEvents(eventIds),
+    onSuccess: (data: SyncEventsResult) => {
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+
+      if (data.success > 0 && data.failed === 0) {
+        toast.success(`Синхронизировано мероприятий: ${data.success}`);
+      } else if (data.success > 0 && data.failed > 0) {
+        toast.warning(`Синхронизировано: ${data.success}, ошибок: ${data.failed}`);
+      } else if (data.failed > 0) {
+        toast.error(`Ошибка синхронизации: ${data.failed} мероприятий`);
+      }
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Ошибка синхронизации мероприятий');
     },
   });
 };

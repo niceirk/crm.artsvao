@@ -17,6 +17,7 @@ export interface Event {
   budget?: number;
   maxCapacity?: number;
   photoUrl?: string;
+  externalId?: string;
   createdAt: string;
   updatedAt: string;
   eventType?: {
@@ -104,4 +105,16 @@ export const eventsApi = {
   deleteEvent: async (id: string): Promise<void> => {
     await apiClient.delete(`/events/${id}`);
   },
+
+  syncEvents: async (eventIds: string[]): Promise<SyncEventsResult> => {
+    const { data } = await apiClient.post('/events/sync', { eventIds });
+    return data;
+  },
 };
+
+export interface SyncEventsResult {
+  success: number;
+  failed: number;
+  errors: Array<{ eventId: string; error: string }>;
+  details: Array<{ eventId: string; externalId?: string; synced: boolean }>;
+}
