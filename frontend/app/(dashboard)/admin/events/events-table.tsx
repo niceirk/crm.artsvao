@@ -81,6 +81,9 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null);
   const [isBulkDeleteDialogOpen, setIsBulkDeleteDialogOpen] = useState(false);
 
+  // Filter state
+  const [showPastEvents, setShowPastEvents] = useState(false);
+
   const deleteEvent = useDeleteEvent();
   const updateEvent = useUpdateEvent();
   const syncEvents = useSyncEvents();
@@ -170,7 +173,21 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
     }
   };
 
-  const sortedEvents = [...events].sort((a, b) => {
+  // Helper function to check if event is in the past
+  const isPastEvent = (event: Event) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const eventDate = new Date(event.date);
+    eventDate.setHours(0, 0, 0, 0);
+    return eventDate < today;
+  };
+
+  // Filter events (hide past events by default)
+  const filteredEvents = showPastEvents
+    ? events
+    : events.filter(event => !isPastEvent(event));
+
+  const sortedEvents = [...filteredEvents].sort((a, b) => {
     let comparison = 0;
 
     switch (sortField) {
@@ -293,6 +310,23 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
 
   return (
     <>
+      {/* Filter Toolbar */}
+      <div className="mb-4 flex items-center gap-3">
+        <div className="flex items-center space-x-2">
+          <Checkbox
+            id="show-past-events"
+            checked={showPastEvents}
+            onCheckedChange={(checked) => setShowPastEvents(checked as boolean)}
+          />
+          <label
+            htmlFor="show-past-events"
+            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+          >
+            Показать прошедшие мероприятия
+          </label>
+        </div>
+      </div>
+
       {/* Bulk Actions Toolbar */}
       {selectedCount > 0 && (
         <div className="mb-4 flex items-center gap-3 rounded-lg border bg-muted/50 p-3">
@@ -360,8 +394,6 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
               <TableHead>Помещение</TableHead>
               <SortableHeader field="date">Дата</SortableHeader>
               <TableHead>Время</TableHead>
-              <TableHead>Ответственный</TableHead>
-              <SortableHeader field="participants">Участников</SortableHeader>
               <TableHead>Статус</TableHead>
               <TableHead className="w-[70px]"></TableHead>
             </TableRow>
@@ -393,8 +425,6 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
                 <TableCell>
                   {formatTime(event.startTime)} - {formatTime(event.endTime)}
                 </TableCell>
-                <TableCell>{getResponsibleName(event)}</TableCell>
-                <TableCell>{event.participants || '—'}</TableCell>
                 <TableCell>
                   <Badge variant={statusColors[event.status]}>
                     {statusLabels[event.status]}
