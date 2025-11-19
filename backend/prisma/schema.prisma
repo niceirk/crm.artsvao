@@ -875,3 +875,25 @@ enum DocumentType {
   MSE_CERTIFICATE
   OTHER
 }
+
+enum EmailLogStatus {
+  SENT
+  FAILED
+  QUEUED
+}
+
+model EmailLog {
+  id           String         @id @default(uuid())
+  recipient    String
+  subject      String
+  templateType String         @map("template_type")
+  status       EmailLogStatus
+  error        String?
+  sentAt       DateTime?      @map("sent_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  @@index([recipient])
+  @@index([status])
+  @@index([createdAt])
+  @@map("email_logs")
+}

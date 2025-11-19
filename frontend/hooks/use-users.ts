@@ -5,10 +5,12 @@ import { toast } from 'sonner';
 import {
   getUsers,
   createInvite,
+  createUser,
   updateUserStatus,
   deleteUser,
   type UsersFilterParams,
   type CreateInviteDto,
+  type CreateUserDto,
   type UpdateUserStatusDto,
 } from '@/lib/api/users';
 
@@ -37,6 +39,26 @@ export function useCreateInvite() {
     onError: (error: any) => {
       toast.error(
         error.response?.data?.message || 'Не удалось создать приглашение',
+      );
+    },
+  });
+}
+
+/**
+ * Хук для создания пользователя напрямую
+ */
+export function useCreateUser() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: CreateUserDto) => createUser(data),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success(data.message);
+    },
+    onError: (error: any) => {
+      toast.error(
+        error.response?.data?.message || 'Не удалось создать пользователя',
       );
     },
   });

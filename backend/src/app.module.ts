@@ -34,6 +34,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { HealthModule } from './health/health.module';
 import { PyrusModule } from './integrations/pyrus/pyrus.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { PyrusModule } from './integrations/pyrus/pyrus.module';
     }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    EmailModule,
     UsersModule,
     AuthModule,
     ClientsModule,

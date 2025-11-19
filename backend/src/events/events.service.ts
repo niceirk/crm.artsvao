@@ -1,14 +1,18 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { ConflictCheckerService } from '../shared/conflict-checker.service';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class EventsService {
+  private readonly logger = new Logger(EventsService.name);
+
   constructor(
     private prisma: PrismaService,
     private conflictChecker: ConflictCheckerService,
+    private emailService: EmailService,
   ) {}
 
   async create(createEventDto: CreateEventDto) {
@@ -59,7 +63,7 @@ export class EventsService {
       endTime: new Date(Date.UTC(1970, 0, 1, endHour, endMin, 0)),
     };
 
-    return this.prisma.event.create({
+    const event = await this.prisma.event.create({
       data: createData,
       include: {
         eventType: {
@@ -77,6 +81,11 @@ export class EventsService {
         },
       },
     });
+
+    // Отправляем уведомление о новом событии
+    await this.sendEventNotifications(event, 'new');
+
+    return event;
   }
 
   async findAll(filters?: { date?: string; status?: string; eventTypeId?: string | string[] }) {
@@ -284,7 +293,7 @@ export class EventsService {
       updateData.endTime = new Date(Date.UTC(1970, 0, 1, endHour, endMin, 0));
     }
 
-    return this.prisma.event.update({
+    const updatedEvent = await this.prisma.event.update({
       where: { id },
       data: updateData,
       include: {
@@ -303,10 +312,38 @@ export class EventsService {
         },
       },
     });
+
+    // Определяем критичные изменения для уведомления
+    const changes: string[] = [];
+    if (updateEventDto.date) {
+      changes.push(`Дата изменена на ${updateEventDto.date}`);
+    }
+    if (updateEventDto.startTime) {
+      changes.push(`Время начала изменено на ${updateEventDto.startTime}`);
+    }
+    if (updateEventDto.endTime) {
+      changes.push(`Время окончания изменено на ${updateEventDto.endTime}`);
+    }
+    if (updateEventDto.roomId) {
+      changes.push('Изменено место проведения');
+    }
+    if (updateEventDto.name) {
+      changes.push('Изменено название события');
+    }
+
+    // Отправляем уведомление только если есть критичные изменения
+    if (changes.length > 0) {
+      await this.sendEventNotifications(updatedEvent, 'update', changes);
+    }
+
+    return updatedEvent;
   }
 
   async remove(id: string) {
-    await this.findOne(id); // Check if exists
+    const event = await this.findOne(id); // Check if exists
+
+    // Отправляем уведомление об отмене события перед удалением
+    await this.sendEventNotifications(event, 'cancel');
 
     return this.prisma.event.delete({
       where: { id },
@@ -320,5 +357,71 @@ export class EventsService {
     const hours = dateTime.getUTCHours().toString().padStart(2, '0');
     const minutes = dateTime.getUTCMinutes().toString().padStart(2, '0');
     return `${hours}:${minutes}`;
+  }
+
+  /**
+   * Send event notification to all active users
+   */
+  private async sendEventNotifications(
+    event: any,
+    notificationType: 'new' | 'update' | 'cancel',
+    changes?: string[],
+  ) {
+    try {
+      // Получаем всех активных пользователей
+      const activeUsers = await this.prisma.user.findMany({
+        where: {
+          status: 'ACTIVE',
+          email: {
+            not: null,
+          },
+        },
+        select: {
+          email: true,
+        },
+      });
+
+      if (activeUsers.length === 0) {
+        this.logger.warn('No active users found to send event notifications');
+        return;
+      }
+
+      const emails = activeUsers.map(user => user.email);
+
+      // Получаем информацию о комнате
+      const room = await this.prisma.room.findUnique({
+        where: { id: event.roomId },
+        select: { name: true, number: true },
+      });
+
+      // Формируем данные для уведомления
+      const eventDate = new Date(event.date);
+      const eventData = {
+        eventTitle: event.name,
+        eventDate: eventDate.toISOString().split('T')[0],
+        location: room ? `${room.name} ${room.number}` : 'Не указано',
+        organizer: event.responsibleUser
+          ? `${event.responsibleUser.firstName || ''} ${event.responsibleUser.lastName || ''}`.trim()
+          : undefined,
+        capacity: event.maxCapacity,
+        description: event.description,
+        changes,
+        eventUrl: `${process.env.FRONTEND_URL}/events/${event.id}`,
+      };
+
+      // Массовая отправка уведомлений
+      const result = await this.emailService.sendEventNotificationBulk(
+        emails,
+        eventData,
+        notificationType,
+      );
+
+      this.logger.log(
+        `Event notification sent: ${result.success} successful, ${result.failed} failed (type: ${notificationType})`,
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send event notifications:`, error);
+      // Не блокируем операцию - уведомления являются дополнительной функциональностью
+    }
   }
 }

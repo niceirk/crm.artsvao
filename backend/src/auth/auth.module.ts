@@ -9,10 +9,12 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { RolesGuard } from './guards/roles.guard';
 import { AdminGuard } from './guards/admin.guard';
 import { PrismaModule } from '../prisma/prisma.module';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
     PrismaModule,
+    EmailModule,
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

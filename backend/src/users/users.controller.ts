@@ -28,6 +28,7 @@ import {
   UserResponseDto,
   UsersFilterDto,
   CreateInviteDto,
+  CreateUserDto,
   UpdateUserStatusDto,
 } from './dto';
 
@@ -117,6 +118,16 @@ export class UsersController {
   }
 
   // ==================== ADMIN ENDPOINTS ====================
+
+  /**
+   * POST /users - создать нового пользователя вручную (только для админов)
+   */
+  @Post()
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  async createUser(@Body() dto: CreateUserDto) {
+    return this.usersService.createUser(dto);
+  }
 
   /**
    * GET /users - получить список всех пользователей (только для админов)

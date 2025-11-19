@@ -107,6 +107,21 @@ export interface InviteResponse {
   message: string;
 }
 
+export interface CreateUserDto {
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: 'ADMIN' | 'MANAGER';
+  password?: string;
+  sendInvite?: boolean;
+}
+
+export interface CreateUserResponse {
+  user: User;
+  inviteLink?: string;
+  message: string;
+}
+
 /**
  * Получить список всех пользователей (только для админов)
  */
@@ -126,6 +141,16 @@ export const createInvite = async (
   data: CreateInviteDto,
 ): Promise<InviteResponse> => {
   const response = await apiClient.post<InviteResponse>('/users/invite', data);
+  return response.data;
+};
+
+/**
+ * Создать пользователя напрямую (только для админов)
+ */
+export const createUser = async (
+  data: CreateUserDto,
+): Promise<CreateUserResponse> => {
+  const response = await apiClient.post<CreateUserResponse>('/users', data);
   return response.data;
 };
 

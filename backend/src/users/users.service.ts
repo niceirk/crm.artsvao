@@ -12,14 +12,22 @@ import {
   UserResponseDto,
   UsersFilterDto,
   CreateInviteDto,
+  CreateUserDto,
   UpdateUserStatusDto,
 } from './dto';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
+import { EmailService } from '../email/email.service';
+import { Logger } from '@nestjs/common';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(UsersService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+  ) {}
 
   /**
    * Найти пользователя по ID
@@ -288,15 +296,136 @@ export class UsersService {
       },
     });
 
-    // TODO: Отправить email с invite token и ссылкой для установки пароля
-    // Пока возвращаем токен в ответе
+    // Сохраняем токен приглашения как токен восстановления пароля
+    // (можно использовать ту же таблицу для приглашений)
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 72); // 72 часа для приглашения
+
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: newUser.id,
+        token: inviteToken,
+        expiresAt,
+      },
+    });
+
+    // Отправляем email с invite token и ссылкой для установки пароля
     const inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/auth/set-password?token=${inviteToken}`;
+
+    try {
+      await this.emailService.sendUserInvite(
+        newUser.email,
+        inviteToken,
+        'Администратор ArtsVAO', // TODO: получить имя текущего пользователя из контекста
+        newUser.role,
+        newUser.firstName,
+        newUser.lastName,
+      );
+      this.logger.log(`Invite email sent to ${newUser.email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send invite email to ${newUser.email}:`, error);
+      // Не блокируем операцию - возвращаем ссылку для ручной отправки
+    }
 
     return {
       user: newUser,
       inviteLink,
-      inviteToken,
-      message: 'Приглашение создано. Отправьте ссылку пользователю.',
+      message: 'Приглашение отправлено на email пользователя.',
+    };
+  }
+
+  /**
+   * Создать пользователя напрямую (только для админов)
+   */
+  async createUser(dto: CreateUserDto) {
+    // Проверяем, не существует ли уже пользователь с таким email
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
+
+    if (existingUser) {
+      throw new ConflictException('Пользователь с таким email уже существует');
+    }
+
+    let passwordHash: string;
+    let inviteToken: string | null = null;
+    let inviteLink: string | null = null;
+
+    // Если пароль указан и не требуется отправка приглашения
+    if (dto.password && !dto.sendInvite) {
+      // Создаем пользователя с указанным паролем и активным статусом
+      passwordHash = await bcrypt.hash(dto.password, 10);
+    } else {
+      // Генерируем временный пароль для создания пользователя
+      const tempPassword = randomBytes(16).toString('hex');
+      passwordHash = await bcrypt.hash(tempPassword, 10);
+
+      // Генерируем токен приглашения для установки пароля
+      inviteToken = randomBytes(32).toString('hex');
+    }
+
+    // Создаем пользователя
+    const newUser = await this.prisma.user.create({
+      data: {
+        email: dto.email,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        role: dto.role,
+        status: dto.password && !dto.sendInvite ? 'ACTIVE' : 'BLOCKED',
+        passwordHash,
+      },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    // Если нужно отправить приглашение
+    if (inviteToken) {
+      const expiresAt = new Date();
+      expiresAt.setHours(expiresAt.getHours() + 72); // 72 часа для приглашения
+
+      await this.prisma.passwordResetToken.create({
+        data: {
+          userId: newUser.id,
+          token: inviteToken,
+          expiresAt,
+        },
+      });
+
+      inviteLink = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/auth/set-password?token=${inviteToken}`;
+
+      // Отправляем email с приглашением
+      try {
+        await this.emailService.sendUserInvite(
+          newUser.email,
+          inviteToken,
+          'Администратор ArtsVAO',
+          newUser.role,
+          newUser.firstName,
+          newUser.lastName,
+        );
+        this.logger.log(`Invite email sent to ${newUser.email}`);
+      } catch (error) {
+        this.logger.error(`Failed to send invite email to ${newUser.email}:`, error);
+      }
+
+      return {
+        user: newUser,
+        inviteLink,
+        message: 'Пользователь создан. Приглашение отправлено на email.',
+      };
+    }
+
+    return {
+      user: newUser,
+      message: 'Пользователь успешно создан с активным статусом.',
     };
   }
 

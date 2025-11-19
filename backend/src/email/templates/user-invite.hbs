@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Приглашение в систему</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f7;
+        }
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 30px;
+            text-align: center;
+            color: #ffffff;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        .greeting {
+            font-size: 20px;
+            color: #333333;
+            margin-bottom: 25px;
+            font-weight: 600;
+        }
+        .message {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #555555;
+            margin-bottom: 20px;
+        }
+        .info-box {
+            background-color: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 4px;
+        }
+        .info-box p {
+            margin: 8px 0;
+            font-size: 15px;
+            color: #333333;
+        }
+        .info-box strong {
+            color: #667eea;
+        }
+        .button-container {
+            text-align: center;
+            margin: 35px 0;
+        }
+        .button {
+            display: inline-block;
+            padding: 16px 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            transition: transform 0.2s;
+        }
+        .button:hover {
+            transform: translateY(-2px);
+        }
+        .warning {
+            background-color: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 25px 0;
+            border-radius: 4px;
+        }
+        .warning p {
+            margin: 0;
+            font-size: 14px;
+            color: #0d47a1;
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 30px;
+            text-align: center;
+            border-top: 1px solid #e9ecef;
+        }
+        .footer p {
+            margin: 5px 0;
+            font-size: 14px;
+            color: #6c757d;
+        }
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .divider {
+            height: 1px;
+            background-color: #e9ecef;
+            margin: 30px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>АрtsВAO</h1>
+        </div>
+
+        <div class="content">
+            <p class="greeting">Добро пожаловать в ArtsVAO!</p>
+
+            <p class="message">
+                Здравствуйте{{#if firstName}}, {{firstName}} {{lastName}}{{/if}}!
+            </p>
+
+            <p class="message">
+                {{#if inviterName}}{{inviterName}}{{else}}Администратор системы{{/if}} приглашает вас присоединиться к системе управления культурным центром ArtsVAO.
+            </p>
+
+            <div class="info-box">
+                <p><strong>Ваш email:</strong> {{email}}</p>
+                <p><strong>Роль в системе:</strong> {{#if role}}{{role}}{{else}}Пользователь{{/if}}</p>
+            </div>
+
+            <p class="message">
+                Для завершения регистрации и установки пароля, пожалуйста, перейдите по ссылке ниже:
+            </p>
+
+            <div class="button-container">
+                <a href="{{inviteUrl}}" class="button">Установить пароль</a>
+            </div>
+
+            <div class="warning">
+                <p><strong>Обратите внимание:</strong> Ссылка для установки пароля действительна ограниченное время. Если ссылка истекла, свяжитесь с администратором для получения нового приглашения.</p>
+            </div>
+
+            <div class="divider"></div>
+
+            <p class="message">
+                После установки пароля вы сможете войти в систему используя ваш email и пароль.
+            </p>
+
+            <p class="message" style="font-size: 14px; color: #999999;">
+                Если кнопка не работает, скопируйте и вставьте эту ссылку в адресную строку браузера:<br>
+                <a href="{{inviteUrl}}" style="color: #667eea; word-break: break-all;">{{inviteUrl}}</a>
+            </p>
+        </div>
+
+        <div class="footer">
+            <p><strong>АрtsВAO</strong></p>
+            <p>Система управления культурным центром</p>
+            <p><a href="{{frontendUrl}}">artsvao.ru</a></p>
+            <p style="margin-top: 15px; font-size: 12px;">
+                © {{year}} ArtsVAO. Все права защищены.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

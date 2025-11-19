@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Уведомление о мероприятии</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f4f7;
+        }
+        .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 40px 30px;
+            text-align: center;
+            color: #ffffff;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+        .badge-new {
+            background-color: #4CAF50;
+        }
+        .badge-update {
+            background-color: #2196F3;
+        }
+        .badge-cancel {
+            background-color: #f44336;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        .event-title {
+            font-size: 24px;
+            color: #333333;
+            margin-bottom: 20px;
+            font-weight: 700;
+            text-align: center;
+        }
+        .event-info {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 25px;
+            margin: 25px 0;
+        }
+        .info-row {
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 15px;
+        }
+        .info-row:last-child {
+            margin-bottom: 0;
+        }
+        .info-icon {
+            font-size: 20px;
+            margin-right: 12px;
+            min-width: 24px;
+        }
+        .info-content {
+            flex: 1;
+        }
+        .info-label {
+            font-size: 13px;
+            color: #6c757d;
+            margin-bottom: 4px;
+        }
+        .info-value {
+            font-size: 16px;
+            color: #333333;
+            font-weight: 500;
+        }
+        .description {
+            font-size: 15px;
+            line-height: 1.6;
+            color: #555555;
+            margin: 25px 0;
+            padding: 20px;
+            background-color: #ffffff;
+            border-left: 3px solid #667eea;
+        }
+        .button-container {
+            text-align: center;
+            margin: 35px 0;
+        }
+        .button {
+            display: inline-block;
+            padding: 16px 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #ffffff;
+            text-decoration: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            transition: transform 0.2s;
+        }
+        .button:hover {
+            transform: translateY(-2px);
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 30px;
+            text-align: center;
+            border-top: 1px solid #e9ecef;
+        }
+        .footer p {
+            margin: 5px 0;
+            font-size: 14px;
+            color: #6c757d;
+        }
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .changes-list {
+            background-color: #fff9e6;
+            border-left: 4px solid #ffc107;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 4px;
+        }
+        .changes-list h3 {
+            margin: 0 0 12px 0;
+            font-size: 16px;
+            color: #856404;
+        }
+        .changes-list ul {
+            margin: 0;
+            padding-left: 20px;
+        }
+        .changes-list li {
+            font-size: 14px;
+            color: #856404;
+            margin: 6px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>АрtsВAO</h1>
+            {{#if notificationType}}
+                {{#if (eq notificationType 'new')}}
+                    <span class="badge badge-new">Новое мероприятие</span>
+                {{/if}}
+                {{#if (eq notificationType 'update')}}
+                    <span class="badge badge-update">Изменение</span>
+                {{/if}}
+                {{#if (eq notificationType 'cancel')}}
+                    <span class="badge badge-cancel">Отменено</span>
+                {{/if}}
+            {{/if}}
+        </div>
+
+        <div class="content">
+            <h2 class="event-title">{{eventTitle}}</h2>
+
+            {{#if changes}}
+                <div class="changes-list">
+                    <h3>Что изменилось:</h3>
+                    <ul>
+                        {{#each changes}}
+                            <li>{{this}}</li>
+                        {{/each}}
+                    </ul>
+                </div>
+            {{/if}}
+
+            <div class="event-info">
+                {{#if eventDate}}
+                <div class="info-row">
+                    <div class="info-icon">📅</div>
+                    <div class="info-content">
+                        <div class="info-label">Дата и время</div>
+                        <div class="info-value">{{eventDate}}</div>
+                    </div>
+                </div>
+                {{/if}}
+
+                {{#if location}}
+                <div class="info-row">
+                    <div class="info-icon">📍</div>
+                    <div class="info-content">
+                        <div class="info-label">Место проведения</div>
+                        <div class="info-value">{{location}}</div>
+                    </div>
+                </div>
+                {{/if}}
+
+                {{#if organizer}}
+                <div class="info-row">
+                    <div class="info-icon">👤</div>
+                    <div class="info-content">
+                        <div class="info-label">Организатор</div>
+                        <div class="info-value">{{organizer}}</div>
+                    </div>
+                </div>
+                {{/if}}
+
+                {{#if capacity}}
+                <div class="info-row">
+                    <div class="info-icon">🎫</div>
+                    <div class="info-content">
+                        <div class="info-label">Вместимость</div>
+                        <div class="info-value">{{capacity}} человек</div>
+                    </div>
+                </div>
+                {{/if}}
+            </div>
+
+            {{#if description}}
+            <div class="description">
+                {{description}}
+            </div>
+            {{/if}}
+
+            {{#if eventUrl}}
+            <div class="button-container">
+                <a href="{{eventUrl}}" class="button">Подробнее о мероприятии</a>
+            </div>
+            {{/if}}
+        </div>
+
+        <div class="footer">
+            <p><strong>АрtsВAO</strong></p>
+            <p>Система управления культурным центром</p>
+            <p><a href="{{frontendUrl}}">artsvao.ru</a></p>
+            <p style="margin-top: 15px; font-size: 12px;">
+                © {{year}} ArtsVAO. Все права защищены.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

@@ -31,6 +31,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import { useUsers } from '@/hooks/use-users';
 import { InviteDialog } from './components/invite-dialog';
+import { CreateUserDialog } from './components/create-user-dialog';
 import { UserActions } from './components/user-actions';
 import { User } from '@/lib/types/auth';
 import { formatDistanceToNow } from 'date-fns';
@@ -81,7 +82,10 @@ export default function UsersPage() {
             Управление пользователями и их правами доступа
           </p>
         </div>
-        <InviteDialog />
+        <div className="flex gap-2">
+          <CreateUserDialog />
+          <InviteDialog />
+        </div>
       </div>
 
       <Card>

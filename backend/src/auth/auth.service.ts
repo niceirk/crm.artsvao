@@ -14,13 +14,18 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
+import { EmailService } from '../email/email.service';
+import { Logger } from '@nestjs/common';
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
     private configService: ConfigService,
+    private emailService: EmailService,
   ) {}
 
   async validateUser(email: string, password: string) {
@@ -191,10 +196,18 @@ export class AuthService {
       },
     });
 
-    // TODO: Отправить email с токеном восстановления
-    // Для разработки выводим токен в консоль
-    console.log(`Password reset token for ${user.email}: ${token}`);
-    console.log(`Reset link: http://localhost:3001/reset-password?token=${token}`);
+    // Отправляем email с токеном восстановления
+    try {
+      await this.emailService.sendPasswordReset(
+        user.email,
+        token,
+        user.firstName || 'Пользователь',
+      );
+      this.logger.log(`Password reset email sent to ${user.email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send password reset email to ${user.email}:`, error);
+      // Не блокируем операцию - токен уже создан и можно отправить письмо вручную
+    }
 
     return {
       message: 'Если email существует в системе, на него отправлено письмо с инструкциями',
