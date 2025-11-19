@@ -5,6 +5,7 @@ import { render } from '@react-email/render';
 import { PasswordResetEmail } from './templates/PasswordResetEmail';
 import { UserInviteEmail } from './templates/UserInviteEmail';
 import { EventNotificationEmail } from './templates/EventNotificationEmail';
+import { InvoiceQRCodeEmail } from './templates/InvoiceQRCodeEmail';
 import { PrismaService } from '../prisma/prisma.service';
 import * as React from 'react';
 
@@ -52,17 +53,17 @@ export class EmailService {
 
       await this.mailerService.sendMail({
         to: email,
-        subject: 'Восстановление пароля - ArtsVAO',
+        subject: 'Восстановление пароля - артсвао',
         html,
       });
 
       this.logger.log(`Password reset email sent to ${email}`);
-      await this.logEmailSend(email, 'Восстановление пароля - ArtsVAO', 'password-reset', 'SENT');
+      await this.logEmailSend(email, 'Восстановление пароля - артсвао', 'password-reset', 'SENT');
     } catch (error) {
       this.logger.error(`Failed to send password reset email to ${email}:`, error);
       await this.logEmailSend(
         email,
-        'Восстановление пароля - ArtsVAO',
+        'Восстановление пароля - артсвао',
         'password-reset',
         'FAILED',
         error.message,
@@ -99,17 +100,17 @@ export class EmailService {
 
       await this.mailerService.sendMail({
         to: email,
-        subject: 'Приглашение в систему ArtsVAO',
+        subject: 'Приглашение в систему артсвао',
         html,
       });
 
       this.logger.log(`User invite email sent to ${email}`);
-      await this.logEmailSend(email, 'Приглашение в систему ArtsVAO', 'user-invite', 'SENT');
+      await this.logEmailSend(email, 'Приглашение в систему артсвао', 'user-invite', 'SENT');
     } catch (error) {
       this.logger.error(`Failed to send user invite email to ${email}:`, error);
       await this.logEmailSend(
         email,
-        'Приглашение в систему ArtsVAO',
+        'Приглашение в систему артсвао',
         'user-invite',
         'FAILED',
         error.message,
@@ -203,6 +204,58 @@ export class EmailService {
     );
 
     return results;
+  }
+
+  /**
+   * Отправка QR-кода для оплаты счета
+   */
+  async sendInvoiceQRCode(
+    email: string,
+    clientName: string,
+    invoiceNumber: string,
+    amount: number,
+    qrCodeDataUrl: string,
+    paymentPurpose?: string,
+    discountAmount?: number,
+    discountPercent?: number,
+  ): Promise<void> {
+    try {
+      const html = await render(
+        React.createElement(InvoiceQRCodeEmail, {
+          clientName,
+          invoiceNumber,
+          amount,
+          qrCodeDataUrl,
+          paymentPurpose,
+          discountAmount,
+          discountPercent,
+        }),
+      );
+
+      await this.mailerService.sendMail({
+        to: email,
+        subject: `QR-код для оплаты счета ${invoiceNumber}`,
+        html,
+      });
+
+      this.logger.log(`Invoice QR code email sent to ${email} for invoice ${invoiceNumber}`);
+      await this.logEmailSend(
+        email,
+        `QR-код для оплаты счета ${invoiceNumber}`,
+        'invoice-qr-code',
+        'SENT',
+      );
+    } catch (error) {
+      this.logger.error(`Failed to send invoice QR code email to ${email}:`, error);
+      await this.logEmailSend(
+        email,
+        `QR-код для оплаты счета ${invoiceNumber}`,
+        'invoice-qr-code',
+        'FAILED',
+        error.message,
+      );
+      throw error;
+    }
   }
 
   /**

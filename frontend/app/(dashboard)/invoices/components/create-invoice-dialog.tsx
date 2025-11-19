@@ -42,7 +42,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
-import { useClients } from '@/hooks/useClients';
+import { ClientCombobox } from '@/components/client-combobox';
 import { useServices } from '@/hooks/use-services';
 import { useCreateInvoice } from '@/hooks/use-invoices';
 import type { CreateInvoiceDto, CreateInvoiceItemDto } from '@/lib/types/invoices';
@@ -76,7 +76,6 @@ const createInvoiceSchema = z.object({
 type CreateInvoiceFormValues = z.infer<typeof createInvoiceSchema>;
 
 export function CreateInvoiceDialog({ open, onOpenChange }: CreateInvoiceDialogProps) {
-  const { data: clients } = useClients();
   const { data: servicesResponse } = useServices();
   const createInvoice = useCreateInvoice();
 
@@ -240,20 +239,14 @@ export function CreateInvoiceDialog({ open, onOpenChange }: CreateInvoiceDialogP
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Клиент *</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Выберите клиента" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {clients?.data?.map((client) => (
-                        <SelectItem key={client.id} value={client.id}>
-                          {client.lastName} {client.firstName} ({client.phone})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <FormControl>
+                    <ClientCombobox
+                      value={field.value}
+                      onValueChange={field.onChange}
+                      placeholder="Начните вводить имя, телефон или email"
+                      emptyMessage="Клиент не найден"
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

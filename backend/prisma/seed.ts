@@ -409,6 +409,38 @@ async function main() {
 
   console.log(`✅ Created ${subscriptionTypes.length} subscription types`);
 
+  // Создать реквизиты организации для QR-кодов
+  const organizationDetails = await prisma.organizationDetails.upsert({
+    where: { id: 'default-org' },
+    update: {
+      organizationName: 'Департамент финансов города Москвы (ГБУ «ОКЦ СВАО» л/с 2694143000800901)',
+      inn: '7715000100',
+      kpp: '771501001',
+      treasuryAccount: '03224643450000017300',
+      bankName: 'ГУ Банка России по ЦФО/УФК по г. Москве г. Москва',
+      bic: '004525988',
+      correspAcc: '40102810545370000003',
+      defaultKBK: '94100000000000000131131022',
+      defaultOKTMO: '45352000',
+      isPrimary: true,
+    },
+    create: {
+      id: 'default-org',
+      organizationName: 'Департамент финансов города Москвы (ГБУ «ОКЦ СВАО» л/с 2694143000800901)',
+      inn: '7715000100',
+      kpp: '771501001',
+      treasuryAccount: '03224643450000017300',
+      bankName: 'ГУ Банка России по ЦФО/УФК по г. Москве г. Москва',
+      bic: '004525988',
+      correspAcc: '40102810545370000003',
+      defaultKBK: '94100000000000000131131022',
+      defaultOKTMO: '45352000',
+      isPrimary: true,
+    },
+  });
+
+  console.log('\n✅ Created organization details for QR payments');
+
   // Создать системные настройки
   const systemSettings = await prisma.systemSettings.upsert({
     where: { id: 'system' },
@@ -446,6 +478,7 @@ async function main() {
   console.log(`   - ${serviceCategories.length} service categories`);
   console.log(`   - ${services.length} services`);
   console.log(`   - ${subscriptionTypes.length} subscription types`);
+  console.log(`   - Organization details for QR payments`);
   console.log(`   - System settings initialized`);
   console.log('\n💡 Login credentials:');
   console.log('   Admin: admin@artsvao.ru / admin123');

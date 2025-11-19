@@ -897,3 +897,30 @@ model EmailLog {
   @@index([createdAt])
   @@map("email_logs")
 }
+
+model OrganizationDetails {
+  id              String   @id @default(uuid())
+
+  // Основные данные организации
+  organizationName String  @map("organization_name")
+  shortName        String? @map("short_name")  // Сокращенное наименование для QR-кодов
+  inn             String
+  kpp             String
+
+  // Банковские реквизиты
+  treasuryAccount String  @map("treasury_account")  // Казначейский счет / ЕКС
+  bankName        String  @map("bank_name")
+  bic             String  // БИК
+  correspAcc      String  @map("corresp_acc")      // Корреспондентский счет
+
+  // Бюджетные коды (для государственных учреждений)
+  defaultKBK      String  @map("default_kbk")      // КБК по умолчанию (20 символов)
+  defaultOKTMO    String  @map("default_oktmo")    // ОКТМО (8 или 11 символов)
+
+  isPrimary       Boolean @default(true) @map("is_primary")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([isPrimary])
+  @@map("organization_details")
+}

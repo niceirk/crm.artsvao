@@ -8,6 +8,7 @@ import {
   Preview,
   Section,
   Text,
+  Hr,
 } from '@react-email/components';
 import * as React from 'react';
 
@@ -23,12 +24,12 @@ export const PasswordResetEmail = ({
   return (
     <Html>
       <Head />
-      <Preview>Восстановление пароля ArtsVAO</Preview>
+      <Preview>Восстановление пароля артсвао</Preview>
       <Body style={main}>
         <Container style={container}>
-          {/* Header with gradient */}
+          {/* Header */}
           <Section style={header}>
-            <Heading style={heading}>ArtsVAO</Heading>
+            <Heading style={logo}>артсвао</Heading>
           </Section>
 
           {/* Main content */}
@@ -42,7 +43,7 @@ export const PasswordResetEmail = ({
             </Text>
 
             <Text style={paragraph}>
-              Мы получили запрос на восстановление пароля для вашей учетной записи в системе ArtsVAO.
+              Мы получили запрос на восстановление пароля для вашей учетной записи в системе артсвао.
               Если это были не вы, просто проигнорируйте это письмо.
             </Text>
 
@@ -59,7 +60,7 @@ export const PasswordResetEmail = ({
             {/* Warning box */}
             <Section style={warningBox}>
               <Text style={warningText}>
-                ⚠️ Ссылка действительна в течение 1 часа
+                Ссылка действительна в течение 1 часа
               </Text>
             </Section>
 
@@ -74,13 +75,14 @@ export const PasswordResetEmail = ({
 
           {/* Footer */}
           <Section style={footer}>
+            <Hr style={footerDivider} />
             <Text style={footerText}>
               С уважением,
               <br />
-              Команда ArtsVAO
+              Команда артсвао
             </Text>
-            <Text style={footerText}>
-              © {new Date().getFullYear()} ArtsVAO. Все права защищены.
+            <Text style={footerCopyright}>
+              © {new Date().getFullYear()} артсвао. Все права защищены.
             </Text>
           </Section>
         </Container>
@@ -91,9 +93,9 @@ export const PasswordResetEmail = ({
 
 export default PasswordResetEmail;
 
-// Styles
+// Styles - минималистичный черно-белый дизайн артсвао
 const main = {
-  backgroundColor: '#f6f9fc',
+  backgroundColor: '#ffffff',
   fontFamily:
     '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
 };
@@ -101,23 +103,23 @@ const main = {
 const container = {
   backgroundColor: '#ffffff',
   margin: '0 auto',
-  padding: '20px 0 48px',
-  marginBottom: '64px',
   maxWidth: '600px',
+  border: '1px solid #e5e5e5',
 };
 
 const header = {
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  padding: '30px 40px',
+  backgroundColor: '#000000',
+  padding: '32px 40px',
   textAlign: 'center' as const,
 };
 
-const heading = {
+const logo = {
   color: '#ffffff',
-  fontSize: '32px',
-  fontWeight: 'bold',
+  fontSize: '28px',
+  fontWeight: '600',
   margin: '0',
   padding: '0',
+  letterSpacing: '0.5px',
 };
 
 const content = {
@@ -125,68 +127,84 @@ const content = {
 };
 
 const title = {
-  color: '#333333',
+  color: '#000000',
   fontSize: '24px',
-  fontWeight: 'bold',
-  marginBottom: '20px',
+  fontWeight: '600',
+  marginBottom: '24px',
+  marginTop: '0',
 };
 
 const paragraph = {
-  color: '#555555',
+  color: '#404040',
   fontSize: '16px',
   lineHeight: '24px',
-  marginBottom: '16px',
+  margin: '0 0 16px 0',
 };
 
 const buttonContainer = {
   textAlign: 'center' as const,
-  margin: '30px 0',
+  margin: '32px 0',
 };
 
 const button = {
-  backgroundColor: '#667eea',
-  borderRadius: '5px',
+  backgroundColor: '#000000',
+  borderRadius: '4px',
   color: '#ffffff',
   fontSize: '16px',
-  fontWeight: 'bold',
+  fontWeight: '600',
   textDecoration: 'none',
   textAlign: 'center' as const,
   display: 'inline-block',
-  padding: '14px 40px',
+  padding: '14px 32px',
+  border: 'none',
+  cursor: 'pointer',
 };
 
 const warningBox = {
-  backgroundColor: '#fff3cd',
-  border: '1px solid #ffc107',
-  borderRadius: '5px',
-  padding: '15px',
-  margin: '20px 0',
+  border: '1px solid #e5e5e5',
+  borderRadius: '4px',
+  padding: '16px',
+  margin: '24px 0',
+  backgroundColor: '#fafafa',
 };
 
 const warningText = {
-  color: '#856404',
+  color: '#404040',
   fontSize: '14px',
   margin: '0',
   textAlign: 'center' as const,
+  fontWeight: '500',
 };
 
 const link = {
-  color: '#667eea',
-  fontSize: '14px',
+  color: '#404040',
+  fontSize: '13px',
   textDecoration: 'underline',
   wordBreak: 'break-all' as const,
   marginBottom: '16px',
 };
 
 const footer = {
-  borderTop: '1px solid #e0e0e0',
-  padding: '30px 40px',
-  textAlign: 'center' as const,
+  padding: '0 40px 40px 40px',
+};
+
+const footerDivider = {
+  borderColor: '#e5e5e5',
+  margin: '0 0 24px 0',
 };
 
 const footerText = {
-  color: '#999999',
+  color: '#737373',
   fontSize: '14px',
   lineHeight: '20px',
-  margin: '0 0 10px 0',
+  margin: '0 0 8px 0',
+  textAlign: 'center' as const,
+};
+
+const footerCopyright = {
+  color: '#a3a3a3',
+  fontSize: '12px',
+  lineHeight: '16px',
+  margin: '0',
+  textAlign: 'center' as const,
 };

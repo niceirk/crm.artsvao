@@ -4,11 +4,11 @@ import {
   Container,
   Head,
   Heading,
-  Hr,
   Html,
   Preview,
   Section,
   Text,
+  Hr,
 } from '@react-email/components';
 import * as React from 'react';
 
@@ -21,6 +21,12 @@ interface UserInviteEmailProps {
   inviteUrl: string;
 }
 
+const roleLabels: Record<string, string> = {
+  ADMIN: 'Администратор',
+  MANAGER: 'Менеджер',
+  USER: 'Пользователь',
+};
+
 export const UserInviteEmail = ({
   firstName,
   lastName,
@@ -29,48 +35,45 @@ export const UserInviteEmail = ({
   inviterName,
   inviteUrl,
 }: UserInviteEmailProps) => {
-  const fullName = [firstName, lastName].filter(Boolean).join(' ') || email;
-
-  const roleNames: Record<string, string> = {
-    ADMIN: 'Администратор',
-    MANAGER: 'Менеджер',
-    EMPLOYEE: 'Сотрудник',
-    USER: 'Пользователь',
-  };
+  const userName = firstName && lastName ? `${firstName} ${lastName}` : firstName || 'Пользователь';
+  const roleLabel = roleLabels[role] || role;
 
   return (
     <Html>
       <Head />
-      <Preview>Приглашение в систему ArtsVAO</Preview>
+      <Preview>Приглашение в систему артсвао</Preview>
       <Body style={main}>
         <Container style={container}>
-          {/* Header with gradient */}
+          {/* Header */}
           <Section style={header}>
-            <Heading style={heading}>ArtsVAO</Heading>
+            <Heading style={logo}>артсвао</Heading>
           </Section>
 
           {/* Main content */}
           <Section style={content}>
             <Heading as="h2" style={title}>
-              Добро пожаловать в ArtsVAO!
+              Приглашение в систему
             </Heading>
 
             <Text style={paragraph}>
-              Здравствуйте, {fullName}!
+              Здравствуйте, {userName}!
             </Text>
 
             <Text style={paragraph}>
-              {inviterName} пригласил вас присоединиться к системе управления ArtsVAO.
-              Вы были добавлены с ролью <strong>{roleNames[role] || role}</strong>.
+              {inviterName} приглашает вас присоединиться к системе управления артсвао.
             </Text>
 
-            {/* Info box */}
+            {/* Info Box */}
             <Section style={infoBox}>
-              <Text style={infoLabel}>Email:</Text>
-              <Text style={infoValue}>{email}</Text>
-
-              <Text style={infoLabel}>Роль:</Text>
-              <Text style={infoValue}>{roleNames[role] || role}</Text>
+              <div style={infoRow}>
+                <Text style={infoLabel}>Email:</Text>
+                <Text style={infoValue}>{email}</Text>
+              </div>
+              <Hr style={divider} />
+              <div style={infoRow}>
+                <Text style={infoLabel}>Роль:</Text>
+                <Text style={infoValue}>{roleLabel}</Text>
+              </div>
             </Section>
 
             <Text style={paragraph}>
@@ -90,24 +93,18 @@ export const UserInviteEmail = ({
             <Text style={link}>
               {inviteUrl}
             </Text>
-
-            <Hr style={divider} />
-
-            <Text style={noteText}>
-              <strong>Примечание:</strong> Ссылка приглашения действительна ограниченное время.
-              Если ссылка истекла, обратитесь к администратору для повторной отправки приглашения.
-            </Text>
           </Section>
 
           {/* Footer */}
           <Section style={footer}>
+            <Hr style={footerDivider} />
             <Text style={footerText}>
               С уважением,
               <br />
-              Команда ArtsVAO
+              Команда артсвао
             </Text>
-            <Text style={footerText}>
-              © {new Date().getFullYear()} ArtsVAO. Все права защищены.
+            <Text style={footerCopyright}>
+              © {new Date().getFullYear()} артсвао. Все права защищены.
             </Text>
           </Section>
         </Container>
@@ -120,31 +117,30 @@ export default UserInviteEmail;
 
 // Styles
 const main = {
-  backgroundColor: '#f6f9fc',
-  fontFamily:
-    '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
+  backgroundColor: '#ffffff',
+  fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
 };
 
 const container = {
   backgroundColor: '#ffffff',
   margin: '0 auto',
-  padding: '20px 0 48px',
-  marginBottom: '64px',
   maxWidth: '600px',
+  border: '1px solid #e5e5e5',
 };
 
 const header = {
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  padding: '30px 40px',
+  backgroundColor: '#000000',
+  padding: '32px 40px',
   textAlign: 'center' as const,
 };
 
-const heading = {
+const logo = {
   color: '#ffffff',
-  fontSize: '32px',
-  fontWeight: 'bold',
+  fontSize: '28px',
+  fontWeight: '600',
   margin: '0',
   padding: '0',
+  letterSpacing: '0.5px',
 };
 
 const content = {
@@ -152,86 +148,99 @@ const content = {
 };
 
 const title = {
-  color: '#333333',
+  color: '#000000',
   fontSize: '24px',
-  fontWeight: 'bold',
-  marginBottom: '20px',
+  fontWeight: '600',
+  marginBottom: '24px',
+  marginTop: '0',
 };
 
 const paragraph = {
-  color: '#555555',
+  color: '#404040',
   fontSize: '16px',
   lineHeight: '24px',
-  marginBottom: '16px',
+  margin: '0 0 16px 0',
 };
 
 const infoBox = {
-  backgroundColor: '#f8f9fa',
-  border: '1px solid #e0e0e0',
-  borderRadius: '5px',
-  padding: '20px',
-  margin: '20px 0',
+  border: '1px solid #e5e5e5',
+  borderRadius: '4px',
+  padding: '24px',
+  margin: '24px 0',
+  backgroundColor: '#fafafa',
+};
+
+const infoRow = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
 };
 
 const infoLabel = {
-  color: '#666666',
+  color: '#737373',
   fontSize: '14px',
-  fontWeight: 'bold',
-  margin: '8px 0 4px 0',
+  margin: '0',
+  fontWeight: '500',
 };
 
 const infoValue = {
-  color: '#333333',
-  fontSize: '16px',
-  margin: '0 0 12px 0',
+  color: '#000000',
+  fontSize: '14px',
+  margin: '0',
+  fontWeight: '600',
+};
+
+const divider = {
+  borderColor: '#e5e5e5',
+  margin: '16px 0',
 };
 
 const buttonContainer = {
   textAlign: 'center' as const,
-  margin: '30px 0',
+  margin: '32px 0',
 };
 
 const button = {
-  backgroundColor: '#667eea',
-  borderRadius: '5px',
+  backgroundColor: '#000000',
+  borderRadius: '4px',
   color: '#ffffff',
   fontSize: '16px',
-  fontWeight: 'bold',
+  fontWeight: '600',
   textDecoration: 'none',
   textAlign: 'center' as const,
   display: 'inline-block',
-  padding: '14px 40px',
+  padding: '14px 32px',
 };
 
 const link = {
-  color: '#667eea',
-  fontSize: '14px',
+  color: '#404040',
+  fontSize: '13px',
   textDecoration: 'underline',
   wordBreak: 'break-all' as const,
   marginBottom: '16px',
 };
 
-const divider = {
-  borderColor: '#e0e0e0',
-  margin: '30px 0',
-};
-
-const noteText = {
-  color: '#666666',
-  fontSize: '14px',
-  lineHeight: '20px',
-  marginTop: '20px',
-};
-
 const footer = {
-  borderTop: '1px solid #e0e0e0',
-  padding: '30px 40px',
-  textAlign: 'center' as const,
+  padding: '0 40px 40px 40px',
+};
+
+const footerDivider = {
+  borderColor: '#e5e5e5',
+  margin: '0 0 24px 0',
 };
 
 const footerText = {
-  color: '#999999',
+  color: '#737373',
   fontSize: '14px',
   lineHeight: '20px',
-  margin: '0 0 10px 0',
+  margin: '0 0 8px 0',
+  textAlign: 'center' as const,
+};
+
+const footerCopyright = {
+  color: '#a3a3a3',
+  fontSize: '12px',
+  lineHeight: '16px',
+  margin: '0',
+  textAlign: 'center' as const,
 };

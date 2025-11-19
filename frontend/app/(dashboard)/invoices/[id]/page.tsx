@@ -47,6 +47,7 @@ import { useInvoice, useUpdateInvoice } from '@/hooks/use-invoices';
 import { useAuth } from '@/hooks/use-auth';
 import type { InvoiceStatus } from '@/lib/types/invoices';
 import { InvoicePaymentsSection } from './components/invoice-payments-section';
+import { InvoiceQRSection } from './components/invoice-qr-section';
 
 const statusLabels: Record<InvoiceStatus, string> = {
   DRAFT: 'Черновик',
@@ -504,6 +505,12 @@ export default function InvoiceDetailsPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* QR Code for Payment */}
+          <InvoiceQRSection
+            invoiceId={invoice.id}
+            invoiceNumber={invoice.invoiceNumber}
+          />
         </div>
       </div>
     </div>

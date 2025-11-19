@@ -4,33 +4,31 @@ import {
   Container,
   Head,
   Heading,
-  Hr,
   Html,
   Preview,
   Section,
   Text,
+  Hr,
 } from '@react-email/components';
 import * as React from 'react';
 
-type NotificationType = 'new' | 'update' | 'cancel';
-
-interface EventChange {
-  field: string;
-  oldValue: string;
-  newValue: string;
-}
-
 interface EventNotificationEmailProps {
-  notificationType: NotificationType;
+  notificationType: 'new' | 'update' | 'cancel';
   eventTitle: string;
   eventDate: string;
   location?: string;
   organizer?: string;
   capacity?: number;
   description?: string;
-  changes?: EventChange[];
+  changes?: string[];
   eventUrl: string;
 }
+
+const notificationTitles = {
+  new: 'Новое мероприятие',
+  update: 'Изменение в мероприятии',
+  cancel: 'Отмена мероприятия',
+};
 
 export const EventNotificationEmail = ({
   notificationType,
@@ -40,121 +38,100 @@ export const EventNotificationEmail = ({
   organizer,
   capacity,
   description,
-  changes = [],
+  changes,
   eventUrl,
 }: EventNotificationEmailProps) => {
-  const notificationTitles = {
-    new: 'Новое мероприятие',
-    update: 'Изменение в мероприятии',
-    cancel: 'Отмена мероприятия',
-  };
-
-  const notificationColors = {
-    new: '#28a745',
-    update: '#ffc107',
-    cancel: '#dc3545',
-  };
+  const title = notificationTitles[notificationType];
 
   return (
     <Html>
       <Head />
-      <Preview>{notificationTitles[notificationType]}: {eventTitle}</Preview>
+      <Preview>{title}: {eventTitle}</Preview>
       <Body style={main}>
         <Container style={container}>
-          {/* Header with gradient */}
+          {/* Header */}
           <Section style={header}>
-            <Heading style={heading}>ArtsVAO</Heading>
+            <Heading style={logo}>артсвао</Heading>
           </Section>
 
           {/* Main content */}
           <Section style={content}>
-            {/* Badge */}
-            <Section
-              style={{
-                ...badge,
-                backgroundColor: notificationColors[notificationType],
-              }}
-            >
-              <Text style={badgeText}>
-                {notificationTitles[notificationType]}
-              </Text>
-            </Section>
-
-            <Heading as="h2" style={title}>
-              {eventTitle}
+            <Heading as="h2" style={titleStyle}>
+              {title}
             </Heading>
 
-            {notificationType === 'cancel' && (
-              <Section style={cancelBox}>
-                <Text style={cancelText}>
-                  ⚠️ Это мероприятие было отменено
-                </Text>
-              </Section>
+            <Text style={paragraph}>
+              Здравствуйте!
+            </Text>
+
+            {notificationType === 'new' && (
+              <Text style={paragraph}>
+                Мы рады сообщить вам о новом мероприятии.
+              </Text>
             )}
 
-            {/* Event details */}
-            <Section style={detailsBox}>
-              <Section style={detailRow}>
-                <Text style={detailIcon}>📅</Text>
-                <Section>
-                  <Text style={detailLabel}>Дата и время</Text>
-                  <Text style={detailValue}>{eventDate}</Text>
-                </Section>
-              </Section>
+            {notificationType === 'update' && (
+              <Text style={paragraph}>
+                В мероприятии произошли изменения.
+              </Text>
+            )}
 
+            {notificationType === 'cancel' && (
+              <Text style={paragraph}>
+                К сожалению, мероприятие было отменено.
+              </Text>
+            )}
+
+            {/* Event Info Box */}
+            <Section style={eventBox}>
+              <Text style={eventTitle}>{eventTitle}</Text>
+              
+              <Hr style={divider} />
+              
+              {eventDate && (
+                <div style={eventDetail}>
+                  <Text style={eventLabel}>Дата и время:</Text>
+                  <Text style={eventValue}>{eventDate}</Text>
+                </div>
+              )}
+              
               {location && (
-                <Section style={detailRow}>
-                  <Text style={detailIcon}>📍</Text>
-                  <Section>
-                    <Text style={detailLabel}>Место проведения</Text>
-                    <Text style={detailValue}>{location}</Text>
-                  </Section>
-                </Section>
+                <div style={eventDetail}>
+                  <Text style={eventLabel}>Место:</Text>
+                  <Text style={eventValue}>{location}</Text>
+                </div>
               )}
-
+              
               {organizer && (
-                <Section style={detailRow}>
-                  <Text style={detailIcon}>👤</Text>
-                  <Section>
-                    <Text style={detailLabel}>Организатор</Text>
-                    <Text style={detailValue}>{organizer}</Text>
-                  </Section>
-                </Section>
+                <div style={eventDetail}>
+                  <Text style={eventLabel}>Организатор:</Text>
+                  <Text style={eventValue}>{organizer}</Text>
+                </div>
               )}
-
+              
               {capacity && (
-                <Section style={detailRow}>
-                  <Text style={detailIcon}>👥</Text>
-                  <Section>
-                    <Text style={detailLabel}>Вместимость</Text>
-                    <Text style={detailValue}>{capacity} человек</Text>
-                  </Section>
-                </Section>
+                <div style={eventDetail}>
+                  <Text style={eventLabel}>Мест:</Text>
+                  <Text style={eventValue}>{capacity}</Text>
+                </div>
               )}
             </Section>
 
             {description && (
               <>
-                <Text style={sectionTitle}>Описание</Text>
+                <Text style={sectionTitle}>Описание:</Text>
                 <Text style={paragraph}>{description}</Text>
               </>
             )}
 
-            {/* Changes list for update type */}
-            {notificationType === 'update' && changes.length > 0 && (
+            {changes && changes.length > 0 && (
               <>
-                <Hr style={divider} />
-                <Text style={sectionTitle}>Что изменилось:</Text>
+                <Text style={sectionTitle}>Изменения:</Text>
                 <Section style={changesBox}>
                   {changes.map((change, index) => (
-                    <Section key={index} style={changeItem}>
-                      <Text style={changeField}>{change.field}:</Text>
-                      <Text style={changeValue}>
-                        <span style={oldValue}>{change.oldValue}</span>
-                        {' → '}
-                        <span style={newValue}>{change.newValue}</span>
-                      </Text>
-                    </Section>
+                    <Text key={index} style={changeItem}>
+                      • {change}
+                    </Text>
                   ))}
                 </Section>
               </>
@@ -171,13 +148,14 @@ export const EventNotificationEmail = ({
 
           {/* Footer */}
           <Section style={footer}>
+            <Hr style={footerDivider} />
             <Text style={footerText}>
               С уважением,
               <br />
-              Команда ArtsVAO
+              Команда артсвао
             </Text>
-            <Text style={footerText}>
-              © {new Date().getFullYear()} ArtsVAO. Все права защищены.
+            <Text style={footerCopyright}>
+              © {new Date().getFullYear()} артсвао. Все права защищены.
             </Text>
           </Section>
         </Container>
@@ -190,186 +168,155 @@ export default EventNotificationEmail;
 
 // Styles
 const main = {
-  backgroundColor: '#f6f9fc',
-  fontFamily:
-    '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
+  backgroundColor: '#ffffff',
+  fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
 };
 
 const container = {
   backgroundColor: '#ffffff',
   margin: '0 auto',
-  padding: '20px 0 48px',
-  marginBottom: '64px',
   maxWidth: '600px',
+  border: '1px solid #e5e5e5',
 };
 
 const header = {
-  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-  padding: '30px 40px',
+  backgroundColor: '#000000',
+  padding: '32px 40px',
   textAlign: 'center' as const,
 };
 
-const heading = {
+const logo = {
   color: '#ffffff',
-  fontSize: '32px',
-  fontWeight: 'bold',
+  fontSize: '28px',
+  fontWeight: '600',
   margin: '0',
   padding: '0',
+  letterSpacing: '0.5px',
 };
 
 const content = {
   padding: '40px',
 };
 
-const badge = {
-  display: 'inline-block',
-  padding: '6px 12px',
-  borderRadius: '4px',
-  marginBottom: '20px',
-};
-
-const badgeText = {
-  color: '#ffffff',
-  fontSize: '12px',
-  fontWeight: 'bold',
-  textTransform: 'uppercase' as const,
-  margin: '0',
-};
-
-const title = {
-  color: '#333333',
+const titleStyle = {
+  color: '#000000',
   fontSize: '24px',
-  fontWeight: 'bold',
-  marginBottom: '20px',
-};
-
-const cancelBox = {
-  backgroundColor: '#f8d7da',
-  border: '1px solid #dc3545',
-  borderRadius: '5px',
-  padding: '15px',
-  margin: '20px 0',
-};
-
-const cancelText = {
-  color: '#721c24',
-  fontSize: '16px',
-  fontWeight: 'bold',
-  margin: '0',
-  textAlign: 'center' as const,
-};
-
-const detailsBox = {
-  backgroundColor: '#f8f9fa',
-  borderRadius: '5px',
-  padding: '20px',
-  margin: '20px 0',
-};
-
-const detailRow = {
-  display: 'flex',
-  marginBottom: '16px',
-};
-
-const detailIcon = {
-  fontSize: '24px',
-  marginRight: '12px',
-  minWidth: '32px',
-};
-
-const detailLabel = {
-  color: '#666666',
-  fontSize: '14px',
-  margin: '0 0 4px 0',
-};
-
-const detailValue = {
-  color: '#333333',
-  fontSize: '16px',
-  fontWeight: '500',
-  margin: '0',
-};
-
-const sectionTitle = {
-  color: '#333333',
-  fontSize: '18px',
-  fontWeight: 'bold',
-  marginTop: '20px',
-  marginBottom: '12px',
+  fontWeight: '600',
+  marginBottom: '24px',
+  marginTop: '0',
 };
 
 const paragraph = {
-  color: '#555555',
+  color: '#404040',
   fontSize: '16px',
   lineHeight: '24px',
-  marginBottom: '16px',
+  margin: '0 0 16px 0',
 };
 
-const divider = {
-  borderColor: '#e0e0e0',
-  margin: '30px 0',
+const sectionTitle = {
+  color: '#000000',
+  fontSize: '16px',
+  fontWeight: '600',
+  margin: '24px 0 12px 0',
 };
 
-const changesBox = {
-  backgroundColor: '#fff3cd',
-  border: '1px solid #ffc107',
-  borderRadius: '5px',
-  padding: '15px',
-  margin: '10px 0 20px 0',
+const eventBox = {
+  border: '1px solid #e5e5e5',
+  borderRadius: '4px',
+  padding: '24px',
+  margin: '24px 0',
+  backgroundColor: '#fafafa',
 };
 
-const changeItem = {
+const eventTitle = {
+  color: '#000000',
+  fontSize: '18px',
+  fontWeight: '600',
+  margin: '0 0 16px 0',
+};
+
+const eventDetail = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
   marginBottom: '12px',
 };
 
-const changeField = {
-  color: '#856404',
-  fontSize: '14px',
-  fontWeight: 'bold',
-  margin: '0 0 4px 0',
-};
-
-const changeValue = {
-  color: '#856404',
+const eventLabel = {
+  color: '#737373',
   fontSize: '14px',
   margin: '0',
+  fontWeight: '500',
+  flex: '0 0 auto',
 };
 
-const oldValue = {
-  textDecoration: 'line-through',
-  opacity: 0.7,
+const eventValue = {
+  color: '#000000',
+  fontSize: '14px',
+  margin: '0',
+  fontWeight: '600',
+  textAlign: 'right' as const,
+  flex: '1',
 };
 
-const newValue = {
-  fontWeight: 'bold',
+const divider = {
+  borderColor: '#e5e5e5',
+  margin: '16px 0',
+};
+
+const changesBox = {
+  border: '1px solid #e5e5e5',
+  borderRadius: '4px',
+  padding: '16px 20px',
+  margin: '12px 0 24px 0',
+  backgroundColor: '#fafafa',
+};
+
+const changeItem = {
+  color: '#404040',
+  fontSize: '14px',
+  margin: '6px 0',
+  lineHeight: '20px',
 };
 
 const buttonContainer = {
   textAlign: 'center' as const,
-  margin: '30px 0',
+  margin: '32px 0',
 };
 
 const button = {
-  backgroundColor: '#667eea',
-  borderRadius: '5px',
+  backgroundColor: '#000000',
+  borderRadius: '4px',
   color: '#ffffff',
   fontSize: '16px',
-  fontWeight: 'bold',
+  fontWeight: '600',
   textDecoration: 'none',
   textAlign: 'center' as const,
   display: 'inline-block',
-  padding: '14px 40px',
+  padding: '14px 32px',
 };
 
 const footer = {
-  borderTop: '1px solid #e0e0e0',
-  padding: '30px 40px',
-  textAlign: 'center' as const,
+  padding: '0 40px 40px 40px',
+};
+
+const footerDivider = {
+  borderColor: '#e5e5e5',
+  margin: '0 0 24px 0',
 };
 
 const footerText = {
-  color: '#999999',
+  color: '#737373',
   fontSize: '14px',
   lineHeight: '20px',
-  margin: '0 0 10px 0',
+  margin: '0 0 8px 0',
+  textAlign: 'center' as const,
+};
+
+const footerCopyright = {
+  color: '#a3a3a3',
+  fontSize: '12px',
+  lineHeight: '16px',
+  margin: '0',
+  textAlign: 'center' as const,
 };

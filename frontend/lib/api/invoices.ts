@@ -45,4 +45,30 @@ export const invoicesApi = {
   delete: async (id: string): Promise<void> => {
     await apiClient.delete(`/invoices/${id}`);
   },
+
+  // QR Code methods
+  getQRCodeDataURL: async (id: string): Promise<{
+    dataUrl: string;
+    paymentData: {
+      Name: string;
+      Sum: number;
+      Purpose: string;
+      [key: string]: any;
+    };
+  }> => {
+    const response = await apiClient.get(`/invoices/${id}/qr-data-url`);
+    return response.data;
+  },
+
+  getQRCodeBlob: async (id: string): Promise<Blob> => {
+    const response = await apiClient.get(`/invoices/${id}/qr`, {
+      responseType: 'blob',
+    });
+    return response.data;
+  },
+
+  sendQREmail: async (id: string): Promise<{ success: boolean; message: string }> => {
+    const response = await apiClient.post(`/invoices/${id}/send-qr-email`);
+    return response.data;
+  },
 };

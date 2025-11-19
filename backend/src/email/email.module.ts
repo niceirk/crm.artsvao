@@ -21,7 +21,7 @@ import { PrismaModule } from '../prisma/prisma.module';
           },
         },
         defaults: {
-          from: configService.get('EMAIL_FROM') || '"ArtsVAO" <notification@artsvao.ru>',
+          from: configService.get('EMAIL_FROM') || '"артсвао" <notification@artsvao.ru>',
         },
       }),
     }),

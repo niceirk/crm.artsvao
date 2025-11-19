@@ -4,10 +4,15 @@ import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceDto } from './dto/update-invoice.dto';
 import { InvoiceFilterDto } from './dto/invoice-filter.dto';
 import { InvoiceStatus, Prisma } from '@prisma/client';
+import { QRGeneratorService } from './qr/qr-generator.service';
+import { QRPaymentDataBuilder, BudgetPaymentData } from './qr/qr-payment-data.builder';
 
 @Injectable()
 export class InvoicesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly qrGenerator: QRGeneratorService,
+  ) {}
 
   /**
    * Генерация уникального номера счета
@@ -359,5 +364,115 @@ export class InvoicesService {
       },
       take: limit,
     });
+  }
+
+  /**
+   * Получить реквизиты организации для QR-кода
+   * @returns Реквизиты организации
+   */
+  async getOrganizationDetails() {
+    const details = await this.prisma.organizationDetails.findFirst({
+      where: { isPrimary: true },
+    });
+
+    if (!details) {
+      throw new NotFoundException(
+        'Реквизиты организации не найдены. Необходимо заполнить данные через seed.',
+      );
+    }
+
+    return details;
+  }
+
+  /**
+   * Генерация QR-кода для оплаты счета
+   * @param invoiceId - ID счета
+   * @returns Buffer с PNG изображением и Data URL
+   */
+  async generateQRCode(invoiceId: string): Promise<{
+    buffer: Buffer;
+    dataUrl: string;
+    paymentData: BudgetPaymentData;
+    paymentString: string;
+  }> {
+    // Получаем счет с полной информацией
+    const invoice = await this.findOne(invoiceId);
+
+    if (!invoice.client) {
+      throw new NotFoundException('Клиент счета не найден');
+    }
+
+    // Получаем реквизиты организации
+    const orgDetails = await this.getOrganizationDetails();
+
+    // Формируем назначение платежа
+    const serviceNames = invoice.items
+      .map((item) => item.serviceName)
+      .join(', ');
+
+    // Формируем ФИО клиента для назначения платежа
+    const clientFullName = `${invoice.client.lastName} ${invoice.client.firstName}${invoice.client.middleName ? ' ' + invoice.client.middleName : ''}`;
+
+    const purpose = `Оплата по счету №${invoice.invoiceNumber} от ${invoice.issuedAt.toLocaleDateString('ru-RU')}. ${serviceNames}. ФИО плательщика: ${clientFullName}`;
+
+    // Формируем название получателя с ИНН и КПП, убираем ВСЕ кавычки
+    const cleanOrgName = orgDetails.organizationName
+      .replace(/["'«»„"'"]/g, '')  // Убираем все виды кавычек
+      .replace(/\s+/g, ' ')         // Убираем множественные пробелы
+      .trim();                       // Убираем пробелы по краям
+
+    const fullName = `ИНН ${orgDetails.inn} КПП ${orgDetails.kpp} ${cleanOrgName}`;
+    const trimmedName = fullName.length > 160
+      ? fullName.substring(0, 160)
+      : fullName;
+
+    // Формируем данные для QR-кода
+    const paymentData: BudgetPaymentData = {
+      // Получатель - с ИНН и КПП, без кавычек
+      Name: trimmedName,
+      PayeeINN: orgDetails.inn,
+      KPP: orgDetails.kpp,
+      PersonalAcc: orgDetails.treasuryAccount,
+
+      // Банк
+      BankName: orgDetails.bankName,
+      BIC: orgDetails.bic,
+      CorrespAcc: orgDetails.correspAcc,
+
+      // Бюджетные коды
+      CBC: orgDetails.defaultKBK,
+      OKTMO: orgDetails.defaultOKTMO,
+
+      // Платеж - сумма в рублях с копейками (формат: xxxx.xx)
+      // ВАЖНО: Преобразуем Decimal в число с правильной точностью для совместимости со Сбербанком
+      Purpose: purpose,
+      Sum: parseFloat(invoice.totalAmount.toString()),
+
+      // Плательщик - данные из счета
+      LastName: invoice.client.lastName,
+      FirstName: invoice.client.firstName,
+      MiddleName: invoice.client.middleName || undefined,
+
+      // Дополнительные данные
+      DrawerStatus: '0', // Физическое лицо
+      DocNo: invoice.invoiceNumber,
+      DocDate: QRPaymentDataBuilder.formatDocDate(invoice.issuedAt),
+    };
+
+    // Формируем строку платежных данных по ГОСТ
+    const paymentString = QRPaymentDataBuilder.buildBudgetPaymentString(paymentData);
+
+    // Генерируем QR-код
+    const { buffer, dataUrl } = await this.qrGenerator.generateBoth(paymentString, {
+      errorCorrectionLevel: 'M',
+      width: 400,
+    });
+
+    return {
+      buffer,
+      dataUrl,
+      paymentData,
+      paymentString,
+    };
   }
 }

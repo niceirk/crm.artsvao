@@ -8,7 +8,7 @@ import {
   deleteLeadSource,
 } from '@/lib/api/lead-sources';
 import type { CreateLeadSourceDto, UpdateLeadSourceDto } from '@/lib/types/lead-sources';
-import { useToast } from './use-toast';
+import { toast } from 'sonner';
 
 /**
  * Hook для получения всех источников привлечения
