@@ -30,6 +30,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { useCreateGroup, useUpdateGroup } from '@/hooks/use-groups';
 import { useStudios } from '@/hooks/use-studios';
 import { useTeachers } from '@/hooks/use-teachers';
@@ -52,6 +53,7 @@ const formSchema = z.object({
   studioId: z.string().min(1, 'Выберите студию'),
   teacherId: z.string().min(1, 'Выберите преподавателя'),
   roomId: z.string().optional(),
+  isPaid: z.boolean().optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -81,6 +83,7 @@ export function GroupDialog({ open, onOpenChange, group }: GroupDialogProps) {
       studioId: '',
       teacherId: '',
       roomId: '',
+      isPaid: true,
     },
   });
 
@@ -96,6 +99,7 @@ export function GroupDialog({ open, onOpenChange, group }: GroupDialogProps) {
         studioId: group.studioId,
         teacherId: group.teacherId,
         roomId: group.roomId || '',
+        isPaid: group.isPaid ?? true,
       });
     } else {
       form.reset({
@@ -108,6 +112,7 @@ export function GroupDialog({ open, onOpenChange, group }: GroupDialogProps) {
         studioId: '',
         teacherId: '',
         roomId: '',
+        isPaid: true,
       });
     }
   }, [group, form, open]);
@@ -335,33 +340,56 @@ export function GroupDialog({ open, onOpenChange, group }: GroupDialogProps) {
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="status"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Статус</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    value={field.value}
-                  >
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Статус</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Выберите статус" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {statusOptions.map((status) => (
+                          <SelectItem key={status.value} value={status.value}>
+                            {status.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="isPaid"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-base">Платная группа</FormLabel>
+                      <FormDescription>
+                        Требуется оплата для участия
+                      </FormDescription>
+                    </div>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Выберите статус" />
-                      </SelectTrigger>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
                     </FormControl>
-                    <SelectContent>
-                      {statusOptions.map((status) => (
-                        <SelectItem key={status.value} value={status.value}>
-                          {status.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <div className="flex justify-end gap-2">
               <Button

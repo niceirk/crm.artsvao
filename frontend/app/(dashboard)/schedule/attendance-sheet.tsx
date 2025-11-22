@@ -12,10 +12,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { useAttendanceBySchedule, useMarkAttendance, useUpdateAttendance } from '@/hooks/use-attendance';
-import { useSubscriptions } from '@/hooks/use-subscriptions';
-import { Loader2, Check, X, AlertCircle, CheckCircle } from 'lucide-react';
+import { groupsApi, type GroupMember } from '@/lib/api/groups';
+import { Loader2, Check, X, AlertCircle, UserCheck } from 'lucide-react';
 import type { Attendance, AttendanceStatus } from '@/lib/types/attendance';
 import { cn } from '@/lib/utils';
+import { toast } from '@/lib/utils/toast';
 
 interface AttendanceSheetProps {
   open: boolean;
@@ -26,18 +27,15 @@ interface AttendanceSheetProps {
   startTime: string;
 }
 
-interface ClientWithAttendance {
+interface MemberWithAttendance {
   id: string;
+  memberId: string;
   firstName: string;
   lastName: string;
+  middleName?: string;
   phone: string;
-  subscription?: {
-    id: string;
-    type: 'UNLIMITED' | 'SINGLE_VISIT';
-    remainingVisits?: number;
-    status: 'ACTIVE' | 'EXPIRED' | 'FROZEN' | 'CANCELLED';
-    endDate: string;
-  };
+  joinedAt: string;
+  promotedFromWaitlistAt?: string;
   attendance?: Attendance;
 }
 
@@ -49,54 +47,64 @@ export function AttendanceSheet({
   groupName,
   startTime,
 }: AttendanceSheetProps) {
-  const [clients, setClients] = useState<ClientWithAttendance[]>([]);
+  const [members, setMembers] = useState<MemberWithAttendance[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(false);
 
   const { data: attendances, isLoading: isLoadingAttendances } = useAttendanceBySchedule(scheduleId);
-  const { data: subscriptions, isLoading: isLoadingSubscriptions } = useSubscriptions({ groupId });
   const markAttendance = useMarkAttendance();
   const updateAttendance = useUpdateAttendance();
 
-  // Объединяем данные о клиентах из подписок и посещаемости
+  // Загружаем активных участников группы
   useEffect(() => {
-    if (!subscriptions || !attendances) return;
+    if (!open) return;
 
-    // Создаём map посещаемости по clientId
-    const attendanceMap = new Map<string, Attendance>();
-    attendances.forEach((att) => {
-      attendanceMap.set(att.clientId, att);
-    });
+    const loadMembers = async () => {
+      try {
+        setLoadingMembers(true);
+        const activeMembers = await groupsApi.getGroupMembers(groupId, 'ACTIVE');
 
-    // Получаем уникальных клиентов из подписок
-    const clientsData: ClientWithAttendance[] = subscriptions.data
-      .map((sub) => ({
-        id: sub.client.id,
-        firstName: sub.client.firstName,
-        lastName: sub.client.lastName,
-        phone: sub.client.phone,
-        subscription: {
-          id: sub.id,
-          type: sub.subscriptionType.type,
-          remainingVisits: sub.remainingVisits,
-          status: sub.status,
-          endDate: sub.endDate,
-        },
-        attendance: attendanceMap.get(sub.client.id),
-      }))
-      // Фильтруем только активные абонементы
-      .filter((client) => client.subscription?.status === 'ACTIVE');
+        // Создаём map посещаемости по clientId
+        const attendanceMap = new Map<string, Attendance>();
+        if (attendances) {
+          attendances.forEach((att) => {
+            attendanceMap.set(att.clientId, att);
+          });
+        }
 
-    setClients(clientsData);
-  }, [subscriptions, attendances]);
+        // Преобразуем участников группы в MemberWithAttendance
+        const membersData: MemberWithAttendance[] = activeMembers.map((member) => ({
+          id: member.clientId,
+          memberId: member.id,
+          firstName: member.client.firstName,
+          lastName: member.client.lastName,
+          middleName: member.client.middleName,
+          phone: member.client.phone,
+          joinedAt: member.joinedAt,
+          promotedFromWaitlistAt: member.promotedFromWaitlistAt,
+          attendance: attendanceMap.get(member.clientId),
+        }));
+
+        setMembers(membersData);
+      } catch (error) {
+        console.error('Failed to load group members:', error);
+        toast.error('Не удалось загрузить участников группы');
+      } finally {
+        setLoadingMembers(false);
+      }
+    };
+
+    loadMembers();
+  }, [groupId, open, attendances]);
 
   const handleMarkAttendance = async (clientId: string, status: AttendanceStatus) => {
-    const client = clients.find((c) => c.id === clientId);
+    const member = members.find((m) => m.id === clientId);
 
-    if (!client) return;
+    if (!member) return;
 
-    if (client.attendance) {
+    if (member.attendance) {
       // Обновляем существующую отметку
       await updateAttendance.mutateAsync({
-        id: client.attendance.id,
+        id: member.attendance.id,
         data: { status },
       });
     } else {
@@ -110,16 +118,16 @@ export function AttendanceSheet({
   };
 
   const getAttendanceStats = () => {
-    const present = clients.filter((c) => c.attendance?.status === 'PRESENT').length;
-    const absent = clients.filter((c) => c.attendance?.status === 'ABSENT').length;
-    const excused = clients.filter((c) => c.attendance?.status === 'EXCUSED').length;
-    const notMarked = clients.filter((c) => !c.attendance).length;
+    const present = members.filter((m) => m.attendance?.status === 'PRESENT').length;
+    const absent = members.filter((m) => m.attendance?.status === 'ABSENT').length;
+    const excused = members.filter((m) => m.attendance?.status === 'EXCUSED').length;
+    const notMarked = members.filter((m) => !m.attendance).length;
 
-    return { present, absent, excused, notMarked, total: clients.length };
+    return { present, absent, excused, notMarked, total: members.length };
   };
 
   const stats = getAttendanceStats();
-  const isLoading = isLoadingAttendances || isLoadingSubscriptions;
+  const isLoading = isLoadingAttendances || loadingMembers;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -160,25 +168,25 @@ export function AttendanceSheet({
 
           <Separator />
 
-          {/* Список клиентов */}
+          {/* Список участников */}
           <div className="overflow-y-auto h-[calc(100vh-300px)]">
             {isLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-            ) : clients.length === 0 ? (
+            ) : members.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <AlertCircle className="h-12 w-12 text-muted-foreground mb-2" />
                 <p className="text-sm text-muted-foreground">
-                  Нет активных абонементов для этой группы
+                  В группе нет активных участников
                 </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {clients.map((client) => (
+                {members.map((member) => (
                   <AttendanceRow
-                    key={client.id}
-                    client={client}
+                    key={member.id}
+                    member={member}
                     onMark={handleMarkAttendance}
                     isLoading={markAttendance.isPending || updateAttendance.isPending}
                   />
@@ -193,47 +201,37 @@ export function AttendanceSheet({
 }
 
 interface AttendanceRowProps {
-  client: ClientWithAttendance;
+  member: MemberWithAttendance;
   onMark: (clientId: string, status: AttendanceStatus) => void;
   isLoading: boolean;
 }
 
-function AttendanceRow({ client, onMark, isLoading }: AttendanceRowProps) {
-  const { subscription, attendance } = client;
-  const subscriptionValid = subscription?.status === 'ACTIVE';
-  const hasRemainingVisits =
-    subscription?.type === 'UNLIMITED' ||
-    (subscription?.remainingVisits && subscription.remainingVisits > 0);
+function AttendanceRow({ member, onMark, isLoading }: AttendanceRowProps) {
+  const { attendance } = member;
 
   return (
     <div className="rounded-lg border p-3 space-y-2">
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <div className="font-medium">
-            {client.firstName} {client.lastName}
+          <div className="flex items-center gap-2">
+            <div className="font-medium">
+              {member.lastName} {member.firstName} {member.middleName || ''}
+            </div>
+            {member.promotedFromWaitlistAt && (
+              <Badge variant="outline" className="text-xs">
+                Из листа ожидания
+              </Badge>
+            )}
           </div>
-          <div className="text-sm text-muted-foreground">{client.phone}</div>
+          <div className="text-sm text-muted-foreground">{member.phone}</div>
         </div>
 
-        {/* Статус абонемента */}
+        {/* Статус участника */}
         <div className="flex items-center gap-2">
-          {subscriptionValid && hasRemainingVisits ? (
-            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-              <CheckCircle className="h-3 w-3 mr-1" />
-              Валиден
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-              <X className="h-3 w-3 mr-1" />
-              Истёк
-            </Badge>
-          )}
-
-          {subscription?.type === 'SINGLE_VISIT' && (
-            <Badge variant="secondary">
-              Осталось: {subscription.remainingVisits || 0}
-            </Badge>
-          )}
+          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+            <UserCheck className="h-3 w-3 mr-1" />
+            Активен
+          </Badge>
         </div>
       </div>
 
@@ -246,8 +244,8 @@ function AttendanceRow({ client, onMark, isLoading }: AttendanceRowProps) {
             'flex-1',
             attendance?.status === 'PRESENT' && 'bg-green-600 hover:bg-green-700'
           )}
-          onClick={() => onMark(client.id, 'PRESENT')}
-          disabled={isLoading || !subscriptionValid || !hasRemainingVisits}
+          onClick={() => onMark(member.id, 'PRESENT')}
+          disabled={isLoading}
         >
           <Check className="h-4 w-4 mr-1" />
           Присутствует
@@ -259,7 +257,7 @@ function AttendanceRow({ client, onMark, isLoading }: AttendanceRowProps) {
             'flex-1',
             attendance?.status === 'ABSENT' && 'bg-red-600 hover:bg-red-700'
           )}
-          onClick={() => onMark(client.id, 'ABSENT')}
+          onClick={() => onMark(member.id, 'ABSENT')}
           disabled={isLoading}
         >
           <X className="h-4 w-4 mr-1" />
@@ -272,7 +270,7 @@ function AttendanceRow({ client, onMark, isLoading }: AttendanceRowProps) {
             'flex-1',
             attendance?.status === 'EXCUSED' && 'bg-yellow-600 hover:bg-yellow-700'
           )}
-          onClick={() => onMark(client.id, 'EXCUSED')}
+          onClick={() => onMark(member.id, 'EXCUSED')}
           disabled={isLoading}
         >
           <AlertCircle className="h-4 w-4 mr-1" />

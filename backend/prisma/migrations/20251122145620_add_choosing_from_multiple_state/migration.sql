@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "TelegramState" ADD VALUE 'CHOOSING_FROM_MULTIPLE';

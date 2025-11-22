@@ -17,6 +17,7 @@ import {
   FileStack,
   CreditCard,
   Download,
+  MessageCircle,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -58,6 +59,12 @@ export const navigationConfig: NavGroup[] = [
         href: '/clients',
         icon: Users,
         description: 'CRM - Управление клиентами',
+      },
+      {
+        title: 'Сообщения',
+        href: '/messages',
+        icon: MessageCircle,
+        description: 'Диалоги с клиентами через Telegram',
       },
       {
         title: 'Абонементы',

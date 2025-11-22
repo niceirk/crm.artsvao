@@ -7,14 +7,23 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Combobox } from '@/components/ui/combobox';
 import { Save, Edit, X } from 'lucide-react';
 import { WeeklyScheduleItem, DAYS_OF_WEEK, DAY_LABELS } from '@/lib/types/weekly-schedule';
+
+interface Room {
+  id: string;
+  name: string;
+  number?: string;
+}
 
 interface WeeklyScheduleEditorProps {
   value: WeeklyScheduleItem[];
   duration?: number; // Длительность занятия в минутах
   onChange: (schedule: WeeklyScheduleItem[]) => void;
   onSave?: () => Promise<void>;
+  rooms?: Room[]; // Список доступных помещений
+  defaultRoomId?: string; // Помещение группы по умолчанию
 }
 
 export function WeeklyScheduleEditor({
@@ -22,6 +31,8 @@ export function WeeklyScheduleEditor({
   duration = 0,
   onChange,
   onSave,
+  rooms = [],
+  defaultRoomId,
 }: WeeklyScheduleEditorProps) {
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -48,14 +59,32 @@ export function WeeklyScheduleEditor({
     return item?.startTime || '09:00';
   };
 
+  // Получаем roomId для дня
+  const getRoomId = (day: typeof DAYS_OF_WEEK[number]): string | undefined => {
+    const item = value.find((item) => item.day === day);
+    return item?.roomId;
+  };
+
+  // Получаем объект Room по ID
+  const getRoomById = (roomId?: string): Room | undefined => {
+    if (!roomId) return undefined;
+    return rooms.find(r => r.id === roomId);
+  };
+
+  // Форматируем название помещения
+  const formatRoomName = (room?: Room): string => {
+    if (!room) return '';
+    return room.number ? `${room.name} (${room.number})` : room.name;
+  };
+
   // Переключение дня
   const toggleDay = (day: typeof DAYS_OF_WEEK[number]) => {
     if (isDayEnabled(day)) {
       // Убираем день
       onChange(value.filter((item) => item.day !== day));
     } else {
-      // Добавляем день с временем по умолчанию
-      onChange([...value, { day, startTime: '09:00' }]);
+      // Добавляем день с временем по умолчанию и помещением группы
+      onChange([...value, { day, startTime: '09:00', roomId: defaultRoomId }]);
     }
   };
 
@@ -63,6 +92,13 @@ export function WeeklyScheduleEditor({
   const updateStartTime = (day: typeof DAYS_OF_WEEK[number], startTime: string) => {
     onChange(
       value.map((item) => (item.day === day ? { ...item, startTime } : item))
+    );
+  };
+
+  // Изменение помещения
+  const updateRoomId = (day: typeof DAYS_OF_WEEK[number], roomId: string | undefined) => {
+    onChange(
+      value.map((item) => (item.day === day ? { ...item, roomId } : item))
     );
   };
 
@@ -93,8 +129,8 @@ export function WeeklyScheduleEditor({
             <CardTitle>Расписание группы</CardTitle>
             <CardDescription>
               {isEditing
-                ? 'Настройте недельный паттерн занятий. Дни недели и время начала.'
-                : 'Недельный паттерн занятий группы'
+                ? 'Настройте недельный шаблон занятий. Дни недели и время начала.'
+                : 'Недельный шаблон занятий группы'
               }
             </CardDescription>
           </div>
@@ -115,6 +151,7 @@ export function WeeklyScheduleEditor({
               {DAYS_OF_WEEK.map((day) => {
                 const enabled = isDayEnabled(day);
                 const startTime = getStartTime(day);
+                const roomId = getRoomId(day);
                 const endTime = duration ? calculateEndTime(startTime, duration) : '';
 
                 return (
@@ -137,7 +174,7 @@ export function WeeklyScheduleEditor({
                       </Label>
                     </div>
 
-                    {/* Время */}
+                    {/* Время и помещение */}
                     {enabled ? (
                       <div className="flex flex-col items-center gap-2 w-full">
                         <Input
@@ -150,6 +187,24 @@ export function WeeklyScheduleEditor({
                           <Badge variant="outline" className="font-mono text-xs w-full justify-center">
                             {endTime}
                           </Badge>
+                        )}
+
+                        {/* Селектор помещения */}
+                        {rooms.length > 0 && (
+                          <Combobox
+                            options={rooms.map((room) => ({
+                              value: room.id,
+                              label: formatRoomName(room),
+                            }))}
+                            value={roomId}
+                            onValueChange={(value) => updateRoomId(day, value)}
+                            placeholder="Помещение"
+                            searchPlaceholder="Поиск помещения..."
+                            emptyText="Помещение не найдено"
+                            className="w-full h-8 text-xs"
+                            allowEmpty={true}
+                            emptyLabel="Не выбрано"
+                          />
                         )}
                       </div>
                     ) : (
@@ -213,6 +268,8 @@ export function WeeklyScheduleEditor({
                 {DAYS_OF_WEEK.map((day) => {
                   const enabled = isDayEnabled(day);
                   const startTime = getStartTime(day);
+                  const roomId = getRoomId(day);
+                  const room = getRoomById(roomId);
                   const endTime = duration ? calculateEndTime(startTime, duration) : '';
 
                   return (
@@ -236,6 +293,12 @@ export function WeeklyScheduleEditor({
                           {endTime && (
                             <div className="text-sm text-muted-foreground tabular-nums">
                               {endTime}
+                            </div>
+                          )}
+                          {/* Помещение */}
+                          {room && (
+                            <div className="text-xs text-muted-foreground text-center mt-1 line-clamp-2">
+                              {formatRoomName(room)}
                             </div>
                           )}
                         </div>

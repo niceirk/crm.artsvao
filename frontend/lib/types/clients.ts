@@ -35,6 +35,7 @@ export interface Client {
   } | null;
   discount?: string | null;
   documents?: ClientDocument[];
+  telegramAccounts?: TelegramAccount[];
   createdAt: string;
   updatedAt: string;
 }
@@ -209,3 +210,19 @@ export interface DocumentTypeConfig {
 }
 
 export type DocumentTypesConfig = Record<DocumentType, DocumentTypeConfig>;
+
+// Telegram интеграция
+export type ConversationStatus = 'OPEN' | 'CLOSED';
+
+export interface TelegramAccount {
+  id: string;
+  username?: string | null;
+  firstName: string;
+  lastName?: string | null;
+  isNotificationsEnabled: boolean;
+  createdAt: string;
+  conversations?: {
+    id: string;
+    status: ConversationStatus;
+  }[];
+}

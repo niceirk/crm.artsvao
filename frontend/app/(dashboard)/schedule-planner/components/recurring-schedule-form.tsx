@@ -120,7 +120,7 @@ export function RecurringScheduleForm() {
                     {groupsLoading ? (
                       <SelectItem value="loading" disabled>Загрузка...</SelectItem>
                     ) : (
-                      groups?.map((group) => (
+                      groups?.data?.map((group) => (
                         <SelectItem key={group.id} value={group.id}>
                           {group.name}
                         </SelectItem>

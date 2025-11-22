@@ -39,7 +39,7 @@ export function ScheduleFilters({ filters, onFiltersChange }: ScheduleFiltersPro
     value: teacher.id,
   })) || [];
 
-  const groupOptions = groups?.map((group) => ({
+  const groupOptions = groups?.data?.map((group) => ({
     label: group.name,
     value: group.id,
   })) || [];

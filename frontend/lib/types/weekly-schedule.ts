@@ -5,6 +5,7 @@ export type DayOfWeek = 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT' | 'SUN';
 export interface WeeklyScheduleItem {
   day: DayOfWeek;
   startTime: string; // Формат "HH:mm", например "18:00"
+  roomId?: string; // ID помещения для этого дня (опционально)
 }
 
 export const DAY_LABELS: Record<DayOfWeek, string> = {

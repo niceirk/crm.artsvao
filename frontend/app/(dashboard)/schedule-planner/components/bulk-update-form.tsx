@@ -215,7 +215,7 @@ export function BulkUpdateForm() {
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {groups?.map((group) => (
+                      {groups?.data?.map((group) => (
                         <SelectItem key={group.id} value={group.id}>
                           {group.name}
                         </SelectItem>

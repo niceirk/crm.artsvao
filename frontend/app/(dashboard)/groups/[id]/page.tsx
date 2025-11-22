@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { groupsApi, type Group, type GroupMember, type UpdateGroupDto } from '@/lib/api/groups';
+import { groupsApi, type Group, type GroupMember, type UpdateGroupDto, type GroupMemberStatus, type GroupAvailability } from '@/lib/api/groups';
 import { roomsApi, type Room } from '@/lib/api/rooms';
 import { teachersApi, type Teacher } from '@/lib/api/teachers';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Edit, Users, Calendar, Clock, Save, X, LayoutGrid, UserCircle, CalendarDays } from 'lucide-react';
+import { ArrowLeft, Edit, Users, Calendar, Clock, Save, X, LayoutGrid, UserCircle, CalendarDays, Coins, UserPlus, UserMinus, UserCheck, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { formatWeeklySchedule, DAY_LABELS, DAYS_OF_WEEK, formatTimeRange, type WeeklyScheduleItem } from '@/lib/types/weekly-schedule';
 import { useForm } from 'react-hook-form';
@@ -24,7 +24,18 @@ import { WeeklyScheduleEditor } from '@/components/groups/weekly-schedule-editor
 import { AddMemberDialog } from '@/components/groups/add-member-dialog';
 import { MonthPlanner } from '@/components/groups/month-planner';
 import { GroupMonthlyCalendar } from '@/components/groups/group-monthly-calendar';
+import { ScheduledMonthsTimeline } from '@/components/groups/scheduled-months-timeline';
 import { useBreadcrumbs } from '@/lib/contexts/breadcrumbs-context';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const groupSchema = z.object({
   name: z.string().min(1, 'Название обязательно'),
@@ -36,6 +47,7 @@ const groupSchema = z.object({
   teacherId: z.string().min(1, 'Выберите преподавателя'),
   roomId: z.string().optional(),
   status: z.enum(['ACTIVE', 'INACTIVE', 'ARCHIVED']),
+  isPaid: z.boolean(),
 });
 
 export default function GroupDetailPage() {
@@ -45,15 +57,24 @@ export default function GroupDetailPage() {
   const { setCustomTitle } = useBreadcrumbs();
 
   const [group, setGroup] = useState<Group | null>(null);
-  const [members, setMembers] = useState<GroupMember[]>([]);
+  const [activeMembers, setActiveMembers] = useState<GroupMember[]>([]);
+  const [waitlistMembers, setWaitlistMembers] = useState<GroupMember[]>([]);
+  const [expelledMembers, setExpelledMembers] = useState<GroupMember[]>([]);
+  const [availability, setAvailability] = useState<GroupAvailability | null>(null);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMembers, setLoadingMembers] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [addMemberDialogOpen, setAddMemberDialogOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [calendarKey, setCalendarKey] = useState(0);
+  const [activeTab, setActiveTab] = useState('overview');
+  const [memberStatusTab, setMemberStatusTab] = useState('active');
+  const [selectedMonth, setSelectedMonth] = useState<string | undefined>();
+  const [memberToRemove, setMemberToRemove] = useState<GroupMember | null>(null);
+  const [memberToPromote, setMemberToPromote] = useState<GroupMember | null>(null);
 
   const form = useForm<z.infer<typeof groupSchema>>({
     resolver: zodResolver(groupSchema),
@@ -67,6 +88,7 @@ export default function GroupDetailPage() {
       teacherId: '',
       roomId: '',
       status: 'ACTIVE',
+      isPaid: false,
     },
   });
 
@@ -74,14 +96,12 @@ export default function GroupDetailPage() {
     try {
       setLoading(true);
       setLoadError(null);
-      const [groupData, membersData, roomsData, teachersData] = await Promise.all([
+      const [groupData, roomsData, teachersData] = await Promise.all([
         groupsApi.getGroup(groupId),
-        groupsApi.getGroupMembers(groupId),
         roomsApi.getRooms(),
         teachersApi.getTeachers(),
       ]);
       setGroup(groupData);
-      setMembers(membersData);
       setRooms(roomsData);
       setTeachers(teachersData);
 
@@ -102,7 +122,11 @@ export default function GroupDetailPage() {
         teacherId: groupData.teacherId,
         roomId: groupData.roomId || '',
         status: groupData.status,
+        isPaid: groupData.isPaid ?? false,
       });
+
+      // Загружаем участников и доступность
+      await fetchMembers();
     } catch (error: any) {
       console.error('Failed to fetch group data:', error);
       const errorMessage = error.response?.data?.message || error.message || 'Неизвестная ошибка';
@@ -120,6 +144,27 @@ export default function GroupDetailPage() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMembers = async () => {
+    try {
+      setLoadingMembers(true);
+      const [active, waitlist, expelled, avail] = await Promise.all([
+        groupsApi.getGroupMembers(groupId, 'ACTIVE'),
+        groupsApi.getGroupMembers(groupId, 'WAITLIST'),
+        groupsApi.getGroupMembers(groupId, 'EXPELLED'),
+        groupsApi.checkGroupAvailability(groupId),
+      ]);
+      setActiveMembers(active);
+      setWaitlistMembers(waitlist);
+      setExpelledMembers(expelled);
+      setAvailability(avail);
+    } catch (error) {
+      console.error('Failed to fetch members:', error);
+      toast.error('Не удалось загрузить участников');
+    } finally {
+      setLoadingMembers(false);
     }
   };
 
@@ -152,6 +197,7 @@ export default function GroupDetailPage() {
         teacherId: group.teacherId,
         roomId: group.roomId || '',
         status: group.status,
+        isPaid: group.isPaid ?? false,
       });
     }
   };
@@ -202,10 +248,44 @@ export default function GroupDetailPage() {
     }
   };
 
-  const handleMemberAdded = () => {
+  const handleMemberAdded = async () => {
     // Перезагружаем список участников и обновляем календарь
-    fetchData();
+    await fetchMembers();
     setCalendarKey(prev => prev + 1);
+  };
+
+  const handleRemoveMember = async (member: GroupMember) => {
+    if (!memberToRemove) {
+      setMemberToRemove(member);
+      return;
+    }
+
+    try {
+      await groupsApi.removeGroupMember(member.id);
+      toast.success('Участник отчислен из группы');
+      setMemberToRemove(null);
+      await fetchMembers();
+    } catch (error) {
+      console.error('Failed to remove member:', error);
+      toast.error('Не удалось отчислить участника');
+    }
+  };
+
+  const handlePromoteMember = async (member: GroupMember) => {
+    if (!memberToPromote) {
+      setMemberToPromote(member);
+      return;
+    }
+
+    try {
+      await groupsApi.updateMemberStatus(member.id, 'ACTIVE');
+      toast.success('Участник переведен в активные');
+      setMemberToPromote(null);
+      await fetchMembers();
+    } catch (error) {
+      console.error('Failed to promote member:', error);
+      toast.error('Не удалось перевести участника');
+    }
   };
 
   if (loading) {
@@ -253,7 +333,12 @@ export default function GroupDetailPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
-            <h1 className="text-3xl font-bold">{group.name}</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold">{group.name}</h1>
+              <Badge variant={group.status === 'ACTIVE' ? 'default' : 'secondary'} className={group.status === 'ACTIVE' ? 'bg-green-600 hover:bg-green-700' : ''}>
+                {group.status === 'ACTIVE' ? 'Активна' : group.status === 'INACTIVE' ? 'Неактивна' : 'Архив'}
+              </Badge>
+            </div>
             <div className="flex items-center gap-4 mt-2 text-sm text-muted-foreground">
               {group.teacher && (
                 <span>
@@ -311,21 +396,38 @@ export default function GroupDetailPage() {
                   Измените основную информацию о группе
                 </CardDescription>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="status">Статус *</Label>
-                <Select
-                  value={form.watch('status')}
-                  onValueChange={(value) => form.setValue('status', value as any)}
-                >
-                  <SelectTrigger className="w-[160px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ACTIVE">Активна</SelectItem>
-                    <SelectItem value="INACTIVE">Неактивна</SelectItem>
-                    <SelectItem value="ARCHIVED">Архив</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="flex gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="status">Статус *</Label>
+                  <Select
+                    value={form.watch('status')}
+                    onValueChange={(value) => form.setValue('status', value as any)}
+                  >
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ACTIVE">Активна</SelectItem>
+                      <SelectItem value="INACTIVE">Неактивна</SelectItem>
+                      <SelectItem value="ARCHIVED">Архив</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="isPaid">Тип группы *</Label>
+                  <Select
+                    value={form.watch('isPaid') ? 'paid' : 'free'}
+                    onValueChange={(value) => form.setValue('isPaid', value === 'paid')}
+                  >
+                    <SelectTrigger className="w-[160px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="paid">Платная</SelectItem>
+                      <SelectItem value="free">Бесплатная</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             </div>
           </CardHeader>
@@ -497,7 +599,7 @@ export default function GroupDetailPage() {
       )}
 
       {/* Табы для организации контента */}
-      <Tabs defaultValue="overview" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="overview" className="flex items-center gap-2">
             <LayoutGrid className="h-4 w-4" />
@@ -516,7 +618,7 @@ export default function GroupDetailPage() {
         {/* Вкладка "Обзор" */}
         <TabsContent value="overview" className="space-y-6">
           {/* Информация о группе */}
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Участников</CardTitle>
@@ -524,11 +626,16 @@ export default function GroupDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {members.length} / {group.maxParticipants}
+              {availability?.occupied || 0} / {availability?.total || group.maxParticipants}
             </div>
             <p className="text-xs text-muted-foreground">
-              Свободно мест: {group.maxParticipants - members.length}
+              Свободно мест: {availability?.available || 0}
             </p>
+            {waitlistMembers.length > 0 && (
+              <p className="text-xs text-amber-600 mt-1">
+                В очереди: {waitlistMembers.length}
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -558,81 +665,265 @@ export default function GroupDetailPage() {
             </div>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Тип группы</CardTitle>
+            <Coins className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {group.isPaid ? 'Платная' : 'Бесплатная'}
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-          {/* Редактор недельного расписания */}
-          <WeeklyScheduleEditor
-            value={group.weeklySchedule || []}
-            duration={group.duration}
-            onChange={handleWeeklyScheduleChange}
-            onSave={handleSaveWeeklySchedule}
-          />
+          {/* Блок расписания группы */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Расписание группы</CardTitle>
+              <CardDescription>
+                Настройте недельный шаблон и просмотрите запланированные месяцы
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Timeline с запланированными месяцами */}
+              <ScheduledMonthsTimeline
+                groupId={groupId}
+                onMonthClick={(month) => {
+                  setSelectedMonth(month);
+                  setActiveTab('schedule');
+                }}
+              />
+
+              {/* Редактор недельного расписания */}
+              <div className="border-t pt-6">
+                <WeeklyScheduleEditor
+                  value={group.weeklySchedule || []}
+                  duration={group.duration}
+                  onChange={handleWeeklyScheduleChange}
+                  onSave={handleSaveWeeklySchedule}
+                  rooms={rooms}
+                  defaultRoomId={group.roomId}
+                />
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Вкладка "Участники" */}
         <TabsContent value="members" className="space-y-6">
-          {/* Участники группы */}
           <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Участники</CardTitle>
-              <CardDescription>
-                Клиенты с активными абонементами в группе
-              </CardDescription>
-            </div>
-            <Button size="sm" onClick={() => setAddMemberDialogOpen(true)}>
-              <Users className="h-4 w-4 mr-2" />
-              Добавить участника
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {members.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">
-              В группе пока нет участников
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {members.map((member) => (
-                <div
-                  key={member.id}
-                  className="flex items-center justify-between p-4 border rounded-lg"
-                >
-                  <div className="flex-1">
-                    <Link
-                      href={`/clients/${member.clientId}`}
-                      className="font-medium hover:underline"
-                    >
-                      {member.client.lastName} {member.client.firstName}{' '}
-                      {member.client.middleName}
-                    </Link>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      <div>{member.client.phone}</div>
-                      <div>
-                        {member.subscriptionType.name} •{' '}
-                        {member.subscriptionType.type === 'UNLIMITED'
-                          ? 'Безлимит'
-                          : `Осталось: ${member.remainingVisits || 0} посещений`}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <Badge
-                      variant={member.status === 'ACTIVE' ? 'default' : 'secondary'}
-                    >
-                      {member.status === 'ACTIVE' ? 'Активен' : member.status}
-                    </Badge>
-                    <div className="text-sm text-muted-foreground mt-1">
-                      До: {member.validMonth}
-                    </div>
-                  </div>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Участники группы</CardTitle>
+                  <CardDescription>
+                    Управление участниками и листом ожидания
+                  </CardDescription>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                <Button size="sm" onClick={() => setAddMemberDialogOpen(true)}>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Добавить участника
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Под-вкладки для статусов участников */}
+              <Tabs value={memberStatusTab} onValueChange={setMemberStatusTab}>
+                <TabsList className="grid w-full grid-cols-3 mb-4">
+                  <TabsTrigger value="active" className="flex items-center gap-2">
+                    <UserCheck className="h-4 w-4" />
+                    Активные ({activeMembers.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="waitlist" className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    Лист ожидания ({waitlistMembers.length})
+                  </TabsTrigger>
+                  <TabsTrigger value="expelled" className="flex items-center gap-2">
+                    <UserMinus className="h-4 w-4" />
+                    Отчисленные ({expelledMembers.length})
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* Активные участники */}
+                <TabsContent value="active" className="space-y-3">
+                  {loadingMembers ? (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground">Загрузка...</p>
+                    </div>
+                  ) : activeMembers.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground">
+                        Нет активных участников
+                      </p>
+                    </div>
+                  ) : (
+                    activeMembers.map((member) => (
+                      <div
+                        key={member.id}
+                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                      >
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <Link
+                              href={`/clients/${member.clientId}`}
+                              className="font-medium hover:underline"
+                            >
+                              {member.client.lastName} {member.client.firstName}{' '}
+                              {member.client.middleName}
+                            </Link>
+                            {member.promotedFromWaitlistAt && (
+                              <Badge variant="outline" className="text-xs">
+                                Переведен из листа ожидания
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="text-sm text-muted-foreground mt-1">
+                            <div>{member.client.phone}</div>
+                            <div className="text-xs mt-0.5">
+                              Присоединился: {new Date(member.joinedAt).toLocaleDateString('ru-RU')}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="default" className="bg-green-600 hover:bg-green-700">
+                            Активен
+                          </Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleRemoveMember(member)}
+                          >
+                            <UserMinus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </TabsContent>
+
+                {/* Лист ожидания */}
+                <TabsContent value="waitlist" className="space-y-3">
+                  {loadingMembers ? (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground">Загрузка...</p>
+                    </div>
+                  ) : waitlistMembers.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground">
+                        Лист ожидания пуст
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {availability?.isFull && (
+                        <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-lg mb-4">
+                          <AlertCircle className="h-5 w-5 text-amber-600" />
+                          <p className="text-sm text-amber-800 dark:text-amber-200">
+                            Группа заполнена. Участники в листе ожидания будут автоматически переведены при освобождении мест.
+                          </p>
+                        </div>
+                      )}
+                      {waitlistMembers.map((member) => (
+                        <div
+                          key={member.id}
+                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
+                        >
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className="w-8 h-8 rounded-full flex items-center justify-center">
+                                {member.waitlistPosition}
+                              </Badge>
+                              <Link
+                                href={`/clients/${member.clientId}`}
+                                className="font-medium hover:underline"
+                              >
+                                {member.client.lastName} {member.client.firstName}{' '}
+                                {member.client.middleName}
+                              </Link>
+                            </div>
+                            <div className="text-sm text-muted-foreground mt-1">
+                              <div>{member.client.phone}</div>
+                              <div className="text-xs mt-0.5">
+                                В очереди с: {new Date(member.joinedAt).toLocaleDateString('ru-RU')}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                              В очереди
+                            </Badge>
+                            {!availability?.isFull && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handlePromoteMember(member)}
+                              >
+                                <UserCheck className="h-4 w-4 mr-1" />
+                                В активные
+                              </Button>
+                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRemoveMember(member)}
+                            >
+                              <UserMinus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </TabsContent>
+
+                {/* Отчисленные */}
+                <TabsContent value="expelled" className="space-y-3">
+                  {loadingMembers ? (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground">Загрузка...</p>
+                    </div>
+                  ) : expelledMembers.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-muted-foreground">
+                        Нет отчисленных участников
+                      </p>
+                    </div>
+                  ) : (
+                    expelledMembers.map((member) => (
+                      <div
+                        key={member.id}
+                        className="flex items-center justify-between p-4 border rounded-lg opacity-60"
+                      >
+                        <div className="flex-1">
+                          <Link
+                            href={`/clients/${member.clientId}`}
+                            className="font-medium hover:underline"
+                          >
+                            {member.client.lastName} {member.client.firstName}{' '}
+                            {member.client.middleName}
+                          </Link>
+                          <div className="text-sm text-muted-foreground mt-1">
+                            <div>{member.client.phone}</div>
+                            {member.leftAt && (
+                              <div className="text-xs mt-0.5">
+                                Отчислен: {new Date(member.leftAt).toLocaleDateString('ru-RU')}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <Badge variant="secondary">
+                          Отчислен
+                        </Badge>
+                      </div>
+                    ))
+                  )}
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Вкладка "Расписание занятий" */}
@@ -644,7 +935,9 @@ export default function GroupDetailPage() {
             duration={group.duration}
             teacherId={group.teacherId}
             roomId={group.roomId}
+            rooms={rooms}
             onSuccess={handleMemberAdded}
+            initialMonth={selectedMonth}
           />
 
           {/* Календарь занятий группы */}
@@ -659,6 +952,51 @@ export default function GroupDetailPage() {
         groupId={groupId}
         onSuccess={handleMemberAdded}
       />
+
+      {/* Диалог подтверждения отчисления */}
+      <AlertDialog open={!!memberToRemove} onOpenChange={(open) => !open && setMemberToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Отчислить участника?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы уверены, что хотите отчислить {memberToRemove?.client.firstName} {memberToRemove?.client.lastName} из группы?
+              {memberToRemove?.status === 'ACTIVE' && waitlistMembers.length > 0 && (
+                <span className="block mt-2 text-amber-600 dark:text-amber-400">
+                  Первый участник из листа ожидания будет автоматически переведен в активные.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setMemberToRemove(null)}>
+              Отмена
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => memberToRemove && handleRemoveMember(memberToRemove)}>
+              Отчислить
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Диалог подтверждения перевода */}
+      <AlertDialog open={!!memberToPromote} onOpenChange={(open) => !open && setMemberToPromote(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Перевести участника в активные?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы уверены, что хотите перевести {memberToPromote?.client.firstName} {memberToPromote?.client.lastName} в активные участники группы?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setMemberToPromote(null)}>
+              Отмена
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => memberToPromote && handlePromoteMember(memberToPromote)}>
+              Перевести
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

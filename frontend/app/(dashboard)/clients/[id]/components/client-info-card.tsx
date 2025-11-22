@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -13,13 +13,27 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { DatePicker } from '@/components/ui/date-picker';
 import { PhoneInput } from '@/components/ui/phone-input';
-import { Calendar, User, Phone, Mail, FileText } from 'lucide-react';
-import type { Client } from '@/lib/types/clients';
+import { Switch } from '@/components/ui/switch';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Calendar, User, Phone, Mail, FileText, Send, Unlink } from 'lucide-react';
+import type { Client, TelegramAccount } from '@/lib/types/clients';
 import { useUpdateClient } from '@/hooks/useClients';
 import { useActiveLeadSources } from '@/hooks/useLeadSources';
 import { useActiveBenefitCategories } from '@/hooks/useBenefitCategories';
 import { ClientDocumentsCard } from './client-documents-card';
 import { cleanPhoneNumber } from '@/lib/utils/phone';
+import { unlinkTelegramAccount, toggleTelegramNotifications } from '@/lib/api/clients';
+import { toast } from 'sonner';
+import { useRouter } from 'next/navigation';
 
 interface ClientInfoCardProps {
   client: Client;
@@ -67,6 +81,9 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
   const updateClient = useUpdateClient();
   const { data: leadSources } = useActiveLeadSources();
   const { data: benefitCategories } = useActiveBenefitCategories();
+  const router = useRouter();
+  const [unlinkDialogOpen, setUnlinkDialogOpen] = useState(false);
+  const [accountToUnlink, setAccountToUnlink] = useState<TelegramAccount | null>(null);
 
   const {
     register,
@@ -178,6 +195,48 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
     if (!dateString) return '—';
     const age = calculateAge(dateString);
     return `${formatDate(dateString)}${age ? ` (${age} лет)` : ''}`;
+  };
+
+  const handleUnlinkAccount = (account: TelegramAccount) => {
+    setAccountToUnlink(account);
+    setUnlinkDialogOpen(true);
+  };
+
+  const confirmUnlink = async () => {
+    if (!accountToUnlink) return;
+
+    try {
+      await unlinkTelegramAccount(client.id, accountToUnlink.id);
+      toast.success('Telegram аккаунт отвязан');
+      setUnlinkDialogOpen(false);
+      setAccountToUnlink(null);
+      onRefresh?.();
+    } catch (error: any) {
+      console.error('Unlink account error:', error);
+      const errorMessage = error?.response?.data?.message || 'Ошибка при отвязке аккаунта';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleToggleNotifications = async (account: TelegramAccount, enabled: boolean) => {
+    try {
+      await toggleTelegramNotifications(client.id, account.id, enabled);
+      toast.success(enabled ? 'Уведомления включены' : 'Уведомления отключены');
+      onRefresh?.();
+    } catch (error: any) {
+      console.error('Toggle notifications error:', error);
+      const errorMessage = error?.response?.data?.message || 'Ошибка при изменении настроек уведомлений';
+      toast.error(errorMessage);
+    }
+  };
+
+  const handleWriteToTelegram = (account: TelegramAccount) => {
+    const conversation = account.conversations?.find(c => c.status === 'OPEN');
+    if (conversation) {
+      router.push(`/messages/${conversation.id}`);
+    } else {
+      toast.error('Нет активного диалога с этим клиентом');
+    }
   };
 
   const onSubmit = async (data: ClientFormData) => {
@@ -571,6 +630,80 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
           </div>
         </div>
 
+        {/* Telegram интеграция */}
+        {client.telegramAccounts && client.telegramAccounts.length > 0 && (
+          <div className="pt-4 border-t">
+            <h3 className="text-sm font-medium mb-4 flex items-center gap-2">
+              <svg className="h-4 w-4" viewBox="0 0 240 240" fill="currentColor">
+                <path d="M120,0 C53.8,0 0,53.8 0,120 S53.8,240 120,240 S240,186.2 240,120 S186.2,0 120,0z M171.1,79 L155.5,156 C154.3,162.4 150.6,163.9 145.4,160.9 L116.4,140.1 L102.3,153.6 C100.9,155 99.7,156.2 96.9,156.2 L98.7,126.7 L152.5,79.2 C154.7,77.3 152,76.2 149,78.1 L81.6,118.7 L53,110 C46.8,108 46.6,103.8 54.3,100.8 L164.9,61.5 C170.1,59.5 174.7,62.5 171.1,79z"/>
+              </svg>
+              Telegram ({client.telegramAccounts.length})
+            </h3>
+            <div className="space-y-4">
+              {client.telegramAccounts.map((account) => (
+                <div key={account.id} className="flex items-start gap-3 p-3 rounded-lg border bg-card">
+                  <div className="flex items-center justify-center h-10 w-10 rounded-full bg-blue-100 shrink-0">
+                    <svg className="h-5 w-5 text-blue-600" viewBox="0 0 240 240" fill="currentColor">
+                      <path d="M120,0 C53.8,0 0,53.8 0,120 S53.8,240 120,240 S240,186.2 240,120 S186.2,0 120,0z M171.1,79 L155.5,156 C154.3,162.4 150.6,163.9 145.4,160.9 L116.4,140.1 L102.3,153.6 C100.9,155 99.7,156.2 96.9,156.2 L98.7,126.7 L152.5,79.2 C154.7,77.3 152,76.2 149,78.1 L81.6,118.7 L53,110 C46.8,108 46.6,103.8 54.3,100.8 L164.9,61.5 C170.1,59.5 174.7,62.5 171.1,79z"/>
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      {account.username ? (
+                        <p className="text-sm font-medium">@{account.username}</p>
+                      ) : (
+                        <p className="text-sm font-medium">{account.firstName} {account.lastName || ''}</p>
+                      )}
+                      <Badge variant={account.isNotificationsEnabled ? "default" : "secondary"} className={account.isNotificationsEnabled ? "text-xs bg-green-600 hover:bg-green-700" : "text-xs"}>
+                        {account.isNotificationsEnabled ? 'Уведомления вкл' : 'Уведомления выкл'}
+                      </Badge>
+                    </div>
+                    {account.username && (
+                      <p className="text-xs text-muted-foreground">
+                        {account.firstName} {account.lastName || ''}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2 mt-2">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor={`notifications-${account.id}`} className="text-xs cursor-pointer">
+                          Уведомления
+                        </Label>
+                        <Switch
+                          id={`notifications-${account.id}`}
+                          checked={account.isNotificationsEnabled}
+                          onCheckedChange={(checked) => handleToggleNotifications(account, checked)}
+                          className="data-[state=checked]:bg-green-600"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2 shrink-0">
+                    {account.conversations && account.conversations.some(c => c.status === 'OPEN') && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleWriteToTelegram(account)}
+                      >
+                        <Send className="h-3 w-3 mr-1" />
+                        Написать
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleUnlinkAccount(account)}
+                      className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    >
+                      <Unlink className="h-3 w-3 mr-1" />
+                      Отвязать
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Статус и источник */}
         {(client.status || client.leadSourceId || client.benefitCategoryId) && (
           <div className="pt-4 border-t space-y-3">
@@ -625,6 +758,25 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
           </div>
         </div>
       </CardContent>
+
+      {/* Диалог подтверждения отвязки */}
+      <AlertDialog open={unlinkDialogOpen} onOpenChange={setUnlinkDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Отвязать Telegram аккаунт?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы уверены, что хотите отвязать аккаунт {accountToUnlink?.username ? `@${accountToUnlink.username}` : accountToUnlink?.firstName}?
+              История сообщений будет сохранена, но аккаунт больше не будет связан с этим клиентом.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmUnlink} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Отвязать
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

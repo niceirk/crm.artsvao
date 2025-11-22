@@ -8,9 +8,16 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Calendar, Settings, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Combobox } from '@/components/ui/combobox';
 import { schedulesApi, type CreateRecurringScheduleDto } from '@/lib/api/schedules';
 import { WeeklyScheduleItem, DAY_LABELS, DAYS_OF_WEEK } from '@/lib/types/weekly-schedule';
 import { toast } from '@/lib/utils/toast';
+
+interface Room {
+  id: string;
+  name: string;
+  number?: string;
+}
 
 interface MonthPlannerProps {
   groupId: string;
@@ -18,7 +25,9 @@ interface MonthPlannerProps {
   duration?: number;
   teacherId: string;
   roomId?: string;
+  rooms?: Room[];
   onSuccess?: () => void;
+  initialMonth?: string;
 }
 
 // Преобразование дней недели из нашего формата в формат API (0=Sunday)
@@ -41,18 +50,21 @@ export function MonthPlanner({
   duration = 90,
   teacherId,
   roomId,
+  rooms = [],
   onSuccess,
+  initialMonth,
 }: MonthPlannerProps) {
   const [loading, setLoading] = useState(false);
   const [isCustomMode, setIsCustomMode] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() => {
+    if (initialMonth) return initialMonth;
     const now = new Date();
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     return `${year}-${month}`;
   });
 
-  // Храним расписание для каждого дня: { day: startTime }
+  // Храним расписание для каждого дня: { day: startTime, roomId }
   const [customSchedule, setCustomSchedule] = useState<WeeklyScheduleItem[]>([]);
   const [autoEnroll, setAutoEnroll] = useState(true);
 
@@ -97,14 +109,32 @@ export function MonthPlanner({
     return item?.startTime || '09:00';
   };
 
+  // Получаем roomId для дня
+  const getRoomId = (day: typeof DAYS_OF_WEEK[number]): string | undefined => {
+    const item = customSchedule.find((item) => item.day === day);
+    return item?.roomId;
+  };
+
+  // Получаем объект Room по ID
+  const getRoomById = (roomId?: string): Room | undefined => {
+    if (!roomId) return undefined;
+    return rooms.find(r => r.id === roomId);
+  };
+
+  // Форматируем название помещения
+  const formatRoomName = (room?: Room): string => {
+    if (!room) return '';
+    return room.number ? `${room.name} (${room.number})` : room.name;
+  };
+
   // Переключение дня
   const toggleDay = (day: typeof DAYS_OF_WEEK[number]) => {
     if (isDayEnabled(day)) {
       // Убираем день
       setCustomSchedule(customSchedule.filter((item) => item.day !== day));
     } else {
-      // Добавляем день с временем по умолчанию
-      setCustomSchedule([...customSchedule, { day, startTime: '09:00' }]);
+      // Добавляем день с временем и помещением по умолчанию
+      setCustomSchedule([...customSchedule, { day, startTime: '09:00', roomId }]);
     }
   };
 
@@ -112,6 +142,13 @@ export function MonthPlanner({
   const updateStartTime = (day: typeof DAYS_OF_WEEK[number], startTime: string) => {
     setCustomSchedule(
       customSchedule.map((item) => (item.day === day ? { ...item, startTime } : item))
+    );
+  };
+
+  // Изменение помещения для дня
+  const updateRoomId = (day: typeof DAYS_OF_WEEK[number], roomId: string | undefined) => {
+    setCustomSchedule(
+      customSchedule.map((item) => (item.day === day ? { ...item, roomId } : item))
     );
   };
 
@@ -158,31 +195,41 @@ export function MonthPlanner({
       const { startDate, endDate } = getMonthDates();
       console.log('Month dates:', { startDate, endDate });
 
-      // Группируем дни по времени для оптимизации запросов
-      const timeGroups = new Map<string, typeof DAYS_OF_WEEK[number][]>();
+      // Группируем дни по комбинации времени + помещения для оптимизации запросов
+      const scheduleGroups = new Map<string, { days: typeof DAYS_OF_WEEK[number][], roomId?: string }>();
 
       scheduleToUse.forEach((item) => {
-        const timeKey = item.startTime;
-        if (!timeGroups.has(timeKey)) {
-          timeGroups.set(timeKey, []);
+        // Используем roomId из элемента расписания, если есть, иначе roomId из props (группы)
+        const itemRoomId = item.roomId || roomId;
+        const groupKey = `${item.startTime}|${itemRoomId || ''}`;
+
+        if (!scheduleGroups.has(groupKey)) {
+          scheduleGroups.set(groupKey, { days: [], roomId: itemRoomId });
         }
-        timeGroups.get(timeKey)!.push(item.day);
+        scheduleGroups.get(groupKey)!.days.push(item.day);
       });
 
-      console.log('Time groups:', Array.from(timeGroups.entries()));
+      console.log('Schedule groups:', Array.from(scheduleGroups.entries()));
 
-      // Создаем расписание для каждой группы времени
+      // Создаем расписание для каждой группы (время + помещение)
       let totalCreated = 0;
       let totalSkipped = 0;
 
-      for (const [startTime, days] of timeGroups) {
+      for (const [groupKey, { days, roomId: groupRoomId }] of scheduleGroups) {
+        const startTime = groupKey.split('|')[0];
         const endTime = calculateEndTime(startTime, duration);
         const daysOfWeek = days.map(dayToApiDay);
+
+        // Проверяем, что помещение указано
+        if (!groupRoomId) {
+          toast.error(`Помещение не указано для дней: ${days.map(d => DAY_LABELS[d]).join(', ')}`);
+          continue;
+        }
 
         const data: CreateRecurringScheduleDto = {
           groupId,
           teacherId,
-          roomId,
+          roomId: groupRoomId,
           type: 'GROUP_CLASS',
           recurrenceRule: {
             daysOfWeek,
@@ -238,7 +285,7 @@ export function MonthPlanner({
     }
   };
 
-  // Компактный режим показываем только если есть базовый паттерн И не включен режим настройки
+  // Компактный режим показываем только если есть базовый шаблон И не включен режим настройки
   const showCompactMode = hasWeeklySchedule && !isCustomMode;
 
   return (
@@ -249,7 +296,7 @@ export function MonthPlanner({
             <CardTitle>Планирование расписания</CardTitle>
             <CardDescription>
               {showCompactMode
-                ? 'Создайте занятия на месяц по базовому паттерну'
+                ? 'Создайте занятия на месяц по базовому шаблону'
                 : 'Настройте дни и время для создания расписания'}
             </CardDescription>
           </div>
@@ -321,9 +368,9 @@ export function MonthPlanner({
               </div>
             </div>
 
-            {/* Информация о базовом паттерне */}
+            {/* Информация о базовом шаблоне */}
             <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-3">
-              <p className="text-sm font-medium">Базовый паттерн расписания:</p>
+              <p className="text-sm font-medium">Базовый шаблон расписания:</p>
 
               {/* Компактное отображение расписания */}
               <div className="grid grid-cols-7 gap-2">
@@ -424,6 +471,7 @@ export function MonthPlanner({
                 {DAYS_OF_WEEK.map((day) => {
                   const enabled = isDayEnabled(day);
                   const startTime = getStartTime(day);
+                  const dayRoomId = getRoomId(day);
                   const endTime = duration ? calculateEndTime(startTime, duration) : '';
 
                   return (
@@ -446,7 +494,7 @@ export function MonthPlanner({
                         </Label>
                       </div>
 
-                      {/* Время */}
+                      {/* Время и помещение */}
                       {enabled ? (
                         <div className="flex flex-col items-center gap-2 w-full">
                           <Input
@@ -459,6 +507,24 @@ export function MonthPlanner({
                             <Badge variant="outline" className="text-xs w-full justify-center tabular-nums">
                               {endTime}
                             </Badge>
+                          )}
+
+                          {/* Селектор помещения */}
+                          {rooms.length > 0 && (
+                            <Combobox
+                              options={rooms.map((room) => ({
+                                value: room.id,
+                                label: formatRoomName(room),
+                              }))}
+                              value={dayRoomId}
+                              onValueChange={(value) => updateRoomId(day, value)}
+                              placeholder="Помещение"
+                              searchPlaceholder="Поиск помещения..."
+                              emptyText="Помещение не найдено"
+                              className="w-full h-8 text-xs"
+                              allowEmpty={true}
+                              emptyLabel="Не выбрано"
+                            />
                           )}
                         </div>
                       ) : (

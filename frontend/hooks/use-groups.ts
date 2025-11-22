@@ -1,11 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { groupsApi, Group, CreateGroupDto, UpdateGroupDto } from '@/lib/api/groups';
+import { groupsApi, Group, CreateGroupDto, UpdateGroupDto, GroupFilters } from '@/lib/api/groups';
 import { toast } from '@/lib/utils/toast';
 
-export const useGroups = () => {
+export const useGroups = (filters?: GroupFilters) => {
   return useQuery({
-    queryKey: ['groups'],
-    queryFn: groupsApi.getGroups,
+    queryKey: ['groups', filters],
+    queryFn: () => groupsApi.getGroups(filters),
   });
 };
 

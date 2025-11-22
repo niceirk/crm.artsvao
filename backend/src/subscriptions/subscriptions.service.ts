@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { InvoicesService } from '../invoices/invoices.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { GroupsService } from '../groups/groups.service';
 import { SellSubscriptionDto } from './dto/sell-subscription.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { SubscriptionFilterDto } from './dto/subscription-filter.dto';
@@ -11,6 +13,9 @@ export class SubscriptionsService {
   constructor(
     private prisma: PrismaService,
     private invoicesService: InvoicesService,
+    private notificationsService: NotificationsService,
+    @Inject(forwardRef(() => GroupsService))
+    private groupsService: GroupsService,
   ) {}
 
   /**
@@ -112,7 +117,43 @@ export class SubscriptionsService {
       },
     });
 
-    // 6. Создать Invoice с InvoiceItem
+    // 6. Автоматически добавить клиента в группу (если его там нет)
+    try {
+      const existingMember = await this.prisma.groupMember.findUnique({
+        where: {
+          groupId_clientId: {
+            groupId: sellDto.groupId,
+            clientId: sellDto.clientId,
+          },
+        },
+      });
+
+      if (!existingMember) {
+        const memberResult = await this.groupsService.addMember(
+          sellDto.groupId,
+          sellDto.clientId,
+        );
+
+        if (memberResult.waitlisted) {
+          console.log(
+            `⚠️ Client ${sellDto.clientId} added to waitlist (position ${memberResult.position}) for group ${sellDto.groupId}`,
+          );
+        } else {
+          console.log(
+            `✅ Client ${sellDto.clientId} automatically added to group ${sellDto.groupId}`,
+          );
+        }
+      } else {
+        console.log(
+          `ℹ️ Client ${sellDto.clientId} is already a member of group ${sellDto.groupId}`,
+        );
+      }
+    } catch (error) {
+      console.error('Failed to add client to group:', error);
+      // Не прерываем выполнение если не удалось добавить в группу
+    }
+
+    // 7. Создать Invoice с InvoiceItem
     try {
       const invoice = await this.invoicesService.create(
         {
@@ -144,6 +185,19 @@ export class SubscriptionsService {
     } catch (error) {
       console.error('Failed to create invoice for subscription:', error);
       // Не удаляем абонемент если счет не создался - можно создать вручную
+    }
+
+    // Отправить уведомление клиенту о покупке абонемента
+    try {
+      await this.notificationsService.sendSubscriptionPurchaseConfirmation(
+        subscription.id,
+      );
+    } catch (error) {
+      console.error(
+        'Failed to send subscription purchase notification:',
+        error,
+      );
+      // Не прерываем выполнение если уведомление не отправилось
     }
 
     return subscription;

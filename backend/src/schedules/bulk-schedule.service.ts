@@ -589,42 +589,51 @@ export class BulkScheduleService {
 
   /**
    * Auto-enroll clients to schedule
+   * Записывает всех ACTIVE участников группы (независимо от абонемента)
    */
   private async enrollClientsToSchedule(
     scheduleId: string,
     groupId: string,
     scheduleDate: Date,
   ): Promise<number> {
-    const scheduleMonth = this.formatMonth(scheduleDate);
-
-    const activeSubscriptions = await this.prisma.subscription.findMany({
+    // Получить всех ACTIVE участников группы
+    const activeMembers = await this.prisma.groupMember.findMany({
       where: {
         groupId,
         status: 'ACTIVE',
-        validMonth: scheduleMonth,
       },
       include: {
         client: true,
       },
     });
 
-    if (activeSubscriptions.length === 0) {
+    if (activeMembers.length === 0) {
       return 0;
     }
 
     let enrolledCount = 0;
 
-    for (const subscription of activeSubscriptions) {
-      await this.prisma.attendance.create({
-        data: {
+    for (const member of activeMembers) {
+      // Проверить, не записан ли уже клиент на это занятие
+      const existingAttendance = await this.prisma.attendance.findFirst({
+        where: {
           scheduleId,
-          clientId: subscription.clientId,
-          status: 'PRESENT',
-          subscriptionDeducted: false,
+          clientId: member.clientId,
         },
       });
 
-      enrolledCount++;
+      if (!existingAttendance) {
+        await this.prisma.attendance.create({
+          data: {
+            scheduleId,
+            clientId: member.clientId,
+            status: 'PRESENT',
+            subscriptionDeducted: false,
+          },
+        });
+
+        enrolledCount++;
+      }
     }
 
     return enrolledCount;

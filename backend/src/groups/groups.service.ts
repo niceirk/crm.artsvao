@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
+import { GroupFilterDto } from './dto/group-filter.dto';
 
 @Injectable()
 export class GroupsService {
@@ -67,40 +68,126 @@ export class GroupsService {
     });
   }
 
-  async findAll() {
-    return this.prisma.group.findMany({
-      orderBy: { name: 'asc' },
-      include: {
-        studio: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
+  async findAll(filterDto: GroupFilterDto = {}) {
+    const {
+      search,
+      studioId,
+      teacherId,
+      roomId,
+      status,
+      isPaid,
+      ageRange,
+      sortBy = 'name',
+      sortOrder = 'asc',
+      page = 1,
+      limit = 20,
+    } = filterDto;
+
+    // Построение where условий
+    const where: any = {};
+
+    if (search) {
+      where.name = { contains: search, mode: 'insensitive' };
+    }
+
+    if (studioId) {
+      where.studioId = studioId;
+    }
+
+    if (teacherId) {
+      where.teacherId = teacherId;
+    }
+
+    if (roomId) {
+      where.roomId = roomId;
+    }
+
+    if (status) {
+      where.status = status;
+    }
+
+    if (isPaid !== undefined) {
+      where.isPaid = isPaid;
+    }
+
+    // Фильтр по возрастным категориям
+    if (ageRange && ageRange !== 'all') {
+      switch (ageRange) {
+        case 'child':
+          where.AND = [
+            { OR: [{ ageMin: { lte: 12 } }, { ageMin: null }] },
+            { OR: [{ ageMax: { gte: 0 } }, { ageMax: null }] },
+          ];
+          break;
+        case 'teen':
+          where.AND = [
+            { OR: [{ ageMin: { lte: 17 } }, { ageMin: null }] },
+            { OR: [{ ageMax: { gte: 13 } }, { ageMax: null }] },
+          ];
+          break;
+        case 'adult':
+          where.OR = [{ ageMin: { gte: 18 } }, { ageMin: null }];
+          break;
+      }
+    }
+
+    // Пагинация
+    const skip = (page - 1) * limit;
+
+    // Сортировка
+    const orderBy: any = {};
+    orderBy[sortBy] = sortOrder;
+
+    // Выполнение запроса
+    const [data, total] = await Promise.all([
+      this.prisma.group.findMany({
+        where,
+        orderBy,
+        skip,
+        take: limit,
+        include: {
+          studio: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+            },
+          },
+          teacher: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          room: {
+            select: {
+              id: true,
+              name: true,
+              number: true,
+            },
+          },
+          _count: {
+            select: {
+              schedules: true,
+              subscriptions: true,
+              subscriptionTypes: true,
+            },
           },
         },
-        teacher: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        room: {
-          select: {
-            id: true,
-            name: true,
-            number: true,
-          },
-        },
-        _count: {
-          select: {
-            schedules: true,
-            subscriptions: true,
-            subscriptionTypes: true,
-          },
-        },
+      }),
+      this.prisma.group.count({ where }),
+    ]);
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
       },
-    });
+    };
   }
 
   async findOne(id: string) {
@@ -239,14 +326,19 @@ export class GroupsService {
     });
   }
 
-  async getGroupMembers(groupId: string) {
+  async getGroupMembers(groupId: string, status?: 'ACTIVE' | 'WAITLIST' | 'EXPELLED') {
     await this.findOne(groupId); // Check if group exists
 
-    return this.prisma.subscription.findMany({
-      where: {
-        groupId,
-        status: 'ACTIVE',
-      },
+    const where: any = { groupId };
+    if (status) {
+      where.status = status;
+    } else {
+      // По умолчанию возвращаем только активных участников
+      where.status = 'ACTIVE';
+    }
+
+    return this.prisma.groupMember.findMany({
+      where,
       include: {
         client: {
           select: {
@@ -257,21 +349,20 @@ export class GroupsService {
             phone: true,
             email: true,
             photoUrl: true,
-          },
-        },
-        subscriptionType: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
+            dateOfBirth: true,
           },
         },
       },
-      orderBy: {
-        client: {
-          lastName: 'asc',
+      orderBy: [
+        {
+          waitlistPosition: 'asc', // Сначала по позиции в очереди (для WAITLIST)
         },
-      },
+        {
+          client: {
+            lastName: 'asc',
+          },
+        },
+      ],
     });
   }
 
@@ -354,5 +445,349 @@ export class GroupsService {
         date: 'asc',
       },
     });
+  }
+
+  async getScheduledMonths(groupId: string) {
+    // Verify group exists
+    await this.findOne(groupId);
+
+    // Get all schedules for this group
+    const schedules = await this.prisma.schedule.findMany({
+      where: {
+        groupId,
+        isRecurring: false,
+      },
+      select: {
+        date: true,
+      },
+      orderBy: {
+        date: 'asc',
+      },
+    });
+
+    // Group schedules by month
+    const monthsMap = new Map<string, { count: number; firstDate: Date; lastDate: Date }>();
+
+    schedules.forEach(schedule => {
+      const date = new Date(schedule.date);
+      const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+      if (!monthsMap.has(yearMonth)) {
+        monthsMap.set(yearMonth, {
+          count: 1,
+          firstDate: date,
+          lastDate: date,
+        });
+      } else {
+        const monthData = monthsMap.get(yearMonth);
+        monthData.count++;
+        if (date < monthData.firstDate) monthData.firstDate = date;
+        if (date > monthData.lastDate) monthData.lastDate = date;
+      }
+    });
+
+    // Convert map to array and format the response
+    return Array.from(monthsMap.entries()).map(([yearMonth, data]) => ({
+      yearMonth,
+      count: data.count,
+      firstDate: data.firstDate.toISOString(),
+      lastDate: data.lastDate.toISOString(),
+    }));
+  }
+
+  // ===== Методы для управления участниками группы =====
+
+  async checkAvailability(groupId: string) {
+    const group = await this.findOne(groupId);
+
+    const activeCount = await this.prisma.groupMember.count({
+      where: {
+        groupId,
+        status: 'ACTIVE',
+      },
+    });
+
+    return {
+      total: group.maxParticipants,
+      occupied: activeCount,
+      available: group.maxParticipants - activeCount,
+      isFull: activeCount >= group.maxParticipants,
+    };
+  }
+
+  async addMember(groupId: string, clientId: string) {
+    // Проверить что группа существует
+    const group = await this.findOne(groupId);
+
+    // Проверить что клиент существует
+    const client = await this.prisma.client.findUnique({
+      where: { id: clientId },
+    });
+    if (!client) {
+      throw new NotFoundException(`Client with ID ${clientId} not found`);
+    }
+
+    // Проверить, не является ли клиент уже участником
+    const existingMember = await this.prisma.groupMember.findUnique({
+      where: {
+        groupId_clientId: {
+          groupId,
+          clientId,
+        },
+      },
+    });
+
+    if (existingMember) {
+      if (existingMember.status === 'EXPELLED') {
+        // Если был отчислен, можно восстановить
+        throw new BadRequestException(
+          'Client was previously expelled from this group. Please restore membership first.',
+        );
+      }
+      throw new BadRequestException('Client is already a member of this group');
+    }
+
+    // Проверить доступность мест
+    const availability = await this.checkAvailability(groupId);
+
+    if (availability.isFull) {
+      // Добавить в лист ожидания
+      const lastWaitlistPosition = await this.prisma.groupMember.findFirst({
+        where: {
+          groupId,
+          status: 'WAITLIST',
+        },
+        orderBy: {
+          waitlistPosition: 'desc',
+        },
+      });
+
+      const waitlistPosition = (lastWaitlistPosition?.waitlistPosition || 0) + 1;
+
+      return {
+        member: await this.prisma.groupMember.create({
+          data: {
+            groupId,
+            clientId,
+            status: 'WAITLIST',
+            waitlistPosition,
+          },
+          include: {
+            client: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                middleName: true,
+                phone: true,
+                email: true,
+                photoUrl: true,
+              },
+            },
+          },
+        }),
+        waitlisted: true,
+        position: waitlistPosition,
+      };
+    }
+
+    // Добавить как активного участника
+    return {
+      member: await this.prisma.groupMember.create({
+        data: {
+          groupId,
+          clientId,
+          status: 'ACTIVE',
+        },
+        include: {
+          client: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              middleName: true,
+              phone: true,
+              email: true,
+              photoUrl: true,
+            },
+          },
+        },
+      }),
+      waitlisted: false,
+    };
+  }
+
+  async removeMember(memberId: string) {
+    const member = await this.prisma.groupMember.findUnique({
+      where: { id: memberId },
+    });
+
+    if (!member) {
+      throw new NotFoundException('Group member not found');
+    }
+
+    // Отчисляем участника
+    const updatedMember = await this.prisma.groupMember.update({
+      where: { id: memberId },
+      data: {
+        status: 'EXPELLED',
+        leftAt: new Date(),
+      },
+    });
+
+    // Если был активный участник, автоматически переводим первого из листа ожидания
+    if (member.status === 'ACTIVE') {
+      await this.promoteFromWaitlist(member.groupId);
+    }
+
+    return updatedMember;
+  }
+
+  async getWaitlist(groupId: string) {
+    await this.findOne(groupId); // Check if group exists
+
+    return this.prisma.groupMember.findMany({
+      where: {
+        groupId,
+        status: 'WAITLIST',
+      },
+      include: {
+        client: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            middleName: true,
+            phone: true,
+            email: true,
+            photoUrl: true,
+          },
+        },
+      },
+      orderBy: {
+        waitlistPosition: 'asc',
+      },
+    });
+  }
+
+  async promoteFromWaitlist(groupId: string) {
+    // Проверить доступность мест
+    const availability = await this.checkAvailability(groupId);
+
+    if (availability.isFull) {
+      return null; // Нет свободных мест
+    }
+
+    // Найти первого в листе ожидания
+    const firstInWaitlist = await this.prisma.groupMember.findFirst({
+      where: {
+        groupId,
+        status: 'WAITLIST',
+      },
+      orderBy: {
+        waitlistPosition: 'asc',
+      },
+    });
+
+    if (!firstInWaitlist) {
+      return null; // Лист ожидания пуст
+    }
+
+    // Перевести в активные участники
+    const promoted = await this.prisma.groupMember.update({
+      where: { id: firstInWaitlist.id },
+      data: {
+        status: 'ACTIVE',
+        waitlistPosition: null,
+        promotedFromWaitlistAt: new Date(),
+      },
+      include: {
+        client: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            middleName: true,
+            phone: true,
+            email: true,
+            photoUrl: true,
+          },
+        },
+      },
+    });
+
+    // Обновить позиции оставшихся в листе ожидания
+    const remainingWaitlist = await this.prisma.groupMember.findMany({
+      where: {
+        groupId,
+        status: 'WAITLIST',
+      },
+      orderBy: {
+        waitlistPosition: 'asc',
+      },
+    });
+
+    for (let i = 0; i < remainingWaitlist.length; i++) {
+      await this.prisma.groupMember.update({
+        where: { id: remainingWaitlist[i].id },
+        data: {
+          waitlistPosition: i + 1,
+        },
+      });
+    }
+
+    return promoted;
+  }
+
+  async updateMemberStatus(
+    memberId: string,
+    status: 'ACTIVE' | 'WAITLIST' | 'EXPELLED',
+  ) {
+    const member = await this.prisma.groupMember.findUnique({
+      where: { id: memberId },
+    });
+
+    if (!member) {
+      throw new NotFoundException('Group member not found');
+    }
+
+    const updateData: any = { status };
+
+    if (status === 'EXPELLED') {
+      updateData.leftAt = new Date();
+    } else if (status === 'ACTIVE' && member.status === 'WAITLIST') {
+      // Проверить доступность мест
+      const availability = await this.checkAvailability(member.groupId);
+      if (availability.isFull) {
+        throw new BadRequestException('Group is full. Cannot promote to active member.');
+      }
+      updateData.waitlistPosition = null;
+      updateData.promotedFromWaitlistAt = new Date();
+    }
+
+    const updated = await this.prisma.groupMember.update({
+      where: { id: memberId },
+      data: updateData,
+      include: {
+        client: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            middleName: true,
+            phone: true,
+            email: true,
+            photoUrl: true,
+          },
+        },
+      },
+    });
+
+    // Если переведен из ACTIVE в другой статус, попробовать перевести кого-то из листа ожидания
+    if (member.status === 'ACTIVE' && status !== 'ACTIVE') {
+      await this.promoteFromWaitlist(member.groupId);
+    }
+
+    return updated;
   }
 }

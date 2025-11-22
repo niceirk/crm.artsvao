@@ -13,6 +13,7 @@ import type {
   UpdateClientDocumentDto,
   DocumentType,
   DocumentTypesConfig,
+  TelegramAccount,
 } from '../types/clients';
 
 /**
@@ -214,5 +215,37 @@ export const deleteClientDocument = async (
  */
 export const getDocumentTypesConfig = async (): Promise<DocumentTypesConfig> => {
   const response = await apiClient.get<DocumentTypesConfig>('/document-types');
+  return response.data;
+};
+
+// ============================================
+// API для работы с Telegram аккаунтами клиентов
+// ============================================
+
+/**
+ * Отвязать Telegram аккаунт от клиента
+ */
+export const unlinkTelegramAccount = async (
+  clientId: string,
+  accountId: string
+): Promise<TelegramAccount> => {
+  const response = await apiClient.delete<TelegramAccount>(
+    `/clients/${clientId}/telegram-accounts/${accountId}`
+  );
+  return response.data;
+};
+
+/**
+ * Переключить уведомления для Telegram аккаунта
+ */
+export const toggleTelegramNotifications = async (
+  clientId: string,
+  accountId: string,
+  enabled: boolean
+): Promise<TelegramAccount> => {
+  const response = await apiClient.patch<TelegramAccount>(
+    `/clients/${clientId}/telegram-accounts/${accountId}/notifications`,
+    { enabled }
+  );
   return response.data;
 };

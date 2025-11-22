@@ -35,8 +35,8 @@ import { Group } from '@/lib/api/groups';
 import { useDeleteGroup, useCreateGroup } from '@/hooks/use-groups';
 import { GroupDialog } from './group-dialog';
 
-const statusColors: Record<string, 'default' | 'secondary' | 'destructive'> = {
-  ACTIVE: 'default',
+const statusColors: Record<string, 'default' | 'secondary' | 'destructive' | 'success'> = {
+  ACTIVE: 'success',
   INACTIVE: 'secondary',
   ARCHIVED: 'destructive',
 };
@@ -82,6 +82,7 @@ export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
       studioId: group.studioId,
       teacherId: group.teacherId,
       roomId: group.roomId || undefined,
+      isPaid: group.isPaid,
     };
     await createGroup.mutateAsync(copyData);
   };
@@ -143,14 +144,14 @@ export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
           <TableHeader>
             <TableRow>
               <TableHead>Название</TableHead>
+              <TableHead>Тип</TableHead>
+              <TableHead>Статус</TableHead>
               <TableHead>Студия</TableHead>
               <TableHead>Преподаватель</TableHead>
               <TableHead>Возраст</TableHead>
               <TableHead>Помещение</TableHead>
               <TableHead>Участников</TableHead>
               <TableHead>Цена</TableHead>
-              <TableHead>Расписание</TableHead>
-              <TableHead>Статус</TableHead>
               <TableHead className="w-[70px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -162,6 +163,16 @@ export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
                 onClick={() => handleRowClick(group.id)}
               >
                 <TableCell className="font-medium">{group.name}</TableCell>
+                <TableCell>
+                  <Badge variant={group.isPaid !== false ? 'default' : 'success'}>
+                    {group.isPaid !== false ? 'Платно' : 'Бесплатно'}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  <Badge variant={statusColors[group.status]}>
+                    {statusLabels[group.status]}
+                  </Badge>
+                </TableCell>
                 <TableCell>{group.studio?.name || '—'}</TableCell>
                 <TableCell>{getTeacherFullName(group.teacher)}</TableCell>
                 <TableCell>{getAgeRange(group)}</TableCell>
@@ -171,14 +182,6 @@ export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
                 </TableCell>
                 <TableCell>
                   {Number(group.singleSessionPrice).toLocaleString()} ₽
-                </TableCell>
-                <TableCell>
-                  {group._count?.schedules || 0}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={statusColors[group.status]}>
-                    {statusLabels[group.status]}
-                  </Badge>
                 </TableCell>
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   <DropdownMenu>

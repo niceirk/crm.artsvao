@@ -1,5 +1,11 @@
 import { apiClient } from './client';
 import { WeeklyScheduleItem } from '../types/weekly-schedule';
+import {
+  GroupMember as NewGroupMember,
+  GroupMemberStatus,
+  GroupAvailability,
+  AddMemberResult
+} from '../types/groups';
 
 export interface Group {
   id: string;
@@ -10,6 +16,7 @@ export interface Group {
   ageMax?: number;
   duration?: number; // Длительность занятия в минутах
   weeklySchedule?: WeeklyScheduleItem[]; // Паттерн расписания
+  isPaid?: boolean;
   status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
   studioId: string;
   teacherId: string;
@@ -44,6 +51,7 @@ export interface CreateGroupDto {
   ageMax?: number;
   duration?: number;
   weeklySchedule?: WeeklyScheduleItem[];
+  isPaid?: boolean;
   status?: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
   studioId: string;
   teacherId: string;
@@ -51,6 +59,30 @@ export interface CreateGroupDto {
 }
 
 export interface UpdateGroupDto extends Partial<CreateGroupDto> {}
+
+export interface GroupFilters {
+  search?: string;
+  studioId?: string;
+  teacherId?: string;
+  roomId?: string;
+  status?: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';
+  isPaid?: boolean;
+  ageRange?: 'child' | 'teen' | 'adult' | 'all';
+  sortBy?: 'name' | 'createdAt' | 'ageMin' | 'maxParticipants';
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  limit?: number;
+}
+
+export interface PaginatedGroupsResponse {
+  data: Group[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
 
 export interface GroupMember {
   id: string; // subscription id
@@ -89,9 +121,16 @@ export interface AddMemberDto {
   purchasedMonths?: number;
 }
 
+export interface ScheduledMonth {
+  yearMonth: string; // Формат "YYYY-MM", например "2025-11"
+  count: number; // Количество занятий в этом месяце
+  firstDate: string; // ISO дата первого занятия
+  lastDate: string; // ISO дата последнего занятия
+}
+
 export const groupsApi = {
-  getGroups: async (): Promise<Group[]> => {
-    const { data } = await apiClient.get('/groups');
+  getGroups: async (filters?: GroupFilters): Promise<PaginatedGroupsResponse> => {
+    const { data } = await apiClient.get('/groups', { params: filters });
     return data;
   },
 
@@ -114,25 +153,47 @@ export const groupsApi = {
     await apiClient.delete(`/groups/${id}`);
   },
 
-  // Новые методы для детальной страницы группы
-  getGroupMembers: async (groupId: string): Promise<GroupMember[]> => {
-    const { data } = await apiClient.get(`/groups/${groupId}/members`);
+  // Методы для работы с участниками группы
+  getGroupMembers: async (groupId: string, status?: GroupMemberStatus): Promise<NewGroupMember[]> => {
+    const { data } = await apiClient.get(`/groups/${groupId}/members`, {
+      params: status ? { status } : undefined,
+    });
     return data;
   },
 
-  addGroupMember: async (groupId: string, memberData: AddMemberDto): Promise<GroupMember> => {
-    const { data } = await apiClient.post(`/groups/${groupId}/members`, memberData);
+  checkGroupAvailability: async (groupId: string): Promise<GroupAvailability> => {
+    const { data } = await apiClient.get(`/groups/${groupId}/availability`);
     return data;
   },
 
-  removeGroupMember: async (groupId: string, clientId: string): Promise<void> => {
-    await apiClient.delete(`/groups/${groupId}/members/${clientId}`);
+  addGroupMember: async (groupId: string, clientId: string): Promise<AddMemberResult> => {
+    const { data } = await apiClient.post(`/groups/${groupId}/members`, { clientId });
+    return data;
+  },
+
+  removeGroupMember: async (memberId: string): Promise<void> => {
+    await apiClient.delete(`/groups/members/${memberId}`);
+  },
+
+  getGroupWaitlist: async (groupId: string): Promise<NewGroupMember[]> => {
+    const { data } = await apiClient.get(`/groups/${groupId}/waitlist`);
+    return data;
+  },
+
+  updateMemberStatus: async (memberId: string, status: GroupMemberStatus): Promise<NewGroupMember> => {
+    const { data } = await apiClient.patch(`/groups/members/${memberId}/status`, { status });
+    return data;
   },
 
   getGroupMonthlySchedule: async (groupId: string, year: number, month: number): Promise<any[]> => {
     const { data } = await apiClient.get(`/groups/${groupId}/schedule/monthly`, {
       params: { year, month },
     });
+    return data;
+  },
+
+  getScheduledMonths: async (groupId: string): Promise<ScheduledMonth[]> => {
+    const { data } = await apiClient.get(`/groups/${groupId}/scheduled-months`);
     return data;
   },
 

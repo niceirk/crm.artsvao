@@ -1,4 +1,4 @@
-import { IsString, IsInt, IsEnum, IsOptional, IsNumber, IsUUID, Min, IsArray, ValidateNested } from 'class-validator';
+import { IsString, IsInt, IsEnum, IsOptional, IsNumber, IsUUID, Min, IsArray, ValidateNested, IsBoolean } from 'class-validator';
 import { GroupStatus } from '@prisma/client';
 import { Type } from 'class-transformer';
 
@@ -56,6 +56,10 @@ export class CreateGroupDto {
   @Type(() => WeeklyScheduleItemDto)
   @IsOptional()
   weeklySchedule?: WeeklyScheduleItemDto[];
+
+  @IsBoolean()
+  @IsOptional()
+  isPaid?: boolean;
 
   @IsEnum(GroupStatus)
   @IsOptional()

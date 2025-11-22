@@ -428,7 +428,7 @@ export function CalendarEventDialog({
                           </FormControl>
                           <SelectContent>
                             <SelectItem value="__none__">Не выбрано</SelectItem>
-                            {groups?.map((group) => (
+                            {groups?.data?.map((group) => (
                               <SelectItem key={group.id} value={group.id}>
                                 {group.name}
                               </SelectItem>

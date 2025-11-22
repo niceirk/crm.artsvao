@@ -277,6 +277,23 @@ export class ClientsService {
         documents: {
           orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
         },
+        telegramAccounts: {
+          select: {
+            id: true,
+            username: true,
+            firstName: true,
+            lastName: true,
+            isNotificationsEnabled: true,
+            createdAt: true,
+            conversations: {
+              select: {
+                id: true,
+                status: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+        },
       },
     });
 
@@ -418,5 +435,104 @@ export class ClientsService {
       // If phone format is invalid, return null
       return null;
     }
+  }
+
+  /**
+   * Отвязать Telegram аккаунт от клиента
+   */
+  async unlinkTelegramAccount(clientId: string, telegramAccountId: string, userId: string) {
+    // Проверяем, что клиент существует
+    await this.findOne(clientId);
+
+    // Проверяем, что Telegram аккаунт принадлежит клиенту
+    const telegramAccount = await this.prisma.telegramAccount.findUnique({
+      where: { id: telegramAccountId },
+    });
+
+    if (!telegramAccount) {
+      throw new NotFoundException(`Telegram account with ID ${telegramAccountId} not found`);
+    }
+
+    if (telegramAccount.clientId !== clientId) {
+      throw new NotFoundException(
+        `Telegram account ${telegramAccountId} does not belong to client ${clientId}`
+      );
+    }
+
+    // Отвязываем аккаунт (не удаляем, сохраняем историю сообщений)
+    const updatedAccount = await this.prisma.telegramAccount.update({
+      where: { id: telegramAccountId },
+      data: {
+        clientId: null,
+        state: 'GUEST',
+      },
+    });
+
+    // Логируем действие
+    await this.auditLog.log({
+      userId,
+      action: AuditAction.UPDATE,
+      entityType: 'Client',
+      entityId: clientId,
+      changes: {
+        action: 'unlink_telegram',
+        telegramAccountId,
+        username: telegramAccount.username,
+      },
+    });
+
+    return updatedAccount;
+  }
+
+  /**
+   * Переключить уведомления для Telegram аккаунта
+   */
+  async toggleNotifications(
+    clientId: string,
+    telegramAccountId: string,
+    enabled: boolean,
+    userId: string,
+  ) {
+    // Проверяем, что клиент существует
+    await this.findOne(clientId);
+
+    // Проверяем, что Telegram аккаунт принадлежит клиенту
+    const telegramAccount = await this.prisma.telegramAccount.findUnique({
+      where: { id: telegramAccountId },
+    });
+
+    if (!telegramAccount) {
+      throw new NotFoundException(`Telegram account with ID ${telegramAccountId} not found`);
+    }
+
+    if (telegramAccount.clientId !== clientId) {
+      throw new NotFoundException(
+        `Telegram account ${telegramAccountId} does not belong to client ${clientId}`
+      );
+    }
+
+    // Обновляем настройку уведомлений
+    const updatedAccount = await this.prisma.telegramAccount.update({
+      where: { id: telegramAccountId },
+      data: {
+        isNotificationsEnabled: enabled,
+      },
+    });
+
+    // Логируем действие
+    await this.auditLog.log({
+      userId,
+      action: AuditAction.UPDATE,
+      entityType: 'Client',
+      entityId: clientId,
+      changes: {
+        action: 'toggle_telegram_notifications',
+        telegramAccountId,
+        username: telegramAccount.username,
+        isNotificationsEnabled: enabled,
+      },
+    });
+
+    return updatedAccount;
   }
 }

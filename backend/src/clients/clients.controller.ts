@@ -15,6 +15,7 @@ import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
 import { ClientFilterDto } from './dto/client-filter.dto';
+import { ToggleNotificationsDto } from './dto/toggle-notifications.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('clients')
@@ -60,6 +61,25 @@ export class ClientsController {
     @Request() req,
   ) {
     return this.clientsService.update(id, updateClientDto, req.user.id);
+  }
+
+  @Delete(':id/telegram-accounts/:accountId')
+  unlinkTelegramAccount(
+    @Param('id') id: string,
+    @Param('accountId') accountId: string,
+    @Request() req,
+  ) {
+    return this.clientsService.unlinkTelegramAccount(id, accountId, req.user.id);
+  }
+
+  @Patch(':id/telegram-accounts/:accountId/notifications')
+  toggleNotifications(
+    @Param('id') id: string,
+    @Param('accountId') accountId: string,
+    @Body() dto: ToggleNotificationsDto,
+    @Request() req,
+  ) {
+    return this.clientsService.toggleNotifications(id, accountId, dto.enabled, req.user.id);
   }
 
   @Delete(':id')

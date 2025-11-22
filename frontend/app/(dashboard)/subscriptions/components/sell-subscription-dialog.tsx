@@ -269,7 +269,7 @@ export function SellSubscriptionDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {groups.map((group) => (
+                      {groups?.data?.map((group) => (
                         <SelectItem key={group.id} value={group.id}>
                           {group.name} ({group.studio.name})
                         </SelectItem>

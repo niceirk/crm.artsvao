@@ -13,8 +13,12 @@ import {
 import { GroupsService } from './groups.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
+import { GroupFilterDto } from './dto/group-filter.dto';
+import { AddMemberDto } from './dto/add-member.dto';
+import { UpdateMemberStatusDto } from './dto/update-member-status.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
+import { GroupMemberStatus } from '@prisma/client';
 
 @Controller('groups')
 @UseGuards(JwtAuthGuard)
@@ -28,13 +32,50 @@ export class GroupsController {
   }
 
   @Get()
-  findAll() {
-    return this.groupsService.findAll();
+  findAll(@Query(ValidationPipe) filterDto: GroupFilterDto) {
+    return this.groupsService.findAll(filterDto);
   }
 
   @Get(':id/members')
-  getGroupMembers(@Param('id') id: string) {
-    return this.groupsService.getGroupMembers(id);
+  getGroupMembers(
+    @Param('id') id: string,
+    @Query('status') status?: GroupMemberStatus,
+  ) {
+    return this.groupsService.getGroupMembers(id, status);
+  }
+
+  @Get(':id/availability')
+  checkAvailability(@Param('id') id: string) {
+    return this.groupsService.checkAvailability(id);
+  }
+
+  @Get(':id/waitlist')
+  getWaitlist(@Param('id') id: string) {
+    return this.groupsService.getWaitlist(id);
+  }
+
+  @Post(':id/members')
+  @UseGuards(AdminGuard)
+  addMember(
+    @Param('id') groupId: string,
+    @Body(ValidationPipe) dto: AddMemberDto,
+  ) {
+    return this.groupsService.addMember(groupId, dto.clientId);
+  }
+
+  @Delete('members/:id')
+  @UseGuards(AdminGuard)
+  removeMember(@Param('id') memberId: string) {
+    return this.groupsService.removeMember(memberId);
+  }
+
+  @Patch('members/:id/status')
+  @UseGuards(AdminGuard)
+  updateMemberStatus(
+    @Param('id') memberId: string,
+    @Body(ValidationPipe) dto: UpdateMemberStatusDto,
+  ) {
+    return this.groupsService.updateMemberStatus(memberId, dto.status);
   }
 
   @Get(':id/schedule/monthly')
@@ -44,6 +85,11 @@ export class GroupsController {
     @Query('month') month: string,
   ) {
     return this.groupsService.getGroupMonthlySchedule(id, parseInt(year), parseInt(month));
+  }
+
+  @Get(':id/scheduled-months')
+  getScheduledMonths(@Param('id') id: string) {
+    return this.groupsService.getScheduledMonths(id);
   }
 
   @Get(':id')

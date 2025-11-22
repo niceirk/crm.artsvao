@@ -35,6 +35,9 @@ import { CalendarModule } from './calendar/calendar.module';
 import { HealthModule } from './health/health.module';
 import { PyrusModule } from './integrations/pyrus/pyrus.module';
 import { EmailModule } from './email/email.module';
+import { TelegramModule } from './telegram/telegram.module';
+import { MessagesModule } from './messages/messages.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -45,6 +48,9 @@ import { EmailModule } from './email/email.module';
     ScheduleModule.forRoot(),
     PrismaModule,
     EmailModule,
+    TelegramModule,
+    MessagesModule,
+    NotificationsModule,
     UsersModule,
     AuthModule,
     ClientsModule,

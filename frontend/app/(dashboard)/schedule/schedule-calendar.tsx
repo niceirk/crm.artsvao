@@ -404,28 +404,114 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     const currentDateStr = activeDate.toISOString().split('T')[0];
     const occupiedRoomIds = new Set<string>();
 
-    calendarEvents.forEach((event) => {
-      if (event.start && event.resourceId) {
-        let eventDateStr: string;
+    console.log('🔍 Filtering rooms for date:', currentDateStr);
+    console.log('📊 Data counts:', {
+      schedules: schedules.length,
+      rentals: rentals.length,
+      events: eventItems.length,
+      reservations: reservations.length
+    });
 
-        if (typeof event.start === 'string') {
-          eventDateStr = event.start.split('T')[0];
-        } else if (event.start instanceof Date) {
-          eventDateStr = event.start.toISOString().split('T')[0];
-        } else {
-          return;
-        }
+    // Логируем даты из данных для диагностики
+    const scheduleDates = schedules.map(s => s.date?.split('T')[0]).filter(Boolean);
+    const rentalDates = rentals.map(r => r.date?.split('T')[0]).filter(Boolean);
+    const eventDates = eventItems.map(e => e.date?.split('T')[0]).filter(Boolean);
+    const reservationDates = reservations.map(r => r.date?.split('T')[0]).filter(Boolean);
 
-        if (eventDateStr === currentDateStr) {
-          occupiedRoomIds.add(event.resourceId as string);
+    const allDates = [...new Set([...scheduleDates, ...rentalDates, ...eventDates, ...reservationDates])].sort();
+    console.log('📅 Available dates in data:', allDates);
+
+    // Логируем события на текущую дату (для диагностики)
+    const eventsOnDate = eventItems.filter(e => e.date?.split('T')[0] === currentDateStr);
+    const eventsOnDateWithRoom = eventsOnDate.filter(e => e.roomId);
+    const eventsOnDateWithoutRoom = eventsOnDate.filter(e => !e.roomId);
+    console.log(`📌 Events on ${currentDateStr}:`, {
+      total: eventsOnDate.length,
+      withRoom: eventsOnDateWithRoom.length,
+      withoutRoom: eventsOnDateWithoutRoom.length,
+      withoutRoomList: eventsOnDateWithoutRoom.map(e => ({ name: e.name, id: e.id }))
+    });
+
+    // Детальная проверка всех events за дату
+    console.log(`🔍 Detailed events for ${currentDateStr}:`, eventsOnDate.map(e => ({
+      id: e.id,
+      name: e.name,
+      roomId: e.roomId,
+      room: e.room,
+      date: e.date,
+      startTime: e.startTime,
+      endTime: e.endTime
+    })));
+
+    // Проверка: какие помещения существуют в справочнике
+    console.log('🏢 Available rooms:', allResources.map(r => ({ id: r.id, title: r.title })));
+
+    // Проверяем schedules
+    schedules.forEach((schedule) => {
+      if (schedule.date) {
+        const scheduleDateStr = schedule.date.split('T')[0];
+        if (scheduleDateStr === currentDateStr) {
+          if (schedule.roomId) {
+            console.log('✅ Schedule match:', schedule.roomId, scheduleDateStr);
+            occupiedRoomIds.add(schedule.roomId);
+          } else {
+            console.log('⚠️ Schedule without roomId:', scheduleDateStr, schedule);
+          }
         }
       }
     });
 
+    // Проверяем rentals
+    rentals.forEach((rental) => {
+      if (rental.date) {
+        const rentalDateStr = rental.date.split('T')[0];
+        if (rentalDateStr === currentDateStr) {
+          if (rental.roomId) {
+            console.log('✅ Rental match:', rental.roomId, rentalDateStr);
+            occupiedRoomIds.add(rental.roomId);
+          } else {
+            console.log('⚠️ Rental without roomId:', rentalDateStr, rental);
+          }
+        }
+      }
+    });
+
+    // Проверяем events
+    eventItems.forEach((event) => {
+      if (event.date) {
+        const eventDateStr = event.date.split('T')[0];
+        if (eventDateStr === currentDateStr) {
+          if (event.roomId) {
+            console.log('✅ Event match:', event.roomId, eventDateStr);
+            occupiedRoomIds.add(event.roomId);
+          } else {
+            console.log('⚠️ Event without roomId:', eventDateStr, event);
+          }
+        }
+      }
+    });
+
+    // Проверяем reservations
+    reservations.forEach((reservation) => {
+      if (reservation.date) {
+        const reservationDateStr = reservation.date.split('T')[0];
+        if (reservationDateStr === currentDateStr) {
+          if (reservation.roomId) {
+            console.log('✅ Reservation match:', reservation.roomId, reservationDateStr);
+            occupiedRoomIds.add(reservation.roomId);
+          } else {
+            console.log('⚠️ Reservation without roomId:', reservationDateStr, reservation);
+          }
+        }
+      }
+    });
+
+    console.log('🏢 Occupied room IDs:', Array.from(occupiedRoomIds));
+
     const filtered = allResources.filter(r => occupiedRoomIds.has(r.id));
 
-    return filtered;
-  }, [rooms, currentView, currentDate, calendarEvents]);
+    return filtered.length > 0 ? filtered : allResources;
+  }, [rooms, currentView, currentDate, schedules, rentals, eventItems, reservations]);
 
   // Update calendar resources state when filtered resources change
   useEffect(() => {
@@ -502,6 +588,8 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
 
   const renderEventContent = (eventInfo: EventContentArg) => {
     const eventType = eventInfo.event.extendedProps.type as CalendarEventType;
+    const eventData = eventInfo.event.extendedProps.data;
+    const isMonthView = currentView === 'dayGridMonth';
 
     // Определяем иконку в зависимости от типа события
     let IconComponent;
@@ -522,6 +610,69 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
         IconComponent = Calendar;
     }
 
+    // Генерируем подробное описание для тултипа
+    const getEventTooltip = () => {
+      if (eventType === 'schedule') {
+        const schedule = eventData as Schedule;
+        return `${eventInfo.timeText}
+Тип: ${schedule.type === 'GROUP_CLASS' ? 'Групповое' : schedule.type === 'INDIVIDUAL_CLASS' ? 'Индивидуальное' : schedule.type === 'OPEN_CLASS' ? 'Открытое' : 'Мероприятие'}
+Группа: ${schedule.group?.name || 'Индивидуальное'}
+Преподаватель: ${schedule.teacher ? `${schedule.teacher.lastName} ${schedule.teacher.firstName}` : '-'}
+Помещение: ${schedule.room?.name || '-'}
+Статус: ${schedule.status === 'PLANNED' ? 'Запланировано' : schedule.status === 'ONGOING' ? 'Идет' : schedule.status === 'COMPLETED' ? 'Завершено' : 'Отменено'}`;
+      } else if (eventType === 'rental') {
+        const rental = eventData as Rental;
+        return `${eventInfo.timeText}
+Тип: ${rental.eventType}
+Клиент: ${rental.clientName}
+Помещение: ${rental.room?.name || '-'}
+Статус: ${rental.status === 'PLANNED' ? 'Запланировано' : rental.status === 'ONGOING' ? 'Идет' : rental.status === 'COMPLETED' ? 'Завершено' : 'Отменено'}`;
+      } else if (eventType === 'event') {
+        const event = eventData as Event;
+        return `${eventInfo.timeText}
+Мероприятие: ${event.name}
+Тип: ${event.eventType?.name || '-'}
+Помещение: ${event.room?.name || '-'}
+Статус: ${event.status === 'PLANNED' ? 'Запланировано' : event.status === 'ONGOING' ? 'Идет' : event.status === 'COMPLETED' ? 'Завершено' : 'Отменено'}`;
+      } else {
+        const reservation = eventData as Reservation;
+        return `${eventInfo.timeText}
+Забронировано: ${reservation.reservedBy}
+Помещение: ${reservation.room?.name || '-'}`;
+      }
+    };
+
+    // Компактное отображение для режима месяца
+    if (isMonthView) {
+      return (
+        <div
+          className="fc-event-main-frame fc-event-month-compact"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '3px',
+            padding: '1px 3px',
+            overflow: 'hidden',
+            whiteSpace: 'nowrap',
+            fontSize: '0.7rem',
+            lineHeight: 1.2
+          }}
+          title={getEventTooltip()}
+        >
+          <IconComponent size={10} style={{ flexShrink: 0 }} />
+          <span style={{ fontWeight: 500, marginRight: '2px' }}>{eventInfo.timeText}</span>
+          <span style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap'
+          }}>
+            {eventInfo.event.title.split('\n')[0]}
+          </span>
+        </div>
+      );
+    }
+
+    // Обычное отображение для других режимов
     return (
       <div className="fc-event-main-frame" style={{ display: 'flex', alignItems: 'flex-start', gap: '4px', padding: '2px' }}>
         <IconComponent size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
@@ -573,7 +724,7 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
         eventResize={handleEventDropOrResize}
         selectable={true}
         selectMirror={true}
-        dayMaxEvents={true}
+        dayMaxEvents={5}
         weekends={true}
         slotDuration="00:30:00"
         slotLabelInterval="01:00"
@@ -583,6 +734,7 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
         resourceAreaHeaderContent="Помещения"
         datesSet={handleViewChange}
         eventContent={renderEventContent}
+        moreLinkText={(num) => `+${num} ещё`}
       />
 
       <style jsx global>{`
@@ -752,6 +904,105 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
         .schedule-calendar .schedule-status-planned,
         .schedule-calendar .rental-status-planned {
           /* Запланированные события - обычный вид */
+        }
+
+        /* Стили для режима месяца - убираем фон и делаем компактным */
+        .schedule-calendar .fc-daygrid-event {
+          background-color: transparent !important;
+          border: none !important;
+          margin: 0 !important;
+          padding: 0 1px !important;
+        }
+
+        .schedule-calendar .fc-daygrid-event .fc-event-main {
+          padding: 0 !important;
+        }
+
+        .schedule-calendar .fc-daygrid-event .fc-event-month-compact {
+          color: inherit !important;
+        }
+
+        /* Цвета иконок и текста для разных типов событий в режиме месяца */
+        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(59, 130, 246)"] .fc-event-month-compact,
+        .schedule-calendar .fc-daygrid-event[style*="background-color:#3b82f6"] .fc-event-month-compact {
+          color: #3b82f6 !important; /* blue - занятия группы */
+        }
+
+        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(16, 185, 129)"] .fc-event-month-compact,
+        .schedule-calendar .fc-daygrid-event[style*="background-color:#10b981"] .fc-event-month-compact {
+          color: #10b981 !important; /* green - индивидуальные */
+        }
+
+        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(245, 158, 11)"] .fc-event-month-compact,
+        .schedule-calendar .fc-daygrid-event[style*="background-color:#f59e0b"] .fc-event-month-compact {
+          color: #f59e0b !important; /* amber - открытые/резервации */
+        }
+
+        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(139, 92, 246)"] .fc-event-month-compact,
+        .schedule-calendar .fc-daygrid-event[style*="background-color:#8b5cf6"] .fc-event-month-compact {
+          color: #8b5cf6 !important; /* purple - мероприятия */
+        }
+
+        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(220, 38, 38)"] .fc-event-month-compact,
+        .schedule-calendar .fc-daygrid-event[style*="background-color:#dc2626"] .fc-event-month-compact {
+          color: #dc2626 !important; /* red - аренда */
+        }
+
+        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(156, 163, 175)"] .fc-event-month-compact,
+        .schedule-calendar .fc-daygrid-event[style*="background-color:#9ca3af"] .fc-event-month-compact {
+          color: #9ca3af !important; /* gray - завершено */
+        }
+
+        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(239, 68, 68)"] .fc-event-month-compact,
+        .schedule-calendar .fc-daygrid-event[style*="background-color:#ef4444"] .fc-event-month-compact {
+          color: #ef4444 !important; /* red - отменено */
+        }
+
+        /* Стили для ссылки "+N ещё" */
+        .schedule-calendar .fc-daygrid-more-link {
+          font-size: 0.7rem;
+          font-weight: 500;
+          color: hsl(var(--primary));
+          text-decoration: none;
+          padding: 1px 3px;
+          margin: 0;
+        }
+
+        .schedule-calendar .fc-daygrid-more-link:hover {
+          text-decoration: underline;
+          color: hsl(var(--primary) / 0.8);
+        }
+
+        /* Попап со списком событий */
+        .schedule-calendar .fc-popover {
+          background-color: hsl(var(--background));
+          border: 1px solid hsl(var(--border));
+          border-radius: 0.5rem;
+          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .schedule-calendar .fc-popover-header {
+          background-color: hsl(var(--muted));
+          border-bottom: 1px solid hsl(var(--border));
+          padding: 0.5rem 0.75rem;
+          font-weight: 500;
+        }
+
+        .schedule-calendar .fc-popover-body {
+          padding: 0.25rem 0;
+        }
+
+        .schedule-calendar .fc-popover .fc-daygrid-event {
+          margin: 0 0.5rem 0.25rem !important;
+        }
+
+        /* Увеличиваем высоту ячеек для вмещения большего количества событий */
+        .schedule-calendar .fc-daygrid-day-frame {
+          min-height: 100px;
+        }
+
+        .schedule-calendar .fc-daygrid-day-events {
+          margin-bottom: 0;
         }
       `}</style>
     </div>

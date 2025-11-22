@@ -3,12 +3,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { ConflictCheckerService } from '../shared/conflict-checker.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class SchedulesService {
   constructor(
     private prisma: PrismaService,
     private conflictChecker: ConflictCheckerService,
+    private notificationsService: NotificationsService,
   ) {}
 
   async create(createScheduleDto: CreateScheduleDto) {
@@ -266,7 +268,7 @@ export class SchedulesService {
       updateData.endTime = new Date(Date.UTC(1970, 0, 1, hour, min, 0));
     }
 
-    return this.prisma.schedule.update({
+    const updatedSchedule = await this.prisma.schedule.update({
       where: { id },
       data: updateData,
       include: {
@@ -298,6 +300,16 @@ export class SchedulesService {
         },
       },
     });
+
+    // Отправить уведомление об изменении расписания
+    try {
+      await this.notificationsService.sendScheduleChangeNotification(id);
+    } catch (error) {
+      console.error('Failed to send schedule change notification:', error);
+      // Не прерываем выполнение если уведомление не отправилось
+    }
+
+    return updatedSchedule;
   }
 
   async remove(id: string) {
