@@ -4,6 +4,7 @@ import type {
   CreateAttendanceDto,
   UpdateAttendanceDto,
   AttendanceFilterDto,
+  AttendanceBasesResponse,
 } from '@/lib/types/attendance';
 import { toast } from 'sonner';
 
@@ -24,6 +25,14 @@ export const useAttendanceBySchedule = (scheduleId: string) => {
   return useQuery({
     queryKey: ['attendances', 'schedule', scheduleId],
     queryFn: () => attendanceApi.getBySchedule(scheduleId),
+    enabled: !!scheduleId,
+  });
+};
+
+export const useAttendanceBases = (scheduleId: string) => {
+  return useQuery({
+    queryKey: ['attendance', 'bases', scheduleId],
+    queryFn: () => attendanceApi.getBasesBySchedule(scheduleId),
     enabled: !!scheduleId,
   });
 };
@@ -63,15 +72,16 @@ export const useMarkAttendance = () => {
   return useMutation({
     mutationFn: (data: CreateAttendanceDto) => attendanceApi.mark(data),
     onSuccess: (attendance) => {
-      // Инвалидация всех связанных запросов
-      queryClient.invalidateQueries({ queryKey: ['attendances'] });
+      // Точечная инвалидация только связанных данных
       queryClient.invalidateQueries({
         queryKey: ['attendances', 'schedule', attendance.scheduleId],
       });
       queryClient.invalidateQueries({
+        queryKey: ['attendance', 'bases', attendance.scheduleId],
+      });
+      queryClient.invalidateQueries({
         queryKey: ['attendances', 'stats', attendance.clientId],
       });
-      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
       queryClient.invalidateQueries({
         queryKey: ['subscriptions', 'client', attendance.clientId],
       });
@@ -95,15 +105,16 @@ export const useUpdateAttendance = () => {
     mutationFn: ({ id, data }: { id: string; data: UpdateAttendanceDto }) =>
       attendanceApi.update(id, data),
     onSuccess: (attendance) => {
-      queryClient.invalidateQueries({ queryKey: ['attendances'] });
       queryClient.invalidateQueries({ queryKey: ['attendances', attendance.id] });
       queryClient.invalidateQueries({
         queryKey: ['attendances', 'schedule', attendance.scheduleId],
       });
       queryClient.invalidateQueries({
+        queryKey: ['attendance', 'bases', attendance.scheduleId],
+      });
+      queryClient.invalidateQueries({
         queryKey: ['attendances', 'stats', attendance.clientId],
       });
-      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
       queryClient.invalidateQueries({
         queryKey: ['subscriptions', 'client', attendance.clientId],
       });
@@ -125,9 +136,15 @@ export const useDeleteAttendance = () => {
 
   return useMutation({
     mutationFn: (id: string) => attendanceApi.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['attendances'] });
-      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+    onSuccess: (result) => {
+      if (result.scheduleId) {
+        queryClient.invalidateQueries({
+          queryKey: ['attendance', 'bases', result.scheduleId],
+        });
+        queryClient.invalidateQueries({
+          queryKey: ['attendances', 'schedule', result.scheduleId],
+        });
+      }
       toast.success('Посещение удалено');
     },
     onError: (error: any) => {

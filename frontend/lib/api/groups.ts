@@ -4,8 +4,10 @@ import {
   GroupMember as NewGroupMember,
   GroupMemberStatus,
   GroupAvailability,
-  AddMemberResult
+  AddMemberResult,
+  GroupScheduleEntry,
 } from '../types/groups';
+import type { SubscriptionType } from '../types/subscriptions';
 
 export interface Group {
   id: string;
@@ -191,7 +193,7 @@ export const groupsApi = {
     return data;
   },
 
-  getGroupMonthlySchedule: async (groupId: string, year: number, month: number): Promise<any[]> => {
+  getGroupMonthlySchedule: async (groupId: string, year: number, month: number): Promise<GroupScheduleEntry[]> => {
     const { data } = await apiClient.get(`/groups/${groupId}/schedule/monthly`, {
       params: { year, month },
     });
@@ -210,7 +212,7 @@ export const groupsApi = {
     return data;
   },
 
-  getGroupSubscriptionTypes: async (groupId: string): Promise<any[]> => {
+  getGroupSubscriptionTypes: async (groupId: string): Promise<SubscriptionType[]> => {
     const { data } = await apiClient.get(`/groups/${groupId}/subscription-types`);
     return data;
   },

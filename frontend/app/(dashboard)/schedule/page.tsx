@@ -1,10 +1,6 @@
 'use client';
 
-import { Card, CardContent } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Plus, CalendarClock } from 'lucide-react';
-import { useState } from 'react';
-import Link from 'next/link';
+import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { useUpdateSchedule } from '@/hooks/use-schedules';
 import { useUpdateRental } from '@/hooks/use-rentals';
@@ -13,7 +9,6 @@ import { useUpdateReservation } from '@/hooks/use-reservations';
 import { useCalendarEvents } from '@/hooks/use-calendar';
 import { ScheduleCalendar } from './schedule-calendar';
 import { CalendarEventDialog } from './calendar-event-dialog';
-import { ScheduleFilters } from './schedule-filters';
 import { AttendanceSheet } from './attendance-sheet';
 import { ScheduleFilters as FilterType } from '@/lib/api/schedules';
 import type { Schedule } from '@/lib/api/schedules';
@@ -26,6 +21,7 @@ type CalendarEventType = 'schedule' | 'rental' | 'event' | 'reservation';
 export default function SchedulePage() {
   const { user } = useAuth();
   const [filters, setFilters] = useState<FilterType>({});
+  const [dateRangeFilters, setDateRangeFilters] = useState<{ startDate?: string; endDate?: string }>({});
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isAttendanceSheetOpen, setIsAttendanceSheetOpen] = useState(false);
@@ -36,11 +32,10 @@ export default function SchedulePage() {
   const [selectedReservation, setSelectedReservation] = useState<Reservation | undefined>();
   const [selectedDateRange, setSelectedDateRange] = useState<{ date: string; startTime: string; endTime: string; roomId?: string } | null>(null);
 
-  // Separate eventTypeId from other filters for API calls
-  const { eventTypeId, ...apiFilters } = filters;
-
   // Оптимизация: используем один запрос вместо 4 отдельных
-  const { data: calendarData, isLoading } = useCalendarEvents(apiFilters);
+  // Объединяем фильтры с диапазоном дат
+  const mergedFilters = { ...filters, ...dateRangeFilters };
+  const { data: calendarData, isLoading } = useCalendarEvents(mergedFilters);
   const schedules = calendarData?.schedules || [];
   const rentals = calendarData?.rentals || [];
   const events = calendarData?.events || [];
@@ -50,18 +45,6 @@ export default function SchedulePage() {
   const updateRentalMutation = useUpdateRental();
   const updateEventMutation = useUpdateEvent();
   const updateReservationMutation = useUpdateReservation();
-
-  // Client-side filtering by event type
-  const selectedEventTypes = eventTypeId ? (Array.isArray(eventTypeId) ? eventTypeId : [eventTypeId]) : [];
-  const shouldShowSchedules = selectedEventTypes.length === 0 || selectedEventTypes.includes('schedule');
-  const shouldShowRentals = selectedEventTypes.length === 0 || selectedEventTypes.includes('rental');
-  const shouldShowEvents = selectedEventTypes.length === 0 || selectedEventTypes.includes('event');
-  const shouldShowReservations = selectedEventTypes.length === 0 || selectedEventTypes.includes('reservation');
-
-  const filteredSchedules = shouldShowSchedules ? (schedules || []) : [];
-  const filteredRentals = shouldShowRentals ? (rentals || []) : [];
-  const filteredEvents = shouldShowEvents ? (events || []) : [];
-  const filteredReservations = shouldShowReservations ? (reservations || []) : [];
 
   const handleEventClick = (eventId: string, eventType: CalendarEventType) => {
     switch (eventType) {
@@ -212,46 +195,24 @@ export default function SchedulePage() {
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Расписание</h1>
-          <p className="text-muted-foreground mt-1">
-            Управление расписанием занятий и мероприятий
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {user?.role === 'ADMIN' && (
-            <Button variant="outline" asChild>
-              <Link href="/schedule-planner">
-                <CalendarClock className="mr-2 h-4 w-4" />
-                Планирование
-              </Link>
-            </Button>
-          )}
-          <Button onClick={() => setIsCreateDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Добавить событие
-          </Button>
-        </div>
+    <div className="flex flex-col gap-0 h-screen overflow-hidden pt-0">
+      <div className="flex-1 overflow-hidden -mt-2">
+        <ScheduleCalendar
+          schedules={schedules}
+          rentals={rentals}
+          events={events}
+          reservations={reservations}
+          isLoading={isLoading}
+          onEventClick={handleEventClick}
+          onDateSelect={handleDateSelect}
+          onEventDrop={handleEventDrop}
+          filters={filters}
+          onFiltersChange={setFilters}
+          onDateRangeChange={setDateRangeFilters}
+          showPlanButton={user?.role === 'ADMIN'}
+          onAddClick={() => setIsCreateDialogOpen(true)}
+        />
       </div>
-
-      <ScheduleFilters filters={filters} onFiltersChange={setFilters} />
-
-      <Card>
-        <CardContent className="pt-6">
-          <ScheduleCalendar
-            schedules={filteredSchedules}
-            rentals={filteredRentals}
-            events={filteredEvents}
-            reservations={filteredReservations}
-            isLoading={isLoading}
-            onEventClick={handleEventClick}
-            onDateSelect={handleDateSelect}
-            onEventDrop={handleEventDrop}
-          />
-        </CardContent>
-      </Card>
 
       <CalendarEventDialog
         open={isCreateDialogOpen}

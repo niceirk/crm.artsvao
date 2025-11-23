@@ -55,11 +55,25 @@ export class ReservationsService {
     });
   }
 
-  async findAll(filters?: { date?: string; roomId?: string | string[]; status?: string }) {
+  async findAll(filters?: { date?: string; startDate?: string; endDate?: string; roomId?: string | string[]; status?: string }) {
     const where: any = {};
 
-    if (filters?.date) {
+    // Поддержка диапазона дат для недельного и месячного режима
+    if (filters?.startDate && filters?.endDate) {
+      where.date = {
+        gte: new Date(filters.startDate),
+        lte: new Date(filters.endDate),
+      };
+    } else if (filters?.date) {
+      // Одна дата для дневного режима
       where.date = new Date(filters.date);
+    } else {
+      // Если дата не передана, ограничиваем выборку последними 3 месяцами
+      const threeMonthsAgo = new Date();
+      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+      where.date = {
+        gte: threeMonthsAgo,
+      };
     }
 
     if (filters?.roomId) {
@@ -74,6 +88,7 @@ export class ReservationsService {
 
     return this.prisma.reservation.findMany({
       where,
+      take: 500, // Лимит для предотвращения перегрузки
       include: {
         room: true,
       },

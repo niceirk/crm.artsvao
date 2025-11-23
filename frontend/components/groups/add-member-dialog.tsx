@@ -10,6 +10,7 @@ import { getClients, type Client } from '@/lib/api/clients';
 import { toast } from '@/lib/utils/toast';
 import { Loader2, AlertCircle, UserPlus, Users } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 interface AddMemberDialogProps {
   open: boolean;
@@ -28,7 +29,10 @@ export function AddMemberDialog({
   const [clients, setClients] = useState<Client[]>([]);
   const [availability, setAvailability] = useState<GroupAvailability | null>(null);
   const [loadingData, setLoadingData] = useState(true);
+  const [loadingClients, setLoadingClients] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState('');
+  const [clientSearch, setClientSearch] = useState('');
+  const debouncedClientSearch = useDebouncedValue(clientSearch, 300);
 
   // Преобразуем клиентов в опции для Combobox
   const clientOptions: ComboboxOption[] = useMemo(() => {
@@ -38,32 +42,53 @@ export function AddMemberDialog({
     }));
   }, [clients]);
 
-  // Загрузка данных при открытии диалога
+  // Загрузка availability при открытии диалога
   useEffect(() => {
     if (open) {
-      loadData();
+      loadAvailability();
     } else {
       // Сброс при закрытии
       setSelectedClientId('');
+      setClientSearch('');
+      setClients([]);
     }
   }, [open, groupId]);
 
-  const loadData = async () => {
+  // Загрузка клиентов по поисковому запросу
+  useEffect(() => {
+    const loadClients = async () => {
+      if (!open) {
+        setClients([]);
+        return;
+      }
+
+      try {
+        setLoadingClients(true);
+        const clientsData = await getClients({
+          limit: 50,
+          page: 1,
+          ...(debouncedClientSearch ? { search: debouncedClientSearch } : {})
+        });
+        const clientsList = clientsData?.data || [];
+        setClients(clientsList);
+      } catch (error) {
+        console.error('Failed to load clients:', error);
+        toast.error('Не удалось загрузить клиентов');
+      } finally {
+        setLoadingClients(false);
+      }
+    };
+
+    loadClients();
+  }, [open, debouncedClientSearch]);
+
+  const loadAvailability = async () => {
     try {
       setLoadingData(true);
-      const [clientsData, availabilityData] = await Promise.all([
-        getClients({ limit: 10000, page: 1 }), // Загружаем всех клиентов
-        groupsApi.checkGroupAvailability(groupId),
-      ]);
-
-      // clientsData - это ClientsListResponse с полем data
-      const clientsList = clientsData?.data || [];
-
-      console.log('Loaded clients:', clientsList);
-      setClients(clientsList);
+      const availabilityData = await groupsApi.checkGroupAvailability(groupId);
       setAvailability(availabilityData);
     } catch (error) {
-      console.error('Failed to load data:', error);
+      console.error('Failed to load availability:', error);
       toast.error('Не удалось загрузить данные');
     } finally {
       setLoadingData(false);
@@ -161,11 +186,16 @@ export function AddMemberDialog({
                 searchPlaceholder="Поиск клиента..."
                 emptyText="Клиент не найден"
                 allowEmpty={false}
-                disabled={clients.length === 0}
+                disabled={loadingClients}
+                searchValue={clientSearch}
+                onSearchChange={setClientSearch}
               />
-              {clients.length === 0 && (
+              {loadingClients && (
+                <p className="text-sm text-muted-foreground">Загрузка...</p>
+              )}
+              {!loadingClients && !clientSearch && clients.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  Нет доступных клиентов
+                  Начните вводить для поиска клиента
                 </p>
               )}
             </div>
@@ -179,7 +209,7 @@ export function AddMemberDialog({
               >
                 Отмена
               </Button>
-              <Button type="submit" disabled={loading || clients.length === 0}>
+              <Button type="submit" disabled={loading || !selectedClientId}>
                 {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 {availability?.isFull ? 'Добавить в очередь' : 'Добавить участника'}
               </Button>

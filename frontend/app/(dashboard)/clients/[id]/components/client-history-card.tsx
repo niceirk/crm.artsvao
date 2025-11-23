@@ -12,10 +12,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { History, CreditCard, CalendarCheck, Receipt, AlertCircle, FileStack, ExternalLink, Plus } from 'lucide-react';
 import { useClientInvoices } from '@/hooks/use-invoices';
 import { useClientSubscriptions } from '@/hooks/use-subscriptions';
+import { useAttendances } from '@/hooks/use-attendance';
 import { SellSubscriptionDialog } from '@/app/(dashboard)/subscriptions/components/sell-subscription-dialog';
 import type { Client } from '@/lib/types/clients';
 import type { InvoiceStatus } from '@/lib/types/invoices';
 import type { SubscriptionStatus } from '@/lib/types/subscriptions';
+import type { Attendance, AttendanceStatus } from '@/lib/types/attendance';
 
 interface ClientHistoryCardProps {
   client: Client;
@@ -53,17 +55,41 @@ const subscriptionStatusVariants: Record<SubscriptionStatus, 'default' | 'second
   CANCELLED: 'destructive',
 };
 
+const attendanceStatusLabels: Record<AttendanceStatus, string> = {
+  PRESENT: 'Присутствовал',
+  ABSENT: 'Пропустил',
+  EXCUSED: 'Уважительно',
+};
+
+const attendanceStatusVariants: Record<AttendanceStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
+  PRESENT: 'default',
+  ABSENT: 'destructive',
+  EXCUSED: 'secondary',
+};
+
 export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
   const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
 
   // Получаем счета и абонементы клиента
   const { data: invoices, isLoading: isLoadingInvoices } = useClientInvoices(client.id);
   const { data: subscriptionsResponse, isLoading: isLoadingSubscriptions } = useClientSubscriptions(client.id);
+  const { data: attendanceResponse, isLoading: isLoadingAttendance } = useAttendances({
+    clientId: client.id,
+    limit: 6,
+    page: 1,
+  });
 
   const subscriptions = subscriptionsResponse?.data || [];
 
-  // TODO: Получать данные из API когда модули будут готовы
-  const attendance: any[] = [];
+  const attendanceRecords = attendanceResponse?.data || [];
+  const attendanceStats = attendanceRecords.reduce(
+    (acc, attendance) => {
+      acc.total += 1;
+      acc[attendance.status.toLowerCase() as keyof typeof acc] += 1;
+      return acc;
+    },
+    { total: 0, present: 0, absent: 0, excused: 0 },
+  );
   const payments: any[] = [];
 
   const formatCurrency = (amount: number) => {
@@ -253,20 +279,88 @@ export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
             )}
           </TabsContent>
 
-          <TabsContent value="attendance" className="mt-4">
-            {attendance.length === 0 ? (
-              <EmptyState message="Нет записей о посещениях" />
-            ) : (
+          <TabsContent value="attendance" className="mt-4 space-y-4">
+            {isLoadingAttendance ? (
               <div className="space-y-3">
-                {attendance.map((att: any) => (
-                  <div
-                    key={att.id}
-                    className="flex items-center justify-between p-3 rounded-lg border"
-                  >
-                    {/* TODO: Компонент посещения */}
-                  </div>
-                ))}
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
               </div>
+            ) : attendanceRecords.length === 0 ? (
+              <EmptyState message="Посещений пока нет" />
+            ) : (
+              <>
+                <div className="grid grid-cols-4 gap-2">
+                  <div className="rounded-lg border p-3 text-center">
+                    <div className="text-2xl font-bold text-green-600">{attendanceStats.present}</div>
+                    <div className="text-xs text-muted-foreground">Присутствовали</div>
+                  </div>
+                  <div className="rounded-lg border p-3 text-center">
+                    <div className="text-2xl font-bold text-red-600">{attendanceStats.absent}</div>
+                    <div className="text-xs text-muted-foreground">Пропустили</div>
+                  </div>
+                  <div className="rounded-lg border p-3 text-center">
+                    <div className="text-2xl font-bold text-yellow-600">{attendanceStats.excused}</div>
+                    <div className="text-xs text-muted-foreground">Уважительных</div>
+                  </div>
+                  <div className="rounded-lg border p-3 text-center">
+                    <div className="text-2xl font-bold text-foreground">{attendanceStats.total}</div>
+                    <div className="text-xs text-muted-foreground">Всего</div>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {attendanceRecords.map((record: Attendance) => {
+                    const dateTime = record.markedAt
+                      ? new Date(record.markedAt)
+                      : new Date(record.schedule.date);
+                    const timeString = record.schedule.startTime
+                      ? new Date(record.schedule.startTime).toLocaleTimeString('ru-RU', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : '';
+                    const scheduleGroup = record.schedule.group;
+                    const scheduleStudio = scheduleGroup?.studio;
+                    const basis = record.subscription
+                      ? `${record.subscription.subscriptionType.type === 'SINGLE_VISIT' ? 'Разовое' : 'Абонемент'} — ${record.subscription.subscriptionType.name}`
+                      : 'Без абонемента/разовое';
+                    return (
+                      <div
+                        key={record.id}
+                        className="flex items-center justify-between gap-3 rounded-lg border bg-card p-4"
+                      >
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium">
+                            {format(dateTime, 'dd MMM yyyy', { locale: ru })}
+                            {timeString && ` • ${timeString}`}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {scheduleGroup?.name ?? 'Группа не указана'}
+                            {scheduleStudio ? ` • ${scheduleStudio.name}` : ''}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Основание: {basis} · {record.subscriptionDeducted ? 'списано' : 'не списано'}
+                          </p>
+                          {record.notes && (
+                            <p className="text-xs text-muted-foreground">
+                              Примечание: {record.notes}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <Badge variant={attendanceStatusVariants[record.status]} className="uppercase">
+                            {attendanceStatusLabels[record.status]}
+                          </Badge>
+                          {record.markedByUser && (
+                            <span className="text-[11px] text-muted-foreground">
+                              Отметил: {record.markedByUser.firstName} {record.markedByUser.lastName}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
             )}
           </TabsContent>
 

@@ -128,10 +128,19 @@ rsync_copy ./ "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/"
 echo -e "${YELLOW}🔐 Step 3: Setting up environment variables...${NC}"
 sshpass -p "$SERVER_PASSWORD" scp -o StrictHostKeyChecking=no .env.production "$SERVER_USER@$SERVER_HOST:$DEPLOY_PATH/.env"
 
-echo -e "${YELLOW}🐳 Step 4: Building Docker containers...${NC}"
+echo -e "${YELLOW}🧹 Step 4: Cleaning up old Docker resources...${NC}"
+echo -e "Stopping old containers..."
+ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml down || true"
+echo -e "Removing old project images..."
+ssh_exec "docker images | grep artsvao | awk '{print \$3}' | xargs -r docker rmi -f || true"
+echo -e "Pruning unused Docker resources..."
+ssh_exec "docker system prune -af --filter 'label!=keep' || true"
+echo -e "${GREEN}✅ Docker cleanup completed${NC}"
+
+echo -e "${YELLOW}🐳 Step 5: Building Docker containers...${NC}"
 ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml build --no-cache"
 
-echo -e "${YELLOW}🔄 Step 5: Running database migrations...${NC}"
+echo -e "${YELLOW}🔄 Step 6: Running database migrations...${NC}"
 echo -e "Starting database for migrations..."
 ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml up -d postgres"
 sleep 5
@@ -142,17 +151,17 @@ ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml run --rm 
 }
 echo -e "${GREEN}✅ Migrations completed successfully${NC}"
 
-echo -e "${YELLOW}🚀 Step 6: Starting all services...${NC}"
+echo -e "${YELLOW}🚀 Step 7: Starting all services...${NC}"
 ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml down || true"
 ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml up -d"
 
-echo -e "${YELLOW}⏳ Step 7: Waiting for services to start...${NC}"
+echo -e "${YELLOW}⏳ Step 8: Waiting for services to start...${NC}"
 sleep 15
 
-echo -e "${YELLOW}🔍 Step 8: Checking service status...${NC}"
+echo -e "${YELLOW}🔍 Step 9: Checking service status...${NC}"
 ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml ps"
 
-echo -e "${YELLOW}📋 Step 9: Checking backend logs...${NC}"
+echo -e "${YELLOW}📋 Step 10: Checking backend logs...${NC}"
 ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml logs --tail=20 backend" || true
 
 echo -e "${GREEN}✅ Deployment completed successfully!${NC}"

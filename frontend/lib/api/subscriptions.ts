@@ -91,7 +91,10 @@ export const subscriptionsApi = {
     if (filter?.clientId) params.append('clientId', filter.clientId);
     if (filter?.groupId) params.append('groupId', filter.groupId);
     if (filter?.status) params.append('status', filter.status);
+    if (filter?.statusCategory) params.append('statusCategory', filter.statusCategory);
     if (filter?.validMonth) params.append('validMonth', filter.validMonth);
+    if (filter?.sortBy) params.append('sortBy', filter.sortBy);
+    if (filter?.sortOrder) params.append('sortOrder', filter.sortOrder);
     if (filter?.page) params.append('page', String(filter.page));
     if (filter?.limit) params.append('limit', String(filter.limit));
 

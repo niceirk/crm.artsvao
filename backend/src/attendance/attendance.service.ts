@@ -54,15 +54,22 @@ export class AttendanceService {
 
     // 3. Если статус PRESENT - найти и списать абонемент
     if (dto.status === AttendanceStatus.PRESENT) {
-      // Найти действующий абонемент клиента для этой группы
-      const subscription = await this.findValidSubscription(
-        dto.clientId,
-        schedule.groupId,
-        schedule.date,
-      );
+      if (!schedule.groupId && dto.subscriptionId) {
+        throw new BadRequestException(
+          'Невозможно указать основание без привязки к группе',
+        );
+      }
+
+      const subscription = schedule.groupId
+        ? await this.findValidSubscription(
+            dto.clientId,
+            schedule.groupId,
+            schedule.date,
+            dto.subscriptionId,
+          )
+        : null;
 
       if (subscription) {
-        // Проверить остаток для SINGLE_VISIT
         if (subscription.subscriptionType.type === 'SINGLE_VISIT') {
           if (subscription.remainingVisits <= 0) {
             throw new BadRequestException(
@@ -70,7 +77,6 @@ export class AttendanceService {
             );
           }
 
-          // Списать 1 посещение
           await this.prisma.subscription.update({
             where: { id: subscription.id },
             data: {
@@ -79,7 +85,6 @@ export class AttendanceService {
           });
         }
 
-        // Обновить InvoiceItem writeOffStatus
         await this.updateInvoiceItemStatus(subscription.id, schedule.date);
 
         subscriptionId = subscription.id;
@@ -156,12 +161,26 @@ export class AttendanceService {
     clientId: string,
     groupId: string,
     scheduleDate: Date,
+    preferredSubscriptionId?: string,
   ): Promise<
     | (Subscription & {
         subscriptionType: { type: string };
       })
     | null
   > {
+    if (preferredSubscriptionId) {
+      return this.validateSubscriptionForSchedule(
+        preferredSubscriptionId,
+        clientId,
+        groupId,
+        scheduleDate,
+      );
+    }
+
+    if (!groupId) {
+      return null;
+    }
+
     const subscription = await this.prisma.subscription.findFirst({
       where: {
         clientId,
@@ -179,6 +198,66 @@ export class AttendanceService {
       },
       orderBy: { createdAt: 'desc' }, // Приоритет новым
     });
+
+    return subscription;
+  }
+
+  private async validateSubscriptionForSchedule(
+    subscriptionId: string,
+    clientId: string,
+    groupId: string,
+    scheduleDate: Date,
+  ): Promise<Subscription & { subscriptionType: { type: string } }> {
+    if (!groupId) {
+      throw new BadRequestException(
+        'Невозможно использовать абонемент для занятия без группы',
+      );
+    }
+
+    const subscription = await this.prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+      include: {
+        subscriptionType: true,
+      },
+    });
+
+    if (!subscription) {
+      throw new NotFoundException('Абонемент не найден');
+    }
+
+    if (subscription.clientId !== clientId) {
+      throw new BadRequestException(
+        'Абонемент привязан к другому клиенту',
+      );
+    }
+
+    if (subscription.groupId !== groupId) {
+      throw new BadRequestException(
+        'Абонемент не привязан к этой группе',
+      );
+    }
+
+    if (subscription.status !== SubscriptionStatus.ACTIVE) {
+      throw new BadRequestException('Абонемент не активен');
+    }
+
+    if (
+      subscription.startDate > scheduleDate ||
+      subscription.endDate < scheduleDate
+    ) {
+      throw new BadRequestException(
+        'Абонемент недействителен на дату занятия',
+      );
+    }
+
+    if (
+      subscription.subscriptionType.type === 'SINGLE_VISIT' &&
+      (subscription.remainingVisits ?? 0) <= 0
+    ) {
+      throw new BadRequestException(
+        'На абонементе не осталось посещений',
+      );
+    }
 
     return subscription;
   }
@@ -315,11 +394,20 @@ export class AttendanceService {
         throw new NotFoundException('Расписание или группа не найдены');
       }
 
-      const subscription = await this.findValidSubscription(
-        attendance.clientId,
-        schedule.groupId,
-        schedule.date,
-      );
+      if (!schedule.groupId && dto.subscriptionId) {
+        throw new BadRequestException(
+          'Невозможно указать основание без привязки к группе',
+        );
+      }
+
+      const subscription = schedule.groupId
+        ? await this.findValidSubscription(
+            attendance.clientId,
+            schedule.groupId,
+            schedule.date,
+            dto.subscriptionId,
+          )
+        : null;
 
       if (subscription) {
         if (subscription.subscriptionType.type === 'SINGLE_VISIT') {
@@ -406,7 +494,10 @@ export class AttendanceService {
 
     await this.prisma.attendance.delete({ where: { id } });
 
-    return { message: 'Запись посещения успешно удалена' };
+    return {
+      message: 'Запись посещения успешно удалена',
+      scheduleId: attendance.scheduleId,
+    };
   }
 
   async findAll(filter: AttendanceFilterDto = {}) {
@@ -467,6 +558,12 @@ export class AttendanceService {
                 select: {
                   id: true,
                   name: true,
+                  studio: {
+                    select: {
+                      id: true,
+                      name: true,
+                    },
+                  },
                 },
               },
             },
@@ -560,6 +657,65 @@ export class AttendanceService {
     });
 
     return attendances;
+  }
+
+  async getAvailableBases(scheduleId: string) {
+    const schedule = await this.prisma.schedule.findUnique({
+      where: { id: scheduleId },
+      include: { group: true },
+    });
+
+    if (!schedule) {
+      throw new NotFoundException('Занятие не найдено');
+    }
+
+    if (!schedule.groupId) {
+      return {
+        scheduleId: schedule.id,
+        groupId: null,
+        date: schedule.date,
+        bases: [],
+      };
+    }
+
+    const subscriptions = await this.prisma.subscription.findMany({
+      where: {
+        groupId: schedule.groupId,
+        status: SubscriptionStatus.ACTIVE,
+        startDate: { lte: schedule.date },
+        endDate: { gte: schedule.date },
+        OR: [
+          { remainingVisits: null },
+          { remainingVisits: { gt: 0 } },
+        ],
+      },
+      include: {
+        subscriptionType: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const bases = subscriptions.map((subscription) => ({
+      id: subscription.id,
+      clientId: subscription.clientId,
+      subscriptionType: {
+        id: subscription.subscriptionTypeId,
+        name: subscription.subscriptionType.name,
+        type: subscription.subscriptionType.type,
+      },
+      remainingVisits: subscription.remainingVisits,
+      validMonth: subscription.validMonth,
+      startDate: subscription.startDate,
+      endDate: subscription.endDate,
+      status: subscription.status,
+    }));
+
+    return {
+      scheduleId: schedule.id,
+      groupId: schedule.groupId,
+      date: schedule.date,
+      bases,
+    };
   }
 
   async getClientStats(clientId: string, from?: string, to?: string) {

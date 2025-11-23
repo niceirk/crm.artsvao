@@ -92,11 +92,25 @@ export class EventsService {
     return event;
   }
 
-  async findAll(filters?: { date?: string; status?: string; eventTypeId?: string | string[] }) {
+  async findAll(filters?: { date?: string; startDate?: string; endDate?: string; status?: string; eventTypeId?: string | string[] }) {
     const where: any = {};
 
-    if (filters?.date) {
+    // Поддержка диапазона дат для недельного и месячного режима
+    if (filters?.startDate && filters?.endDate) {
+      where.date = {
+        gte: new Date(filters.startDate),
+        lte: new Date(filters.endDate),
+      };
+    } else if (filters?.date) {
+      // Одна дата для дневного режима
       where.date = new Date(filters.date);
+    } else {
+      // Если дата не передана, ограничиваем выборку последними 3 месяцами
+      const threeMonthsAgo = new Date();
+      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+      where.date = {
+        gte: threeMonthsAgo,
+      };
     }
 
     if (filters?.status) {
@@ -109,11 +123,12 @@ export class EventsService {
         : filters.eventTypeId;
     }
 
-    // Автоматически обновляем статусы завершенных событий
-    await this.updateCompletedEvents();
+    // ОПТИМИЗАЦИЯ: updateCompletedEvents убран отсюда,
+    // должен вызываться через cron/scheduled task, а не при каждом запросе
 
     return this.prisma.event.findMany({
       where,
+      take: 500, // Лимит для предотвращения перегрузки
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
       include: {
         eventType: {

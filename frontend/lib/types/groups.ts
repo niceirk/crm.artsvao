@@ -38,3 +38,9 @@ export interface AddMemberResult {
   waitlisted: boolean;
   position?: number;
 }
+
+export interface GroupScheduleEntry {
+  id: string;
+  date: string;
+  status: string;
+}

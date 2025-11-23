@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Plus, Eye } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -21,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -28,33 +29,133 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { useSubscriptions } from '@/hooks/use-subscriptions';
+import { useGroups } from '@/hooks/use-groups';
 import { SellSubscriptionDialog } from './components/sell-subscription-dialog';
 import { SubscriptionDetailsSheet } from './components/subscription-details-sheet';
-import type { SubscriptionStatus, Subscription } from '@/lib/types/subscriptions';
+import { searchClients } from '@/lib/api/clients';
+import type {
+  SubscriptionStatus,
+  Subscription,
+  SubscriptionFilterDto,
+} from '@/lib/types/subscriptions';
+import { cn } from '@/lib/utils';
 
-const statusLabels: Record<SubscriptionStatus, string> = {
-  ACTIVE: 'Активен',
-  EXPIRED: 'Истёк',
-  FROZEN: 'Заморожен',
-  CANCELLED: 'Отменён',
-};
-
-const statusVariants: Record<SubscriptionStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  ACTIVE: 'default',
-  EXPIRED: 'secondary',
-  FROZEN: 'outline',
-  CANCELLED: 'destructive',
+const statusDotClass: Record<SubscriptionStatus, string> = {
+  ACTIVE: 'bg-green-500',
+  EXPIRED: 'bg-secondary',
+  FROZEN: 'bg-muted-foreground',
+  CANCELLED: 'bg-destructive',
 };
 
 export default function SubscriptionsPage() {
-  const [statusFilter, setStatusFilter] = useState<SubscriptionStatus | 'all'>('all');
+  const [showExpired, setShowExpired] = useState(false);
+  const [groupFilter, setGroupFilter] = useState('');
+  const [groupSearch, setGroupSearch] = useState('');
+  const [clientSearch, setClientSearch] = useState('');
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const [selectedClientLabel, setSelectedClientLabel] = useState('');
+  const [clientOptions, setClientOptions] = useState<ComboboxOption[]>([]);
+  const [isClientLoading, setIsClientLoading] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
-  const [selectedSubscription, setSelectedSubscription] = useState<Subscription | null>(null);
-
-  const { data: subscriptionsResponse, isLoading } = useSubscriptions(
-    statusFilter !== 'all' ? { status: statusFilter } : undefined
+  const [selectedSubscription, setSelectedSubscription] = useState<Subscription | null>(
+    null,
   );
+
+  const { data: groupsResponse } = useGroups();
+  const groups = groupsResponse?.data ?? [];
+
+  const groupOptions = useMemo(() => {
+    const normalizedSearch = groupSearch.trim().toLowerCase();
+    return groups
+      .filter((group) => {
+        if (!normalizedSearch) return true;
+        const label = `${group.name} ${group.studio.name}`.toLowerCase();
+        return label.includes(normalizedSearch);
+      })
+      .map((group) => ({
+        value: group.id,
+        label: group.name,
+      }));
+  }, [groups, groupSearch]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!clientSearch) {
+      setClientOptions(
+        selectedClientId
+          ? [
+              {
+                value: selectedClientId,
+                label: selectedClientLabel,
+              },
+            ]
+          : [],
+      );
+      setIsClientLoading(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setIsClientLoading(true);
+        const clients = await searchClients(clientSearch);
+        if (!active) return;
+        const options = clients.map((client) => ({
+          value: client.id,
+          label: `${client.lastName} ${client.firstName} (${client.phone})`,
+        }));
+        if (
+          selectedClientId &&
+          !options.some((option) => option.value === selectedClientId)
+        ) {
+          options.unshift({
+            value: selectedClientId,
+            label: selectedClientLabel,
+          });
+        }
+        setClientOptions(options);
+      } catch (error) {
+        console.error('Не удалось найти клиентов:', error);
+      } finally {
+        if (active) {
+          setIsClientLoading(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [clientSearch, selectedClientId, selectedClientLabel]);
+
+  const filters = useMemo(() => {
+    const applied: SubscriptionFilterDto = {
+      sortBy: 'purchaseDate',
+      sortOrder,
+    };
+
+    if (groupFilter) {
+      applied.groupId = groupFilter;
+    }
+
+    if (selectedClientId) {
+      applied.clientId = selectedClientId;
+    }
+
+    if (!showExpired) {
+      applied.statusCategory = 'ACTIVE';
+    }
+
+    return applied;
+  }, [groupFilter, selectedClientId, showExpired, sortOrder]);
+
+  const { data: subscriptionsResponse, isLoading } =
+    useSubscriptions(filters);
 
   const subscriptions = subscriptionsResponse?.data;
   const meta = subscriptionsResponse?.meta;
@@ -95,38 +196,80 @@ export default function SubscriptionsPage() {
                 Всего абонементов: {meta?.total || 0}
               </CardDescription>
             </div>
-            <Select
-              value={statusFilter}
-              onValueChange={(value) => setStatusFilter(value as SubscriptionStatus | 'all')}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Фильтр по статусу" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все статусы</SelectItem>
-                <SelectItem value="ACTIVE">Активен</SelectItem>
-                <SelectItem value="EXPIRED">Истёк</SelectItem>
-                <SelectItem value="FROZEN">Заморожен</SelectItem>
-                <SelectItem value="CANCELLED">Отменён</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </CardHeader>
         <CardContent>
+          <div className="flex flex-wrap gap-3 items-center mb-4">
+            <Combobox
+              options={clientOptions}
+              value={selectedClientId || undefined}
+              onValueChange={(value) => {
+                if (!value) {
+                  setSelectedClientId('');
+                  setSelectedClientLabel('');
+                  return;
+                }
+                const option = clientOptions.find((item) => item.value === value);
+                setSelectedClientId(value);
+                setSelectedClientLabel(option?.label ?? '');
+              }}
+              placeholder="Поиск клиента"
+              searchValue={clientSearch}
+              onSearchChange={setClientSearch}
+              emptyText="Клиент не найден"
+              allowEmpty
+              disabled={isClientLoading}
+              className="min-w-[220px] max-w-[360px] flex-1"
+            />
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={showExpired}
+                onCheckedChange={(checked) => setShowExpired(Boolean(checked))}
+              />
+              <span className="text-sm text-muted-foreground">Показать истекшие</span>
+            </div>
+            <Combobox
+              options={[
+                { value: '', label: 'Все группы' },
+                ...groupOptions,
+              ]}
+              value={groupFilter || ''}
+              onValueChange={(value) => {
+                setGroupFilter(value || '');
+              }}
+              placeholder="Группа"
+              searchValue={groupSearch}
+              onSearchChange={setGroupSearch}
+              emptyText="Группа не найдена"
+              allowEmpty
+              className="min-w-[220px] max-w-[360px] flex-1"
+            />
+            <Select
+              value={sortOrder}
+              onValueChange={(value) => setSortOrder(value as 'desc' | 'asc')}
+            >
+              <SelectTrigger className="w-[230px]">
+                <SelectValue placeholder="Сортировка" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="desc">Дата покупки: новые сверху</SelectItem>
+                <SelectItem value="asc">Дата покупки: старые сверху</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
           {isLoading ? (
             <div>Загрузка...</div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Дата покупки</TableHead>
                   <TableHead>Клиент</TableHead>
-                  <TableHead>Группа</TableHead>
                   <TableHead>Тип</TableHead>
+                  <TableHead>Группа</TableHead>
                   <TableHead>Период</TableHead>
                   <TableHead className="text-right">Цена</TableHead>
                   <TableHead className="text-center">Посещений</TableHead>
-                  <TableHead>Статус</TableHead>
-                  <TableHead className="text-right">Действия</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -136,33 +279,48 @@ export default function SubscriptionsPage() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => handleViewDetails(subscription)}
                   >
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium">
-                          {subscription.client.lastName} {subscription.client.firstName}
-                        </span>
-                        <span className="text-sm text-muted-foreground">
-                          {subscription.client.phone}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-col">
-                        <span className="font-medium">{subscription.group.name}</span>
-                        <span className="text-sm text-muted-foreground">
-                          {subscription.group.studio.name}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={subscription.subscriptionType.type === 'UNLIMITED' ? 'default' : 'secondary'}>
-                        {subscription.subscriptionType.name}
-                      </Badge>
-                    </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          'inline-block h-2.5 w-2.5 rounded-full',
+                          statusDotClass[subscription.status],
+                        )}
+                      />
+                      <span className="text-sm">{format(new Date(subscription.purchaseDate), 'dd.MM.yyyy')}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span className="font-medium">
+                        {subscription.client.lastName} {subscription.client.firstName}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        {subscription.client.phone}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-medium">{subscription.subscriptionType.name}</span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col">
+                      <span className="font-medium">{subscription.group.name}</span>
+                      <span className="text-sm text-muted-foreground">
+                        {subscription.group.studio.name}
+                      </span>
+                    </div>
+                  </TableCell>
                     <TableCell>
                       <div className="flex flex-col text-sm">
                         <span>
-                          {format(new Date(subscription.startDate), 'dd MMM', { locale: ru })} - {format(new Date(subscription.endDate), 'dd MMM yyyy', { locale: ru })}
+                          {format(new Date(subscription.startDate), 'dd MMM', {
+                            locale: ru,
+                          })}{' '}
+                          -{' '}
+                          {format(new Date(subscription.endDate), 'dd MMM yyyy', {
+                            locale: ru,
+                          })}
                         </span>
                         {subscription.purchasedMonths > 1 && (
                           <span className="text-muted-foreground">
@@ -182,28 +340,12 @@ export default function SubscriptionsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-center">
-                      {subscription.remainingVisits !== null && subscription.remainingVisits !== undefined ? (
+                      {subscription.remainingVisits !== null &&
+                      subscription.remainingVisits !== undefined ? (
                         <Badge variant="outline">{subscription.remainingVisits}</Badge>
                       ) : (
                         <span className="text-muted-foreground">∞</span>
                       )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusVariants[subscription.status]}>
-                        {statusLabels[subscription.status]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleViewDetails(subscription);
-                        }}
-                      >
-                        <Eye className="h-4 w-4" />
-                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

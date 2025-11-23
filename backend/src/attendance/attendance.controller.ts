@@ -39,6 +39,11 @@ export class AttendanceController {
     return this.attendanceService.getBySchedule(scheduleId);
   }
 
+  @Get('bases/:scheduleId')
+  async getBases(@Param('scheduleId') scheduleId: string) {
+    return this.attendanceService.getAvailableBases(scheduleId);
+  }
+
   @Get('stats/:clientId')
   async getClientStats(
     @Param('clientId') clientId: string,

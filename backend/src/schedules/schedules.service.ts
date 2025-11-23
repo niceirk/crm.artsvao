@@ -94,12 +94,27 @@ export class SchedulesService {
     });
   }
 
-  async findAll(queryParams?: { date?: string; roomId?: string | string[]; teacherId?: string | string[]; groupId?: string | string[] }) {
+  async findAll(queryParams?: { date?: string; startDate?: string; endDate?: string; roomId?: string | string[]; teacherId?: string | string[]; groupId?: string | string[] }) {
     const where: any = {};
 
-    if (queryParams?.date) {
+    // Поддержка диапазона дат для недельного и месячного режима
+    if (queryParams?.startDate && queryParams?.endDate) {
+      where.date = {
+        gte: new Date(queryParams.startDate),
+        lte: new Date(queryParams.endDate),
+      };
+    } else if (queryParams?.date) {
+      // Одна дата для дневного режима
       where.date = new Date(queryParams.date);
+    } else {
+      // Если дата не передана, ограничиваем выборку последними 3 месяцами
+      const threeMonthsAgo = new Date();
+      threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+      where.date = {
+        gte: threeMonthsAgo,
+      };
     }
+
     if (queryParams?.roomId) {
       where.roomId = Array.isArray(queryParams.roomId)
         ? { in: queryParams.roomId }
@@ -118,6 +133,7 @@ export class SchedulesService {
 
     return this.prisma.schedule.findMany({
       where,
+      take: 500, // Лимит для предотвращения перегрузки
       orderBy: [{ date: 'asc' }, { startTime: 'asc' }],
       include: {
         group: {

@@ -6,6 +6,7 @@ import type {
   UpdateAttendanceDto,
   AttendanceFilterDto,
   PaginatedAttendanceResponse,
+  AttendanceBasesResponse,
 } from '../types/attendance';
 
 export const attendanceApi = {
@@ -81,6 +82,18 @@ export const attendanceApi = {
   },
 
   /**
+   * Получить возможные основания для занятия
+   */
+  getBasesBySchedule: async (
+    scheduleId: string,
+  ): Promise<AttendanceBasesResponse> => {
+    const response = await apiClient.get<AttendanceBasesResponse>(
+      `/attendance/bases/${scheduleId}`,
+    );
+    return response.data;
+  },
+
+  /**
    * Обновить статус посещения
    */
   update: async (id: string, data: UpdateAttendanceDto): Promise<Attendance> => {
@@ -94,7 +107,13 @@ export const attendanceApi = {
   /**
    * Удалить запись посещения (только ADMIN)
    */
-  delete: async (id: string): Promise<void> => {
-    await apiClient.delete(`/attendance/${id}`);
+  delete: async (
+    id: string,
+  ): Promise<{ message: string; scheduleId: string }> => {
+    const response = await apiClient.delete<{
+      message: string;
+      scheduleId: string;
+    }>(`/attendance/${id}`);
+    return response.data;
   },
 };

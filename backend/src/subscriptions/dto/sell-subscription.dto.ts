@@ -1,4 +1,4 @@
-import { IsUUID, IsString, IsOptional, IsNumber, Min, Max } from 'class-validator';
+import { IsUUID, IsString, IsOptional, IsNumber, Min, Max, IsBoolean, IsDateString } from 'class-validator';
 
 export class SellSubscriptionDto {
   @IsUUID()
@@ -13,6 +13,9 @@ export class SellSubscriptionDto {
   @IsString()
   validMonth: string; // Format: YYYY-MM
 
+  @IsDateString()
+  startDate: string; // Format: YYYY-MM-DD
+
   @IsNumber()
   @Min(1)
   @Max(12)
@@ -26,4 +29,8 @@ export class SellSubscriptionDto {
   @IsUUID()
   @IsOptional()
   managerId?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  applyBenefit?: boolean = true;
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useEffect, useRef, type JSX } from 'react';
+import { format } from 'date-fns';
 import {
   Sheet,
   SheetContent,
@@ -19,13 +20,25 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
-import { useAttendanceBySchedule, useMarkAttendance, useUpdateAttendance, useDeleteAttendance } from '@/hooks/use-attendance';
+import {
+  useAttendanceBySchedule,
+  useAttendanceBases,
+  useMarkAttendance,
+  useUpdateAttendance,
+  useDeleteAttendance,
+} from '@/hooks/use-attendance';
 import { groupsApi } from '@/lib/api/groups';
 import { Loader2, Check, X, AlertCircle, Trash2 } from 'lucide-react';
-import type { Attendance, AttendanceStatus } from '@/lib/types/attendance';
+import { SellSubscriptionDialog } from '@/app/(dashboard)/subscriptions/components/sell-subscription-dialog';
+import type {
+  Attendance,
+  AttendanceStatus,
+  AttendanceBaseOption,
+} from '@/lib/types/attendance';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/utils/toast';
 import { getClients, type Client } from '@/lib/api/clients';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 interface AttendanceSheetProps {
   open: boolean;
@@ -66,6 +79,8 @@ export function AttendanceSheet({
     useState<AttendanceStatus>('PRESENT');
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoadingClients, setIsLoadingClients] = useState(false);
+  const [clientSearch, setClientSearch] = useState('');
+  const debouncedClientSearch = useDebouncedValue(clientSearch, 300);
   const comboboxTriggerRef = useRef<HTMLButtonElement>(null);
   const deleteAttendance = useDeleteAttendance();
   const [pendingClientId, setPendingClientId] = useState<string | null>(null);
@@ -78,8 +93,54 @@ export function AttendanceSheet({
   }, [clients]);
 
   const { data: attendances, isLoading: isLoadingAttendances } = useAttendanceBySchedule(scheduleId);
+  const attendanceBasesQuery = useAttendanceBases(scheduleId);
+  const basesResponse = attendanceBasesQuery.data;
+  const [selectedBases, setSelectedBases] = useState<Record<string, string>>({});
+  const [quickSaleTarget, setQuickSaleTarget] = useState<string | null>(null);
   const markAttendance = useMarkAttendance();
   const updateAttendance = useUpdateAttendance();
+  const basisOptionsMap = useMemo(() => {
+    const map = new Map<string, AttendanceBaseOption[]>();
+    basesResponse?.bases.forEach((base) => {
+      const existing = map.get(base.clientId) ?? [];
+      existing.push(base);
+      map.set(base.clientId, existing);
+    });
+    return map;
+  }, [basesResponse?.bases]);
+
+  useEffect(() => {
+    setSelectedBases({});
+  }, [scheduleId]);
+
+  useEffect(() => {
+    if (!basesResponse) return;
+
+    setSelectedBases((prev) => {
+      const updated = { ...prev };
+      let changed = false;
+      const grouped: Record<string, AttendanceBaseOption[]> = {};
+
+      basesResponse.bases.forEach((base) => {
+        if (!grouped[base.clientId]) {
+          grouped[base.clientId] = [];
+        }
+        grouped[base.clientId].push(base);
+      });
+
+      Object.entries(grouped).forEach(([clientId, options]) => {
+        const existing = prev[clientId];
+        const existsInOptions = options.some((option) => option.id === existing);
+
+        if (!existing || !existsInOptions) {
+          updated[clientId] = options[0].id;
+          changed = true;
+        }
+      });
+
+      return changed ? updated : prev;
+    });
+  }, [basesResponse]);
 
   // Загружаем активных участников группы
   useEffect(() => {
@@ -138,14 +199,21 @@ export function AttendanceSheet({
     loadMembers();
   }, [groupId, open, attendances]);
 
-  // Загружаем список клиентов при открытии журнала
+  // Загружаем список клиентов по поисковому запросу
   useEffect(() => {
     const loadClients = async () => {
-      if (!open) return;
+      if (!open) {
+        setClients([]);
+        return;
+      }
 
       try {
         setIsLoadingClients(true);
-        const clientsResponse = await getClients({ limit: 10000, page: 1 });
+        const clientsResponse = await getClients({
+          limit: 50,
+          page: 1,
+          ...(debouncedClientSearch ? { search: debouncedClientSearch } : {})
+        });
         setClients(clientsResponse?.data || []);
       } catch (error) {
         console.error('Failed to load clients:', error);
@@ -156,12 +224,14 @@ export function AttendanceSheet({
     };
 
     loadClients();
-  }, [open]);
+  }, [open, debouncedClientSearch]);
 
   const handleMarkAttendance = async (clientId: string, status: AttendanceStatus) => {
     const member = members.find((m) => m.id === clientId);
 
     if (!member) return;
+
+    const basisId = selectedBases[clientId];
 
     if (member.attendance) {
       // Обновляем существующую отметку
@@ -169,7 +239,10 @@ export function AttendanceSheet({
         setPendingClientId(clientId);
         await updateAttendance.mutateAsync({
           id: member.attendance.id,
-          data: { status },
+          data: {
+            status,
+            ...(status === 'PRESENT' && basisId ? { subscriptionId: basisId } : {}),
+          },
         });
       } finally {
         setPendingClientId(null);
@@ -182,11 +255,47 @@ export function AttendanceSheet({
           scheduleId,
           clientId,
           status,
+          ...(status === 'PRESENT' && basisId ? { subscriptionId: basisId } : {}),
         });
       } finally {
         setPendingClientId(null);
       }
     }
+  };
+
+  const handleBasisChange = async (clientId: string, basisId: string) => {
+    const previousBasisId = selectedBases[clientId];
+    setSelectedBases((prev) => ({
+      ...prev,
+      [clientId]: basisId,
+    }));
+
+    const member = members.find((m) => m.id === clientId);
+    if (!member?.attendance || member.attendance.status !== 'PRESENT') {
+      return;
+    }
+
+    try {
+      setPendingClientId(clientId);
+      await updateAttendance.mutateAsync({
+        id: member.attendance.id,
+        data: {
+          status: 'PRESENT',
+          subscriptionId: basisId,
+        },
+      });
+    } catch {
+      setSelectedBases((prev) => ({
+        ...prev,
+        [clientId]: previousBasisId,
+      }));
+    } finally {
+      setPendingClientId(null);
+    }
+  };
+
+  const handleOpenQuickSale = (clientId: string) => {
+    setQuickSaleTarget(clientId);
   };
 
   const handleSelectClientForAdd = async (clientId?: string | null) => {
@@ -335,15 +444,17 @@ export function AttendanceSheet({
           placeholder="Добавить клиента на занятие"
           searchPlaceholder="Поиск клиента..."
           emptyText="Клиент не найден"
-          disabled={markAttendance.isPending || isLoadingClients || clients.length === 0}
+          disabled={markAttendance.isPending || isLoadingClients}
           allowEmpty={false}
           triggerRef={comboboxTriggerRef}
+          searchValue={clientSearch}
+          onSearchChange={setClientSearch}
         />
         {isLoadingClients && (
-          <p className="text-xs text-muted-foreground mt-1">Загрузка списка клиентов...</p>
+          <p className="text-xs text-muted-foreground mt-1">Загрузка...</p>
         )}
-        {!isLoadingClients && clients.length === 0 && (
-          <p className="text-xs text-muted-foreground mt-1">Нет доступных клиентов</p>
+        {!isLoadingClients && !clientSearch && clients.length === 0 && (
+          <p className="text-xs text-muted-foreground mt-1">Начните вводить для поиска клиента</p>
         )}
       </div>
       <div className="w-[170px]">
@@ -402,21 +513,40 @@ export function AttendanceSheet({
               </div>
             ) : (
               <div className="divide-y rounded-md border">
-                {sortedMembers.map((member, index) => (
-                  <AttendanceRow
-                    key={member.id}
-                    index={index + 1}
-                    member={member}
-                    onMark={handleMarkAttendance}
-                    onRemove={handleRemoveAttendance}
-                    isLoading={pendingClientId === member.id}
-                  />
-                ))}
+                {sortedMembers.map((member, index) => {
+                  const availableBases = basisOptionsMap.get(member.id) ?? [];
+                  return (
+                    <AttendanceRow
+                      key={member.id}
+                      index={index + 1}
+                      member={member}
+                      onMark={handleMarkAttendance}
+                      onRemove={handleRemoveAttendance}
+                      isLoading={pendingClientId === member.id}
+                      availableBases={availableBases}
+                      selectedBasisId={selectedBases[member.id]}
+                      onBasisChange={handleBasisChange}
+                      onQuickSale={() => handleOpenQuickSale(member.id)}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>
         </div>
       </SheetContent>
+
+      <SellSubscriptionDialog
+        open={Boolean(quickSaleTarget)}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setQuickSaleTarget(null);
+          }
+        }}
+        preselectedClientId={quickSaleTarget ?? undefined}
+        preselectedGroupId={groupId}
+        onSuccess={() => attendanceBasesQuery.refetch()}
+      />
 
     </Sheet>
   );
@@ -428,10 +558,25 @@ interface AttendanceRowProps {
   onMark: (clientId: string, status: AttendanceStatus) => void;
   onRemove: (member: MemberWithAttendance) => void;
   isLoading: boolean;
+  availableBases: AttendanceBaseOption[];
+  selectedBasisId?: string;
+  onBasisChange: (clientId: string, basisId: string) => void;
+  onQuickSale: () => void;
 }
 
-function AttendanceRow({ member, index, onMark, onRemove, isLoading }: AttendanceRowProps) {
+function AttendanceRow({
+  member,
+  index,
+  onMark,
+  onRemove,
+  isLoading,
+  availableBases,
+  selectedBasisId,
+  onBasisChange,
+  onQuickSale,
+}: AttendanceRowProps) {
   const { attendance } = member;
+  const selectedBase = availableBases.find((base) => base.id === selectedBasisId);
 
   const statusOptions: {
     value: AttendanceStatus;
@@ -469,9 +614,9 @@ function AttendanceRow({ member, index, onMark, onRemove, isLoading }: Attendanc
           : 'bg-muted-foreground';
 
   return (
-    <div className="flex items-center gap-2 px-2.5 py-2 text-sm">
-      <span className="text-xs text-muted-foreground w-6 text-right">{index}.</span>
-      <span className={cn('h-2.5 w-2.5 rounded-full', statusColor)} />
+    <div className="flex items-start gap-2 px-2.5 py-2 text-sm">
+      <span className="text-xs text-muted-foreground w-6 text-right mr-4">{index}.</span>
+      <span className={cn('h-2.5 w-2.5 rounded-full mt-0.5', statusColor)} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="truncate font-medium text-sm">
@@ -489,9 +634,55 @@ function AttendanceRow({ member, index, onMark, onRemove, isLoading }: Attendanc
           )}
         </div>
         <div className="text-[11px] text-muted-foreground truncate">{member.phone}</div>
+        <div className="mt-1 flex flex-col gap-2 text-[11px] text-muted-foreground">
+          {availableBases.length > 0 ? (
+            <>
+              <Select
+                value={selectedBasisId || undefined}
+                onValueChange={(value) => onBasisChange(member.id, value)}
+                disabled={isLoading}
+              >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Выбрать основание">
+                  {selectedBase
+                    ? selectedBase.subscriptionType.name
+                    : undefined}
+                </SelectValue>
+              </SelectTrigger>
+                <SelectContent>
+                  {availableBases.map((base) => {
+                    const saleDate = base.startDate
+                      ? format(new Date(base.startDate), 'dd.MM.yyyy')
+                      : 'дата не указана';
+                    return (
+                      <SelectItem key={base.id} value={base.id}>
+                        <div className="flex flex-col">
+                          <span>{base.subscriptionType.name}</span>
+                          <span className="text-[10px] text-muted-foreground">
+                            Продано: {saleDate}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={onQuickSale}
+              disabled={isLoading}
+              className="w-full justify-start"
+            >
+              Продать абонемент / разовое
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 self-start">
         {statusOptions.map((option) => {
           const isActive = attendance?.status === option.value;
           return (

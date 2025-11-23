@@ -1,6 +1,43 @@
+import type { AttendanceStatus } from './attendance';
+
 export type SubscriptionTypeEnum = 'UNLIMITED' | 'SINGLE_VISIT';
 
 export type SubscriptionStatus = 'ACTIVE' | 'EXPIRED' | 'FROZEN' | 'CANCELLED';
+
+export interface SubscriptionAttendance {
+  id: string;
+  status: AttendanceStatus;
+  notes?: string | null;
+  markedAt?: string | null;
+  markedByUser?: {
+    firstName: string;
+    lastName: string;
+  } | null;
+  subscriptionDeducted: boolean;
+  subscription?: {
+    id: string;
+    remainingVisits?: number | null;
+    subscriptionType: {
+      id: string;
+      name: string;
+      type: SubscriptionTypeEnum;
+    };
+  } | null;
+  schedule: {
+    id: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    group: {
+      id: string;
+      name: string;
+      studio: {
+        id: string;
+        name: string;
+      };
+    };
+  };
+}
 
 export interface SubscriptionType {
   id: string;
@@ -75,6 +112,7 @@ export interface Subscription {
     totalAmount: number;
     issuedAt: string;
   }[];
+  attendances?: SubscriptionAttendance[];
 }
 
 export interface CreateSubscriptionTypeDto {
@@ -106,8 +144,10 @@ export interface SellSubscriptionDto {
   subscriptionTypeId: string;
   groupId: string;
   validMonth: string; // Format: YYYY-MM
+  startDate: string; // Format: YYYY-MM-DD
   purchasedMonths?: number; // Default: 1
   notes?: string;
+  applyBenefit?: boolean;
 }
 
 export interface UpdateSubscriptionDto {
@@ -119,6 +159,9 @@ export interface SubscriptionFilterDto {
   clientId?: string;
   groupId?: string;
   status?: SubscriptionStatus;
+  statusCategory?: 'ACTIVE' | 'INACTIVE';
+  sortBy?: 'purchaseDate' | 'createdAt';
+  sortOrder?: 'asc' | 'desc';
   validMonth?: string;
   page?: number;
   limit?: number;

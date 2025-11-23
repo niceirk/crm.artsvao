@@ -1,4 +1,4 @@
-import { IsOptional, IsUUID, IsEnum, IsString, IsNumber, Min } from 'class-validator';
+import { IsOptional, IsUUID, IsEnum, IsString, IsNumber, Min, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 import { SubscriptionStatus } from '@prisma/client';
 
@@ -14,6 +14,18 @@ export class SubscriptionFilterDto {
   @IsEnum(SubscriptionStatus)
   @IsOptional()
   status?: SubscriptionStatus;
+
+  @IsIn(['ACTIVE', 'INACTIVE'])
+  @IsOptional()
+  statusCategory?: 'ACTIVE' | 'INACTIVE';
+
+  @IsIn(['purchaseDate', 'createdAt'])
+  @IsOptional()
+  sortBy?: 'purchaseDate' | 'createdAt';
+
+  @IsIn(['asc', 'desc'])
+  @IsOptional()
+  sortOrder?: 'asc' | 'desc';
 
   @IsString()
   @IsOptional()

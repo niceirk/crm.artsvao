@@ -7,7 +7,7 @@ import { useNavigationStore } from '@/lib/stores/navigation-store';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth';
 import { useAuthStore } from '@/lib/store/auth-store';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import { BreadcrumbsProvider } from '@/lib/contexts/breadcrumbs-context';
 import { useMessagesNotifications } from '@/hooks/use-messages-notifications';
@@ -17,6 +17,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { user, isLoading } = useAuth();
   const _hasHydrated = useAuthStore((state) => state._hasHydrated);
   const router = useRouter();
+  const pathname = usePathname();
   useMessagesNotifications();
 
   // Проверка авторизации
@@ -57,7 +58,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           )}
         >
           {/* Top Bar */}
-          <TopBar sidebarCollapsed={sidebarCollapsed} />
+          {pathname !== '/schedule' && (
+            <TopBar sidebarCollapsed={sidebarCollapsed} />
+          )}
 
           {/* Page Content */}
           <main className="flex-1 overflow-y-auto bg-muted/40 p-4 md:p-6">

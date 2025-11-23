@@ -6,7 +6,13 @@ import { GroupsService } from '../groups/groups.service';
 import { SellSubscriptionDto } from './dto/sell-subscription.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { SubscriptionFilterDto } from './dto/subscription-filter.dto';
-import { ServiceType, WriteOffTiming, CalendarEventStatus } from '@prisma/client';
+import {
+  Prisma,
+  SubscriptionStatus,
+  ServiceType,
+  WriteOffTiming,
+  CalendarEventStatus,
+} from '@prisma/client';
 
 @Injectable()
 export class SubscriptionsService {
@@ -47,29 +53,34 @@ export class SubscriptionsService {
     }
 
     // 3. Рассчитать даты и цены
-    const purchaseDate = new Date();
+    const purchaseDate = this.startOfDay(new Date());
+    const selectedStartDate = this.normalizeStartDate(sellDto.startDate, purchaseDate);
+    const calculationStartDate = selectedStartDate > purchaseDate ? selectedStartDate : purchaseDate;
+    const resolvedValidMonth = sellDto.validMonth || this.formatValidMonth(selectedStartDate);
     const { startDate, endDate } = this.calculateSubscriptionDates(
-      sellDto.validMonth,
-      purchaseDate,
+      resolvedValidMonth,
+      calculationStartDate,
+    );
+    const lessonStats = await this.getPlannedLessonsStats(
+      sellDto.groupId,
+      resolvedValidMonth,
+      calculationStartDate,
     );
 
-    const { originalPrice, discountAmount, finalPrice } =
-      await this.calculateSubscriptionPrice(
-        subscriptionType.price,
-        purchaseDate,
-        startDate,
-        endDate,
-        client.benefitCategory,
-        sellDto.purchasedMonths || 1,
-      );
+    const applyBenefit = sellDto.applyBenefit ?? true;
+
+    const { originalPrice, discountAmount, finalPrice, pricePerLesson } =
+      this.calculateSubscriptionPrice({
+        basePrice: subscriptionType.price,
+        benefitCategory: client.benefitCategory,
+        purchasedMonths: sellDto.purchasedMonths || 1,
+        applyBenefit,
+        lessonStats,
+      });
 
     // 4. Проверить минимальный порог (для первого месяца)
     if (sellDto.purchasedMonths === 1) {
-      await this.validateMinimumThreshold(
-        sellDto.groupId,
-        purchaseDate,
-        endDate,
-      );
+      this.validateMinimumThreshold(lessonStats.remainingPlanned);
     }
 
     // 5. Создать абонемент
@@ -78,7 +89,7 @@ export class SubscriptionsService {
         clientId: sellDto.clientId,
         subscriptionTypeId: sellDto.subscriptionTypeId,
         groupId: sellDto.groupId,
-        validMonth: sellDto.validMonth,
+        validMonth: resolvedValidMonth,
         purchaseDate,
         startDate,
         endDate,
@@ -163,17 +174,19 @@ export class SubscriptionsService {
             {
               serviceType: ServiceType.SUBSCRIPTION,
               serviceName: `Абонемент "${subscriptionType.name}" - ${subscriptionType.group.name}`,
-              serviceDescription: `Период: ${sellDto.validMonth} (${sellDto.purchasedMonths} мес.)`,
-              quantity: sellDto.purchasedMonths || 1,
-              basePrice: Number(subscriptionType.price),
-              unitPrice: Number(finalPrice / (sellDto.purchasedMonths || 1)),
+              serviceDescription: `Период: ${resolvedValidMonth} (${sellDto.purchasedMonths} мес.) — ${lessonStats.remainingPlanned} занятий`,
+              quantity: lessonStats.remainingPlanned,
+              basePrice: Number(pricePerLesson),
+              unitPrice: Number(pricePerLesson),
               vatRate: 0, // Абонементы без НДС
-              discountPercent: client.benefitCategory
-                ? Number(client.benefitCategory.discountPercent)
-                : 0,
+              discountPercent:
+                applyBenefit && client.benefitCategory?.isActive
+                  ? Number(client.benefitCategory.discountPercent)
+                  : 0,
               writeOffTiming: WriteOffTiming.ON_USE,
             },
           ],
+          discountAmount,
           notes: sellDto.notes,
         },
         managerId,
@@ -208,54 +221,111 @@ export class SubscriptionsService {
    */
   private calculateSubscriptionDates(
     validMonth: string,
-    purchaseDate: Date,
+    startDateInput: Date,
   ): { startDate: Date; endDate: Date } {
     const [year, month] = validMonth.split('-').map(Number);
 
-    // Дата начала = дата покупки (или 1-е число месяца, если покупают заранее)
-    const startDate = new Date(purchaseDate);
+    const monthStart = this.startOfDay(new Date(year, month - 1, 1));
+    const startDate =
+      startDateInput > monthStart ? startDateInput : monthStart;
 
-    // Дата окончания = последний день месяца validMonth
-    const endDate = new Date(year, month, 0); // 0 = последний день предыдущего месяца
+    const endDate = this.endOfDay(new Date(year, month, 0));
 
     return { startDate, endDate };
   }
 
   /**
-   * Рассчитать цену абонемента с пропорциональной скидкой и льготами
+   * Получить статистику по запланированным занятиям для расчета цены
    */
-  private async calculateSubscriptionPrice(
-    basePrice: number | any,
-    purchaseDate: Date,
-    startDate: Date,
-    endDate: Date,
-    benefitCategory: any,
-    purchasedMonths: number,
+  private async getPlannedLessonsStats(
+    groupId: string,
+    validMonth: string,
+    calculationStart: Date,
   ): Promise<{
-    originalPrice: number;
-    discountAmount: number;
-    finalPrice: number;
+    totalPlanned: number;
+    remainingPlanned: number;
   }> {
-    const basePriceNum = Number(basePrice);
+    const [year, month] = validMonth.split('-').map(Number);
+    const monthStart = this.startOfDay(new Date(year, month - 1, 1));
+    const monthEnd = this.endOfDay(new Date(year, month, 0));
+    const normalizedCalculationStart =
+      calculationStart > monthStart ? calculationStart : monthStart;
 
-    // Рассчитать пропорциональную цену для первого месяца
-    const daysInMonth = endDate.getDate();
-    const remainingDays = Math.ceil(
-      (endDate.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24),
-    ) + 1;
+    const schedules = await this.prisma.schedule.findMany({
+      where: {
+        groupId,
+        date: {
+          gte: monthStart,
+          lte: monthEnd,
+        },
+        status: CalendarEventStatus.PLANNED,
+        isRecurring: false,
+      },
+      select: {
+        date: true,
+      },
+    });
 
-    let proportionalPrice = basePriceNum;
-    if (remainingDays < daysInMonth) {
-      proportionalPrice = (basePriceNum / daysInMonth) * remainingDays;
+    const totalPlanned = schedules.length;
+    const remainingPlanned = schedules.filter((schedule) => {
+      const scheduleDate = this.startOfDay(new Date(schedule.date));
+      return scheduleDate >= normalizedCalculationStart;
+    }).length;
+
+    if (totalPlanned === 0) {
+      throw new BadRequestException('Нет запланированных занятий для выбранного месяца');
     }
 
-    // Цена за все месяцы (первый пропорционально, остальные полностью)
-    const totalPrice =
-      proportionalPrice + basePriceNum * (purchasedMonths - 1);
+    return {
+      totalPlanned,
+      remainingPlanned,
+    };
+  }
 
-    // Применить льготную категорию
+  /**
+   * Рассчитать цену абонемента на основе количества занятий и льгот
+   */
+  private calculateSubscriptionPrice({
+    basePrice,
+    benefitCategory,
+    purchasedMonths,
+    applyBenefit,
+    lessonStats,
+  }: {
+    basePrice: number | any;
+    benefitCategory: any;
+    purchasedMonths: number;
+    applyBenefit: boolean;
+      lessonStats: {
+        totalPlanned: number;
+        remainingPlanned: number;
+      };
+    }): {
+      originalPrice: number;
+      discountAmount: number;
+      finalPrice: number;
+      pricePerLesson: number;
+    } {
+    const basePriceNum = Number(basePrice);
+    const { totalPlanned, remainingPlanned } = lessonStats;
+
+    if (totalPlanned <= 0) {
+      throw new BadRequestException('Нет запланированных занятий для выбранного месяца');
+    }
+
+    if (remainingPlanned <= 0) {
+      throw new BadRequestException(
+        'Нет доступных запланированных занятий до конца выбранного месяца',
+      );
+    }
+
+    const pricePerLesson = Math.round(basePriceNum / totalPlanned);
+    const firstMonthPrice = pricePerLesson * remainingPlanned;
+    const otherMonthsPrice = basePriceNum * (purchasedMonths - 1);
+    const totalPrice = firstMonthPrice + otherMonthsPrice;
+
     let discountAmount = 0;
-    if (benefitCategory && benefitCategory.isActive) {
+    if (applyBenefit && benefitCategory && benefitCategory.isActive) {
       const discountPercent = Number(benefitCategory.discountPercent);
       discountAmount = (totalPrice * discountPercent) / 100;
     }
@@ -263,35 +333,20 @@ export class SubscriptionsService {
     const finalPrice = totalPrice - discountAmount;
 
     return {
-      originalPrice: totalPrice,
-      discountAmount,
-      finalPrice,
+      originalPrice: this.toMoney(totalPrice),
+      discountAmount: this.toMoney(discountAmount),
+      finalPrice: this.toMoney(finalPrice),
+      pricePerLesson: this.toMoney(pricePerLesson),
     };
   }
 
   /**
    * Проверить минимальный порог занятий (≥3 занятия до конца месяца)
    */
-  private async validateMinimumThreshold(
-    groupId: string,
-    purchaseDate: Date,
-    endDate: Date,
-  ): Promise<void> {
-    // Получить расписание группы на оставшиеся дни месяца
-    const schedules = await this.prisma.schedule.count({
-      where: {
-        groupId,
-        date: {
-          gte: purchaseDate,
-          lte: endDate,
-        },
-        status: CalendarEventStatus.PLANNED,
-      },
-    });
-
-    if (schedules < 3) {
+  private validateMinimumThreshold(remainingLessons: number): void {
+    if (remainingLessons < 3) {
       throw new BadRequestException(
-        `Недостаточно занятий до конца месяца (осталось ${schedules}, минимум 3). Купите абонемент на следующий месяц.`,
+        `Недостаточно занятий до конца месяца (осталось ${remainingLessons}, минимум 3). Купите абонемент на следующий месяц.`,
       );
     }
   }
@@ -310,26 +365,85 @@ export class SubscriptionsService {
     return Math.ceil((days / 7) * 2);
   }
 
+  private normalizeStartDate(startDate: string | undefined, fallback: Date): Date {
+    if (!startDate) {
+      return this.startOfDay(fallback);
+    }
+
+    const parsed = new Date(startDate);
+    if (isNaN(parsed.getTime())) {
+      throw new BadRequestException('Некорректная дата начала занятий');
+    }
+
+    return this.startOfDay(parsed);
+  }
+
+  private formatValidMonth(date: Date): string {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    return `${year}-${month}`;
+  }
+
+  private startOfDay(date: Date): Date {
+    const normalized = new Date(date);
+    normalized.setHours(0, 0, 0, 0);
+    return normalized;
+  }
+
+  private endOfDay(date: Date): Date {
+    const normalized = new Date(date);
+    normalized.setHours(23, 59, 59, 999);
+    return normalized;
+  }
+
+  private toMoney(amount: number): number {
+    return Math.round(amount * 100) / 100;
+  }
+
   /**
    * Получить список абонементов с фильтрацией
    */
   async findAll(filter: SubscriptionFilterDto = {}) {
-    const { clientId, groupId, status, validMonth, page = 1, limit = 50 } =
-      filter;
+    const {
+      clientId,
+      groupId,
+      status,
+      statusCategory,
+      sortBy,
+      sortOrder,
+      validMonth,
+      page = 1,
+      limit = 50,
+    } = filter;
     const skip = (page - 1) * limit;
 
     const where: any = {};
     if (clientId) where.clientId = clientId;
     if (groupId) where.groupId = groupId;
-    if (status) where.status = status;
+    const activeStatuses =
+      statusCategory === 'ACTIVE'
+        ? ['ACTIVE']
+        : statusCategory === 'INACTIVE'
+          ? ['EXPIRED', 'FROZEN', 'CANCELLED']
+          : [];
+    if (statusCategory === 'ACTIVE' || statusCategory === 'INACTIVE') {
+      where.status = { in: activeStatuses as SubscriptionStatus[] };
+    } else if (status) {
+      where.status = status;
+    }
     if (validMonth) where.validMonth = validMonth;
+
+    const orderByCriteria =
+      sortBy && ['purchaseDate', 'createdAt'].includes(sortBy)
+        ? [{ [sortBy]: sortOrder ?? 'desc' as Prisma.SortOrder }]
+        : [{ createdAt: 'desc' as Prisma.SortOrder }];
 
     const [data, total] = await Promise.all([
       this.prisma.subscription.findMany({
         where,
         skip,
         take: limit,
-        orderBy: [{ createdAt: 'desc' }],
+        orderBy: orderByCriteria,
         include: {
           client: {
             select: {
@@ -412,6 +526,56 @@ export class SubscriptionsService {
             totalAmount: true,
             issuedAt: true,
           },
+        },
+        attendances: {
+          select: {
+            id: true,
+            status: true,
+            notes: true,
+            markedAt: true,
+            markedByUser: {
+              select: {
+                firstName: true,
+                lastName: true,
+              },
+            },
+            subscriptionDeducted: true,
+            subscription: {
+              select: {
+                id: true,
+                remainingVisits: true,
+                subscriptionType: {
+                  select: {
+                    id: true,
+                    name: true,
+                    type: true,
+                  },
+                },
+              },
+            },
+            schedule: {
+              select: {
+                id: true,
+                date: true,
+                startTime: true,
+                endTime: true,
+                group: {
+                  select: {
+                    id: true,
+                    name: true,
+                    studio: {
+                      select: {
+                        id: true,
+                        name: true,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { markedAt: 'desc' },
+          take: 6,
         },
       },
     });

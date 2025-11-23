@@ -11,6 +11,10 @@ export class CreateAttendanceDto {
   @IsEnum(AttendanceStatus)
   status: AttendanceStatus;
 
+  @IsUUID()
+  @IsOptional()
+  subscriptionId?: string;
+
   @IsString()
   @IsOptional()
   notes?: string;

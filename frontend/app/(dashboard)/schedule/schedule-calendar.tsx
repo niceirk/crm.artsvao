@@ -14,7 +14,10 @@ import { Rental } from '@/lib/api/rentals';
 import { Event } from '@/lib/api/events';
 import { Reservation } from '@/lib/api/reservations';
 import { useRooms } from '@/hooks/use-rooms';
-import { Calendar, Key, Star, Lock } from 'lucide-react';
+import { Calendar as CalendarIcon, Key, Star, Lock } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { ru } from 'date-fns/locale';
 import './schedule-calendar.css';
 
 type CalendarEventType = 'schedule' | 'rental' | 'event' | 'reservation';
@@ -94,88 +97,12 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
   const calendarRef = useRef<FullCalendar>(null);
   const { data: rooms } = useRooms();
   const [currentView, setCurrentView] = useState<string>('resourceTimeGridDay');
-  const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const [calendarResources, setCalendarResources] = useState<Array<{id: string; title: string}>>([]);
-  const [scrollTime, setScrollTime] = useState<string>(() => {
-    // Вычисляем начальное время прокрутки
-    const now = new Date();
-    let hours = now.getHours();
-    let minutes = now.getMinutes() - 30;
+  const [currentDateRange, setCurrentDateRange] = useState<{ start: Date; end: Date } | null>(null);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const titleRef = useRef<HTMLDivElement>(null);
+  const [titlePosition, setTitlePosition] = useState<{ top: number; left: number } | null>(null);
 
-    if (minutes < 0) {
-      hours -= 1;
-      minutes += 60;
-    }
-
-    if (hours < 8) {
-      hours = 8;
-      minutes = 0;
-    }
-
-    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
-  });
-
-  // Функция для прокрутки к текущему времени
-  const scrollToCurrentTime = useCallback(() => {
-    if (!calendarRef.current) return;
-
-    const now = new Date();
-    let hours = now.getHours();
-    let minutes = now.getMinutes() - 30;
-
-    if (minutes < 0) {
-      hours -= 1;
-      minutes += 60;
-    }
-
-    if (hours < 8) {
-      hours = 8;
-      minutes = 0;
-    }
-
-    // Обновляем scrollTime для автопрокрутки
-    const timeString = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`;
-    setScrollTime(timeString);
-
-    // Дополнительно используем прямой DOM scroll для кнопки "Сейчас"
-    const calendarApi = calendarRef.current.getApi();
-    const calendarElement = calendarApi.el;
-    if (calendarElement) {
-      const allElements = calendarElement.querySelectorAll('*');
-      let scrollContainer = null;
-
-      for (const el of allElements) {
-        if (el.scrollHeight > el.clientHeight + 5) {
-          const className = el.className;
-          if (className && (className.includes('scroller') || className.includes('timegrid') || className.includes('time-cols'))) {
-            scrollContainer = el;
-            break;
-          }
-        }
-      }
-
-      if (!scrollContainer) {
-        // Если не нашли специфичный, берем первый scrollable
-        for (const el of allElements) {
-          if (el.scrollHeight > el.clientHeight + 5) {
-            scrollContainer = el;
-            break;
-          }
-        }
-      }
-
-      if (scrollContainer) {
-        const totalMinutesFromStart = (hours * 60 + minutes) - (8 * 60);
-        const slots = scrollContainer.querySelectorAll('.fc-timegrid-slot');
-        if (slots.length > 0) {
-          const targetSlotIndex = Math.floor(totalMinutesFromStart / 30);
-          if (slots[targetSlotIndex]) {
-            slots[targetSlotIndex].scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        }
-      }
-    }
-  }, []);
 
   // All hooks must be called before any conditional returns
   // useEffect(() => {
@@ -199,16 +126,65 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Обновление времени прокрутки при смене режима
+  // Добавляем обработчик клика на заголовок для открытия date picker
   useEffect(() => {
-    if (!isLoading && calendarRef.current) {
-      // Даем календарю время отрендериться
-      const timer = setTimeout(() => {
-        scrollToCurrentTime();
-      }, 300);
-      return () => clearTimeout(timer);
+    if (!calendarRef.current || isLoading) return;
+
+    const timer = setTimeout(() => {
+      const calendarApi = calendarRef.current?.getApi();
+      if (!calendarApi) return;
+
+      const titleElement = calendarApi.el.querySelector('.fc-toolbar-title') as HTMLElement;
+      if (titleElement && titleRef.current) {
+        titleElement.style.cursor = 'pointer';
+        titleElement.style.userSelect = 'none';
+        titleElement.style.transition = 'all 0.2s ease';
+        titleElement.style.textDecoration = 'underline dashed';
+        titleElement.style.textDecorationThickness = '1px';
+        titleElement.style.textUnderlineOffset = '4px';
+
+        const handleClick = () => {
+          // Вычисляем позицию заголовка для открытия Popover
+          const rect = titleElement.getBoundingClientRect();
+          setTitlePosition({
+            top: rect.bottom + window.scrollY,
+            left: rect.left + rect.width / 2 + window.scrollX
+          });
+          setIsDatePickerOpen(true);
+          setSelectedDate(calendarApi.getDate());
+        };
+
+        const handleMouseEnter = () => {
+          titleElement.style.color = 'hsl(var(--primary))';
+        };
+
+        const handleMouseLeave = () => {
+          titleElement.style.color = '';
+        };
+
+        titleElement.addEventListener('click', handleClick);
+        titleElement.addEventListener('mouseenter', handleMouseEnter);
+        titleElement.addEventListener('mouseleave', handleMouseLeave);
+
+        return () => {
+          titleElement.removeEventListener('click', handleClick);
+          titleElement.removeEventListener('mouseenter', handleMouseEnter);
+          titleElement.removeEventListener('mouseleave', handleMouseLeave);
+        };
+      }
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [currentView, isLoading]);
+
+  const handleDateSelect = (date: Date | undefined) => {
+    if (date && calendarRef.current) {
+      const calendarApi = calendarRef.current.getApi();
+      calendarApi.gotoDate(date);
+      setSelectedDate(date);
+      setIsDatePickerOpen(false);
     }
-  }, [currentView, scrollToCurrentTime, isLoading]);
+  };
 
   // Prepare events data (always, not conditionally)
   const calendarEvents = useMemo(() => {
@@ -379,149 +355,38 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     ];
   }, [schedules, rentals, eventItems, reservations, currentView]);
 
-  // Calculate filtered resources
-  const filteredResources = useMemo(() => {
-    if (!rooms) return [];
-
-    const allResources = rooms.map((room) => ({
-      id: room.id,
-      title: `${room.name}${room.number ? ` (${room.number})` : ''}`,
-    }));
-
-    // Если не в режиме "День", показываем все помещения
-    if (currentView !== 'resourceTimeGridDay') {
-      return allResources;
-    }
-
-    // Получаем активную дату из календаря API
-    let activeDate = currentDate;
-    if (calendarRef.current) {
-      const calendarApi = calendarRef.current.getApi();
-      activeDate = calendarApi.getDate();
-    }
-
-    // Фильтруем помещения с событиями на текущую дату
-    const currentDateStr = activeDate.toISOString().split('T')[0];
-    const occupiedRoomIds = new Set<string>();
-
-    console.log('🔍 Filtering rooms for date:', currentDateStr);
-    console.log('📊 Data counts:', {
-      schedules: schedules.length,
-      rentals: rentals.length,
-      events: eventItems.length,
-      reservations: reservations.length
-    });
-
-    // Логируем даты из данных для диагностики
-    const scheduleDates = schedules.map(s => s.date?.split('T')[0]).filter(Boolean);
-    const rentalDates = rentals.map(r => r.date?.split('T')[0]).filter(Boolean);
-    const eventDates = eventItems.map(e => e.date?.split('T')[0]).filter(Boolean);
-    const reservationDates = reservations.map(r => r.date?.split('T')[0]).filter(Boolean);
-
-    const allDates = [...new Set([...scheduleDates, ...rentalDates, ...eventDates, ...reservationDates])].sort();
-    console.log('📅 Available dates in data:', allDates);
-
-    // Логируем события на текущую дату (для диагностики)
-    const eventsOnDate = eventItems.filter(e => e.date?.split('T')[0] === currentDateStr);
-    const eventsOnDateWithRoom = eventsOnDate.filter(e => e.roomId);
-    const eventsOnDateWithoutRoom = eventsOnDate.filter(e => !e.roomId);
-    console.log(`📌 Events on ${currentDateStr}:`, {
-      total: eventsOnDate.length,
-      withRoom: eventsOnDateWithRoom.length,
-      withoutRoom: eventsOnDateWithoutRoom.length,
-      withoutRoomList: eventsOnDateWithoutRoom.map(e => ({ name: e.name, id: e.id }))
-    });
-
-    // Детальная проверка всех events за дату
-    console.log(`🔍 Detailed events for ${currentDateStr}:`, eventsOnDate.map(e => ({
-      id: e.id,
-      name: e.name,
-      roomId: e.roomId,
-      room: e.room,
-      date: e.date,
-      startTime: e.startTime,
-      endTime: e.endTime
-    })));
-
-    // Проверка: какие помещения существуют в справочнике
-    console.log('🏢 Available rooms:', allResources.map(r => ({ id: r.id, title: r.title })));
-
-    // Проверяем schedules
-    schedules.forEach((schedule) => {
-      if (schedule.date) {
-        const scheduleDateStr = schedule.date.split('T')[0];
-        if (scheduleDateStr === currentDateStr) {
-          if (schedule.roomId) {
-            console.log('✅ Schedule match:', schedule.roomId, scheduleDateStr);
-            occupiedRoomIds.add(schedule.roomId);
-          } else {
-            console.log('⚠️ Schedule without roomId:', scheduleDateStr, schedule);
-          }
-        }
-      }
-    });
-
-    // Проверяем rentals
-    rentals.forEach((rental) => {
-      if (rental.date) {
-        const rentalDateStr = rental.date.split('T')[0];
-        if (rentalDateStr === currentDateStr) {
-          if (rental.roomId) {
-            console.log('✅ Rental match:', rental.roomId, rentalDateStr);
-            occupiedRoomIds.add(rental.roomId);
-          } else {
-            console.log('⚠️ Rental without roomId:', rentalDateStr, rental);
-          }
-        }
-      }
-    });
-
-    // Проверяем events
-    eventItems.forEach((event) => {
-      if (event.date) {
-        const eventDateStr = event.date.split('T')[0];
-        if (eventDateStr === currentDateStr) {
-          if (event.roomId) {
-            console.log('✅ Event match:', event.roomId, eventDateStr);
-            occupiedRoomIds.add(event.roomId);
-          } else {
-            console.log('⚠️ Event without roomId:', eventDateStr, event);
-          }
-        }
-      }
-    });
-
-    // Проверяем reservations
-    reservations.forEach((reservation) => {
-      if (reservation.date) {
-        const reservationDateStr = reservation.date.split('T')[0];
-        if (reservationDateStr === currentDateStr) {
-          if (reservation.roomId) {
-            console.log('✅ Reservation match:', reservation.roomId, reservationDateStr);
-            occupiedRoomIds.add(reservation.roomId);
-          } else {
-            console.log('⚠️ Reservation without roomId:', reservationDateStr, reservation);
-          }
-        }
-      }
-    });
-
-    console.log('🏢 Occupied room IDs:', Array.from(occupiedRoomIds));
-
-    const filtered = allResources.filter(r => occupiedRoomIds.has(r.id));
-
-    return filtered.length > 0 ? filtered : allResources;
-  }, [rooms, currentView, currentDate, schedules, rentals, eventItems, reservations]);
-
-  // Update calendar resources state when filtered resources change
-  useEffect(() => {
-    setCalendarResources(filteredResources);
-  }, [filteredResources]);
-
-
   // useEffect(() => {
   //   console.log('Events for FullCalendar:', calendarEvents);
   // }, [calendarEvents]);
+
+  // Prepare resources from rooms - показываем только помещения с активностями в текущем диапазоне дат
+  const resources = useMemo(() => {
+    if (!rooms) return [];
+
+    // Собираем все уникальные roomId из событий, попадающих в текущий диапазон
+    const usedRoomIds = new Set<string>();
+
+    calendarEvents.forEach(event => {
+      // Фильтруем события по текущему диапазону дат
+      if (currentDateRange && event.start && event.resourceId) {
+        const eventStart = new Date(event.start);
+        if (eventStart >= currentDateRange.start && eventStart < currentDateRange.end) {
+          usedRoomIds.add(event.resourceId);
+        }
+      } else if (!currentDateRange && event.resourceId) {
+        // Если диапазон еще не установлен, показываем все помещения с событиями
+        usedRoomIds.add(event.resourceId);
+      }
+    });
+
+    // Фильтруем только помещения с активностями
+    return rooms
+      .filter(room => usedRoomIds.has(room.id))
+      .map((room) => ({
+        id: room.id,
+        title: `${room.name}${room.number ? ` (${room.number})` : ''}`,
+      }));
+  }, [rooms, calendarEvents, currentDateRange]);
 
   // Conditional rendering comes AFTER all hooks
   if (isLoading) {
@@ -580,22 +445,20 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
 
   const handleViewChange = (info: any) => {
     setCurrentView(info.view.type);
-    // Обновляем текущую дату календаря для фильтрации помещений
-    if (info.view.currentStart) {
-      setCurrentDate(new Date(info.view.currentStart));
-    }
+    setCurrentDateRange({
+      start: info.start,
+      end: info.end,
+    });
   };
 
   const renderEventContent = (eventInfo: EventContentArg) => {
     const eventType = eventInfo.event.extendedProps.type as CalendarEventType;
-    const eventData = eventInfo.event.extendedProps.data;
-    const isMonthView = currentView === 'dayGridMonth';
 
     // Определяем иконку в зависимости от типа события
     let IconComponent;
     switch (eventType) {
       case 'schedule':
-        IconComponent = Calendar;
+        IconComponent = CalendarIcon;
         break;
       case 'rental':
         IconComponent = Key;
@@ -607,100 +470,85 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
         IconComponent = Lock;
         break;
       default:
-        IconComponent = Calendar;
+        IconComponent = CalendarIcon;
     }
 
-    // Генерируем подробное описание для тултипа
-    const getEventTooltip = () => {
-      if (eventType === 'schedule') {
-        const schedule = eventData as Schedule;
-        return `${eventInfo.timeText}
-Тип: ${schedule.type === 'GROUP_CLASS' ? 'Групповое' : schedule.type === 'INDIVIDUAL_CLASS' ? 'Индивидуальное' : schedule.type === 'OPEN_CLASS' ? 'Открытое' : 'Мероприятие'}
-Группа: ${schedule.group?.name || 'Индивидуальное'}
-Преподаватель: ${schedule.teacher ? `${schedule.teacher.lastName} ${schedule.teacher.firstName}` : '-'}
-Помещение: ${schedule.room?.name || '-'}
-Статус: ${schedule.status === 'PLANNED' ? 'Запланировано' : schedule.status === 'ONGOING' ? 'Идет' : schedule.status === 'COMPLETED' ? 'Завершено' : 'Отменено'}`;
-      } else if (eventType === 'rental') {
-        const rental = eventData as Rental;
-        return `${eventInfo.timeText}
-Тип: ${rental.eventType}
-Клиент: ${rental.clientName}
-Помещение: ${rental.room?.name || '-'}
-Статус: ${rental.status === 'PLANNED' ? 'Запланировано' : rental.status === 'ONGOING' ? 'Идет' : rental.status === 'COMPLETED' ? 'Завершено' : 'Отменено'}`;
-      } else if (eventType === 'event') {
-        const event = eventData as Event;
-        return `${eventInfo.timeText}
-Мероприятие: ${event.name}
-Тип: ${event.eventType?.name || '-'}
-Помещение: ${event.room?.name || '-'}
-Статус: ${event.status === 'PLANNED' ? 'Запланировано' : event.status === 'ONGOING' ? 'Идет' : event.status === 'COMPLETED' ? 'Завершено' : 'Отменено'}`;
-      } else {
-        const reservation = eventData as Reservation;
-        return `${eventInfo.timeText}
-Забронировано: ${reservation.reservedBy}
-Помещение: ${reservation.room?.name || '-'}`;
-      }
-    };
+    // Создаём полный текст для tooltip
+    const tooltipText = `${eventInfo.timeText}\n${eventInfo.event.title}`;
 
-    // Компактное отображение для режима месяца
-    if (isMonthView) {
-      return (
-        <div
-          className="fc-event-main-frame fc-event-month-compact"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '3px',
-            padding: '1px 3px',
-            overflow: 'hidden',
-            whiteSpace: 'nowrap',
+    return (
+      <div
+        className="fc-event-main-frame"
+        style={{ display: 'flex', alignItems: 'flex-start', gap: '3px', padding: '1px 3px' }}
+        title={tooltipText}
+      >
+        <IconComponent size={12} style={{ flexShrink: 0, marginTop: '1px' }} />
+        <div style={{
+          flex: 1,
+          minWidth: 0,
+          whiteSpace: 'pre-line',
+          lineHeight: 1.2,
+          fontSize: '0.7rem',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis'
+        }}>
+          <div className="fc-event-time" style={{ fontSize: '0.7rem' }}>{eventInfo.timeText}</div>
+          <div className="fc-event-title" style={{
             fontSize: '0.7rem',
-            lineHeight: 1.2
-          }}
-          title={getEventTooltip()}
-        >
-          <IconComponent size={10} style={{ flexShrink: 0 }} />
-          <span style={{ fontWeight: 500, marginRight: '2px' }}>{eventInfo.timeText}</span>
-          <span style={{
             overflow: 'hidden',
             textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}>
-            {eventInfo.event.title.split('\n')[0]}
-          </span>
-        </div>
-      );
-    }
-
-    // Обычное отображение для других режимов
-    return (
-      <div className="fc-event-main-frame" style={{ display: 'flex', alignItems: 'flex-start', gap: '4px', padding: '2px' }}>
-        <IconComponent size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
-        <div style={{ flex: 1, minWidth: 0, whiteSpace: 'pre-line', lineHeight: 1.3, fontSize: '0.875rem' }}>
-          <div className="fc-event-time">{eventInfo.timeText}</div>
-          <div className="fc-event-title">{eventInfo.event.title}</div>
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical'
+          }}>{eventInfo.event.title}</div>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="schedule-calendar">
+    <div className="schedule-calendar h-full" ref={titleRef}>
+      <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
+        <PopoverTrigger asChild>
+          <div style={{
+            position: 'absolute',
+            top: titlePosition ? `${titlePosition.top}px` : '50%',
+            left: titlePosition ? `${titlePosition.left}px` : '50%',
+            transform: 'translate(-50%, 0)',
+            width: 0,
+            height: 0,
+            pointerEvents: 'none',
+            zIndex: 9999
+          }} />
+        </PopoverTrigger>
+        <PopoverContent
+          className="w-auto p-0"
+          align="center"
+          side="bottom"
+          sideOffset={8}
+          style={{ zIndex: 10000 }}
+        >
+          <Calendar
+            mode="single"
+            selected={selectedDate}
+            onSelect={handleDateSelect}
+            captionLayout="dropdown"
+            fromYear={2020}
+            toYear={2030}
+            initialFocus
+            locale={ru}
+          />
+        </PopoverContent>
+      </Popover>
       <FullCalendar
         ref={calendarRef}
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin, listPlugin, resourceTimeGridPlugin]}
         initialView="resourceTimeGridDay"
         locale={ruLocale}
         headerToolbar={{
-          left: 'prev,next today scrollToNow',
+          left: 'prev,next today',
           center: 'title',
           right: 'dayGridMonth,timeGridWeek,resourceTimeGridDay,listWeek',
-        }}
-        customButtons={{
-          scrollToNow: {
-            text: 'Сейчас',
-            click: scrollToCurrentTime,
-          },
         }}
         buttonText={{
           today: 'Сегодня',
@@ -709,13 +557,12 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
           resourceTimeGridDay: 'День',
           list: 'Список',
         }}
-        resources={calendarResources}
+        resources={resources}
         schedulerLicenseKey="GPL-My-Project-Is-Open-Source"
         slotMinTime="08:00:00"
         slotMaxTime="22:00:00"
-        scrollTime={scrollTime}
         allDaySlot={false}
-        height={700}
+        height="100%"
         events={calendarEvents}
         eventClick={handleEventClick}
         select={handleSelect}
@@ -724,7 +571,7 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
         eventResize={handleEventDropOrResize}
         selectable={true}
         selectMirror={true}
-        dayMaxEvents={5}
+        dayMaxEvents={true}
         weekends={true}
         slotDuration="00:30:00"
         slotLabelInterval="01:00"
@@ -734,7 +581,6 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
         resourceAreaHeaderContent="Помещения"
         datesSet={handleViewChange}
         eventContent={renderEventContent}
-        moreLinkText={(num) => `+${num} ещё`}
       />
 
       <style jsx global>{`
@@ -814,28 +660,22 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
           gap: 0.25rem;
         }
 
-        .schedule-calendar .fc-scrollToNow-button {
-          background-color: hsl(var(--muted));
-          border-color: hsl(var(--border));
-          color: hsl(var(--muted-foreground));
-        }
-
-        .schedule-calendar .fc-scrollToNow-button:hover {
-          background-color: hsl(var(--muted) / 0.8);
-          border-color: hsl(var(--border));
-          color: hsl(var(--foreground));
-        }
-
         .schedule-calendar .fc-event {
           cursor: pointer;
-          border-radius: 4px;
-          padding: 2px 4px;
-          font-size: 0.875rem;
+          border-radius: 3px;
+          padding: 1px 2px;
+          font-size: 0.7rem;
         }
 
         .schedule-calendar .fc-event-title {
-          white-space: pre-line;
-          line-height: 1.3;
+          line-height: 1.2;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .schedule-calendar .fc-event-time {
+          font-size: 0.7rem;
+          line-height: 1.2;
         }
 
         .schedule-calendar .fc-event:hover {
@@ -843,7 +683,8 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
         }
 
         .schedule-calendar .fc-timegrid-slot {
-          height: 3em;
+          height: auto !important;
+          min-height: 1em !important;
         }
 
         .schedule-calendar .fc-col-header-cell {
@@ -906,103 +747,34 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
           /* Запланированные события - обычный вид */
         }
 
-        /* Стили для режима месяца - убираем фон и делаем компактным */
-        .schedule-calendar .fc-daygrid-event {
-          background-color: transparent !important;
-          border: none !important;
-          margin: 0 !important;
-          padding: 0 1px !important;
+        /* Отключаем внутренний скролл календаря */
+        .schedule-calendar .fc-scroller,
+        .schedule-calendar .fc-scroller-liquid-absolute {
+          overflow: hidden !important;
         }
 
-        .schedule-calendar .fc-daygrid-event .fc-event-main {
-          padding: 0 !important;
+        /* Растягиваем таблицу на всю высоту */
+        .schedule-calendar .fc-timegrid-body {
+          height: 100% !important;
         }
 
-        .schedule-calendar .fc-daygrid-event .fc-event-month-compact {
-          color: inherit !important;
+        .schedule-calendar .fc-timegrid-slots,
+        .schedule-calendar .fc-timegrid-cols {
+          height: 100% !important;
         }
 
-        /* Цвета иконок и текста для разных типов событий в режиме месяца */
-        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(59, 130, 246)"] .fc-event-month-compact,
-        .schedule-calendar .fc-daygrid-event[style*="background-color:#3b82f6"] .fc-event-month-compact {
-          color: #3b82f6 !important; /* blue - занятия группы */
+        /* Равномерно распределяем слоты по высоте */
+        .schedule-calendar .fc-timegrid-slots table {
+          height: 100% !important;
         }
 
-        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(16, 185, 129)"] .fc-event-month-compact,
-        .schedule-calendar .fc-daygrid-event[style*="background-color:#10b981"] .fc-event-month-compact {
-          color: #10b981 !important; /* green - индивидуальные */
+        .schedule-calendar .fc-timegrid-slots tbody {
+          height: 100% !important;
         }
 
-        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(245, 158, 11)"] .fc-event-month-compact,
-        .schedule-calendar .fc-daygrid-event[style*="background-color:#f59e0b"] .fc-event-month-compact {
-          color: #f59e0b !important; /* amber - открытые/резервации */
-        }
-
-        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(139, 92, 246)"] .fc-event-month-compact,
-        .schedule-calendar .fc-daygrid-event[style*="background-color:#8b5cf6"] .fc-event-month-compact {
-          color: #8b5cf6 !important; /* purple - мероприятия */
-        }
-
-        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(220, 38, 38)"] .fc-event-month-compact,
-        .schedule-calendar .fc-daygrid-event[style*="background-color:#dc2626"] .fc-event-month-compact {
-          color: #dc2626 !important; /* red - аренда */
-        }
-
-        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(156, 163, 175)"] .fc-event-month-compact,
-        .schedule-calendar .fc-daygrid-event[style*="background-color:#9ca3af"] .fc-event-month-compact {
-          color: #9ca3af !important; /* gray - завершено */
-        }
-
-        .schedule-calendar .fc-daygrid-event[style*="background-color: rgb(239, 68, 68)"] .fc-event-month-compact,
-        .schedule-calendar .fc-daygrid-event[style*="background-color:#ef4444"] .fc-event-month-compact {
-          color: #ef4444 !important; /* red - отменено */
-        }
-
-        /* Стили для ссылки "+N ещё" */
-        .schedule-calendar .fc-daygrid-more-link {
-          font-size: 0.7rem;
-          font-weight: 500;
-          color: hsl(var(--primary));
-          text-decoration: none;
-          padding: 1px 3px;
-          margin: 0;
-        }
-
-        .schedule-calendar .fc-daygrid-more-link:hover {
-          text-decoration: underline;
-          color: hsl(var(--primary) / 0.8);
-        }
-
-        /* Попап со списком событий */
-        .schedule-calendar .fc-popover {
-          background-color: hsl(var(--background));
-          border: 1px solid hsl(var(--border));
-          border-radius: 0.5rem;
-          box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        }
-
-        .schedule-calendar .fc-popover-header {
-          background-color: hsl(var(--muted));
-          border-bottom: 1px solid hsl(var(--border));
-          padding: 0.5rem 0.75rem;
-          font-weight: 500;
-        }
-
-        .schedule-calendar .fc-popover-body {
-          padding: 0.25rem 0;
-        }
-
-        .schedule-calendar .fc-popover .fc-daygrid-event {
-          margin: 0 0.5rem 0.25rem !important;
-        }
-
-        /* Увеличиваем высоту ячеек для вмещения большего количества событий */
-        .schedule-calendar .fc-daygrid-day-frame {
-          min-height: 100px;
-        }
-
-        .schedule-calendar .fc-daygrid-day-events {
-          margin-bottom: 0;
+        /* Каждый слот занимает равную часть высоты (28 слотов для 14 часов по 30 мин) */
+        .schedule-calendar .fc-timegrid-slot {
+          height: calc(100% / 28) !important;
         }
       `}</style>
     </div>

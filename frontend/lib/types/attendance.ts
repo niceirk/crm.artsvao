@@ -1,3 +1,5 @@
+import type { SubscriptionStatus, SubscriptionTypeEnum } from './subscriptions';
+
 export type AttendanceStatus = 'PRESENT' | 'ABSENT' | 'EXCUSED';
 
 export interface Attendance {
@@ -40,11 +42,15 @@ export interface Attendance {
   };
   subscription?: {
     id: string;
-    type: string;
     remainingVisits?: number;
-    status: string;
+    status: SubscriptionStatus;
     validMonth: string;
     endDate: string;
+    subscriptionType: {
+      id: string;
+      name: string;
+      type: SubscriptionTypeEnum;
+    };
   };
   markedByUser?: {
     id: string;
@@ -67,11 +73,13 @@ export interface CreateAttendanceDto {
   scheduleId: string;
   clientId: string;
   status: AttendanceStatus;
+  subscriptionId?: string;
   notes?: string;
 }
 
 export interface UpdateAttendanceDto {
   status?: AttendanceStatus;
+  subscriptionId?: string;
   notes?: string;
 }
 
@@ -92,6 +100,28 @@ export interface PaginatedAttendanceResponse {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+export interface AttendanceBaseOption {
+  id: string;
+  clientId: string;
+  subscriptionType: {
+    id: string;
+    name: string;
+    type: SubscriptionTypeEnum;
+  };
+  remainingVisits?: number | null;
+  validMonth: string;
+  startDate: string;
+  endDate: string;
+  status: SubscriptionStatus;
+}
+
+export interface AttendanceBasesResponse {
+  scheduleId: string;
+  groupId: string | null;
+  date: string;
+  bases: AttendanceBaseOption[];
 }
 
 // Дополнительный интерфейс для списка клиентов с абонементами для UI
