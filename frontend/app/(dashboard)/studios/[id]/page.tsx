@@ -11,7 +11,20 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Edit, Users, CreditCard, Layers, Save, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  Edit,
+  Users,
+  CreditCard,
+  Layers,
+  Save,
+  X,
+  Plus,
+  User,
+  MapPin,
+  Users2,
+  Calendar,
+} from 'lucide-react';
 import Link from 'next/link';
 import { formatWeeklySchedule } from '@/lib/types/weekly-schedule';
 import { useForm } from 'react-hook-form';
@@ -19,6 +32,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { toast } from '@/lib/utils/toast';
 import { useBreadcrumbs } from '@/lib/contexts/breadcrumbs-context';
+import { GroupDialog } from '../../admin/groups/group-dialog';
+import { SubscriptionTypeDialog } from '../../admin/subscription-types/subscription-type-dialog';
 
 const studioSchema = z.object({
   name: z.string().min(1, 'Название обязательно'),
@@ -43,6 +58,8 @@ export default function StudioDetailPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
+  const [isSubscriptionDialogOpen, setIsSubscriptionDialogOpen] = useState(false);
 
   const form = useForm<z.infer<typeof studioSchema>>({
     resolver: zodResolver(studioSchema),
@@ -155,6 +172,30 @@ export default function StudioDetailPage() {
     }
   };
 
+  const refreshGroupsAndStats = async () => {
+    try {
+      const [groupsData, statsData] = await Promise.all([
+        studiosApi.getStudioGroups(studioId),
+        studiosApi.getStudioStats(studioId),
+      ]);
+      setGroups(groupsData);
+      setStats(statsData);
+    } catch (error) {
+      console.error('Failed to refresh groups for studio:', error);
+      toast.error('Не удалось обновить группы студии');
+    }
+  };
+
+  const refreshSubscriptionTypes = async () => {
+    try {
+      const typesData = await studiosApi.getStudioSubscriptionTypes(studioId);
+      setSubscriptionTypes(typesData);
+    } catch (error) {
+      console.error('Failed to refresh subscription types for studio:', error);
+      toast.error('Не удалось обновить типы абонементов');
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -204,24 +245,27 @@ export default function StudioDetailPage() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div>
-            <h1 className="text-3xl font-bold">{studio.name}</h1>
-            {studio.description && (
-              <p className="text-muted-foreground mt-1">{studio.description}</p>
-            )}
+          <div className="space-y-1">
+            <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-3xl font-bold">{studio.name}</h1>
+              <Badge
+                className={
+                  studio.status === 'ACTIVE'
+                    ? 'bg-emerald-500 text-emerald-50 hover:bg-emerald-600'
+                    : 'bg-secondary text-secondary-foreground'
+                }
+              >
+                {studio.status === 'ACTIVE' ? 'Активна' : 'Неактивна'}
+              </Badge>
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
           {!isEditing && (
-            <>
-              <Badge variant={studio.status === 'ACTIVE' ? 'default' : 'secondary'}>
-                {studio.status === 'ACTIVE' ? 'Активна' : 'Неактивна'}
-              </Badge>
-              <Button variant="outline" size="sm" onClick={handleEdit}>
-                <Edit className="h-4 w-4 mr-2" />
-                Редактировать
-              </Button>
-            </>
+            <Button variant="outline" size="sm" onClick={handleEdit}>
+              <Edit className="h-4 w-4 mr-2" />
+              Редактировать
+            </Button>
           )}
           {isEditing && (
             <>
@@ -246,6 +290,20 @@ export default function StudioDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Описание */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Описание</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {studio.description ? (
+            <p className="text-sm text-muted-foreground">{studio.description}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Описание не заполнено</p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Карточка с основной информацией о студии */}
       {isEditing && (
@@ -379,11 +437,17 @@ export default function StudioDetailPage() {
 
       {/* Группы студии */}
       <Card>
-        <CardHeader>
-          <CardTitle>Группы</CardTitle>
-          <CardDescription>
-            Список всех групп студии. Кликните на группу для просмотра деталей.
-          </CardDescription>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Группы</CardTitle>
+            <CardDescription>
+              Список всех групп студии. Кликните на группу для просмотра деталей.
+            </CardDescription>
+          </div>
+          <Button size="sm" onClick={() => setIsGroupDialogOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Добавить группу
+          </Button>
         </CardHeader>
         <CardContent>
           {groups.length === 0 ? (
@@ -391,43 +455,63 @@ export default function StudioDetailPage() {
               В студии пока нет групп
             </p>
           ) : (
-            <div className="space-y-2">
+            <div className="grid gap-2 md:grid-cols-2">
               {groups.map((group) => (
                 <Link
                   key={group.id}
                   href={`/groups/${group.id}`}
-                  className="block p-4 border rounded-lg hover:bg-accent transition-colors"
+                  className="block p-3 border rounded-lg hover:bg-accent transition-colors"
                 >
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
-                      <h3 className="font-semibold">{group.name}</h3>
-                      <div className="text-sm text-muted-foreground mt-1 space-y-1">
-                        {group.teacher && (
-                          <div>
-                            Преподаватель: {group.teacher.firstName} {group.teacher.lastName}
-                          </div>
-                        )}
-                        {group.room && <div>Помещение: {group.room.name}</div>}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold">{group.name}</h3>
+                        <Badge
+                          className={
+                            group.status === 'ACTIVE'
+                              ? 'bg-emerald-500 text-emerald-50 hover:bg-emerald-600'
+                              : 'bg-secondary text-secondary-foreground'
+                          }
+                        >
+                          {group.status === 'ACTIVE' ? 'Активна' : 'Неактивна'}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1 truncate">
+                          <User className="h-3.5 w-3.5" />
+                          <span className="truncate">
+                            {group.teacher
+                              ? `${group.teacher.firstName} ${group.teacher.lastName}`
+                              : '—'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 truncate">
+                          <MapPin className="h-3.5 w-3.5" />
+                          <span className="truncate">
+                            {group.room?.name || '—'}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 truncate">
+                          <Users2 className="h-3.5 w-3.5" />
+                          <span className="truncate">
+                            {group._count?.subscriptions || 0} / {group.maxParticipants}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 truncate">
+                          <Layers className="h-3.5 w-3.5" />
+                          <span className="truncate">
+                            {group._count?.schedules || 0}
+                          </span>
+                        </div>
                         {group.weeklySchedule && group.duration && (
-                          <div>
-                            Расписание: {formatWeeklySchedule(group.weeklySchedule, group.duration)}
+                          <div className="col-span-2 flex items-center gap-1 truncate">
+                            <Calendar className="h-3.5 w-3.5" />
+                            <span className="truncate">
+                              {formatWeeklySchedule(group.weeklySchedule, group.duration)}
+                            </span>
                           </div>
                         )}
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm">
-                        Участников: {group._count?.subscriptions || 0} / {group.maxParticipants}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        Занятий: {group._count?.schedules || 0}
-                      </div>
-                      <Badge
-                        variant={group.status === 'ACTIVE' ? 'default' : 'secondary'}
-                        className="mt-1"
-                      >
-                        {group.status === 'ACTIVE' ? 'Активна' : 'Неактивна'}
-                      </Badge>
                     </div>
                   </div>
                 </Link>
@@ -439,11 +523,21 @@ export default function StudioDetailPage() {
 
       {/* Типы абонементов */}
       <Card>
-        <CardHeader>
-          <CardTitle>Типы абонементов</CardTitle>
-          <CardDescription>
-            Доступные тарифы для групп студии
-          </CardDescription>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>Типы абонементов</CardTitle>
+            <CardDescription>
+              Доступные тарифы для групп студии
+            </CardDescription>
+          </div>
+          <Button
+            size="sm"
+            onClick={() => setIsSubscriptionDialogOpen(true)}
+            disabled={groups.length === 0}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Новый тип
+          </Button>
         </CardHeader>
         <CardContent>
           {subscriptionTypes.length === 0 ? (
@@ -480,6 +574,27 @@ export default function StudioDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <GroupDialog
+        open={isGroupDialogOpen}
+        onOpenChange={setIsGroupDialogOpen}
+        defaultStudioId={studio.id}
+        disableStudioSelect
+        onSuccess={async () => {
+          await refreshGroupsAndStats();
+        }}
+      />
+
+      <SubscriptionTypeDialog
+        open={isSubscriptionDialogOpen}
+        onOpenChange={setIsSubscriptionDialogOpen}
+        defaultGroupId={groups[0]?.id}
+        studioId={studio.id}
+        groupsList={groups}
+        onSuccess={async () => {
+          await refreshSubscriptionTypes();
+        }}
+      />
     </div>
   );
 }

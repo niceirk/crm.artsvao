@@ -16,6 +16,8 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
   BadRequestException,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { MessagesService } from './messages.service';
@@ -27,13 +29,48 @@ import { UploadImageDto } from './dto/upload-image.dto';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
+import { MessagesEventsService } from './messages-events.service';
+import { merge, from } from 'rxjs';
+import { map } from 'rxjs/operators';
 
 @Controller('messages')
 @UseGuards(RolesGuard)
 export class MessagesController {
   private readonly logger = new Logger(MessagesController.name);
 
-  constructor(private readonly messagesService: MessagesService) {}
+  constructor(
+    private readonly messagesService: MessagesService,
+    private readonly messagesEventsService: MessagesEventsService,
+  ) {}
+
+  /**
+   * Текущий счётчик непрочитанных входящих сообщений
+   * GET /api/messages/unread-count
+   */
+  @Get('unread-count')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  async getUnreadCount() {
+    const count = await this.messagesService.getUnreadCount();
+    return { count };
+  }
+
+  /**
+   * SSE поток событий для обновления счётчика в реальном времени
+   * GET /api/messages/stream
+   */
+  @Sse('stream')
+  @Roles(UserRole.ADMIN, UserRole.MANAGER)
+  streamMessages(): Promise<MessageEvent> | any {
+    // Сразу отправляем текущее значение счётчика, затем подписываемся на события
+    const initial$ = from(this.messagesService.getUnreadCount()).pipe(
+      map((count) => ({
+        type: 'unread-count',
+        data: { type: 'unread-count', count },
+      })),
+    );
+
+    return merge(initial$, this.messagesEventsService.getEventsStream());
+  }
 
   /**
    * Получить список диалогов

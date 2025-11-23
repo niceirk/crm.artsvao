@@ -26,7 +26,7 @@ export interface ComboboxOption {
 export interface ComboboxProps {
   options: ComboboxOption[];
   value?: string;
-  onValueChange: (value: string | undefined) => void;
+  onValueChange: (value: string | undefined, option?: ComboboxOption) => void;
   placeholder?: string;
   searchPlaceholder?: string;
   emptyText?: string;
@@ -34,6 +34,9 @@ export interface ComboboxProps {
   disabled?: boolean;
   allowEmpty?: boolean;
   emptyLabel?: string;
+  searchValue?: string;
+  onSearchChange?: (value: string) => void;
+  triggerRef?: React.RefObject<HTMLButtonElement>;
 }
 
 export function Combobox({
@@ -47,6 +50,9 @@ export function Combobox({
   disabled = false,
   allowEmpty = true,
   emptyLabel = 'Не выбрано',
+  searchValue,
+  onSearchChange,
+  triggerRef,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
 
@@ -62,6 +68,7 @@ export function Combobox({
           aria-expanded={open}
           className={cn('w-full justify-between', className)}
           disabled={disabled}
+          ref={triggerRef}
         >
           {selectedOption ? selectedOption.label : placeholder}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -69,7 +76,11 @@ export function Combobox({
       </PopoverTrigger>
       <PopoverContent className="w-full p-0" align="start">
         <Command>
-          <CommandInput placeholder={searchPlaceholder} />
+          <CommandInput
+            placeholder={searchPlaceholder}
+            value={searchValue}
+            onValueChange={onSearchChange}
+          />
           <CommandList>
             <CommandEmpty>{emptyText}</CommandEmpty>
             <CommandGroup>
@@ -77,7 +88,7 @@ export function Combobox({
                 <CommandItem
                   value="__empty__"
                   onSelect={() => {
-                    onValueChange(undefined);
+                    onValueChange(undefined, undefined);
                     setOpen(false);
                   }}
                 >
@@ -96,7 +107,12 @@ export function Combobox({
                   value={option.value}
                   keywords={[option.label]}
                   onSelect={(currentValue) => {
-                    onValueChange(currentValue === selectedValue ? undefined : currentValue);
+                    const nextValue =
+                      currentValue === selectedValue ? undefined : currentValue;
+                    onValueChange(
+                      nextValue,
+                      options.find((opt) => opt.value === nextValue)
+                    );
                     setOpen(false);
                   }}
                 >

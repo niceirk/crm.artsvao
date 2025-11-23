@@ -10,11 +10,13 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown } from 'lucide-react';
+import { useMessagesStore } from '@/lib/stores/messages-store';
 
 export function MobileSidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
   const { mobileMenuOpen, setMobileMenuOpen } = useNavigationStore();
+  const unreadCount = useMessagesStore((state) => state.unreadCount);
 
   const isAdmin = user?.role === 'ADMIN';
   const filteredNavigation = filterNavigationByRole(navigationConfig, isAdmin);
@@ -66,6 +68,7 @@ export function MobileSidebar() {
                     isActive={isParentActive(item)}
                     onClick={handleLinkClick}
                     pathname={pathname}
+                    unreadCount={unreadCount}
                   />
                 ))}
               </div>
@@ -82,12 +85,16 @@ interface MobileNavLinkProps {
   isActive: boolean;
   onClick: () => void;
   pathname: string;
+  unreadCount: number;
 }
 
-function MobileNavLink({ item, isActive, onClick, pathname }: MobileNavLinkProps) {
+function MobileNavLink({ item, isActive, onClick, pathname, unreadCount }: MobileNavLinkProps) {
   const Icon = item.icon;
   const { expandedMenus, toggleMenu } = useNavigationStore();
   const isExpanded = expandedMenus.has(item.title);
+  const isMessages = item.href === '/messages';
+  const dynamicBadge =
+    isMessages && unreadCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount.toString()) : null;
 
   // Если есть children - рендерим Collapsible
   if (item.children) {
@@ -151,9 +158,9 @@ function MobileNavLink({ item, isActive, onClick, pathname }: MobileNavLinkProps
     >
       <Icon className={cn('h-4 w-4 shrink-0', isActive && 'text-primary-foreground')} />
       <span className="flex-1">{item.title}</span>
-      {item.badge && (
+      {(dynamicBadge || item.badge) && (
         <Badge variant="secondary" className="ml-auto">
-          {item.badge}
+          {dynamicBadge || item.badge}
         </Badge>
       )}
     </Link>

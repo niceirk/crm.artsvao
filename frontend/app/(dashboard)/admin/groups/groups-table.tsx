@@ -178,7 +178,16 @@ export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
                 <TableCell>{getAgeRange(group)}</TableCell>
                 <TableCell>{group.room?.name || '—'}</TableCell>
                 <TableCell>
-                  {group._count?.subscriptions || 0} / {group.maxParticipants}
+                  <div className="flex flex-col">
+                    <span>
+                      {(group.memberCounts?.active ?? 0)} / {group.maxParticipants}
+                    </span>
+                    {(group.memberCounts?.waitlist ?? 0) > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        Лист ожидания: {group.memberCounts?.waitlist}
+                      </span>
+                    )}
+                  </div>
                 </TableCell>
                 <TableCell>
                   {Number(group.singleSessionPrice).toLocaleString()} ₽

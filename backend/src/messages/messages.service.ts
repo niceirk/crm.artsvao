@@ -7,6 +7,7 @@ import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateConversationStatusDto } from './dto/update-conversation-status.dto';
 import { LinkConversationDto } from './dto/link-conversation.dto';
 import { Prisma, ConversationStatus } from '@prisma/client';
+import { MessagesEventsService } from './messages-events.service';
 
 @Injectable()
 export class MessagesService {
@@ -16,6 +17,7 @@ export class MessagesService {
     private readonly prisma: PrismaService,
     private readonly telegramService: TelegramService,
     private readonly s3Storage: S3StorageService,
+    private readonly messagesEventsService: MessagesEventsService,
   ) {}
 
   /**
@@ -647,6 +649,38 @@ export class MessagesService {
 
     this.logger.log(`Messages in conversation ${conversationId} marked as read`);
 
+    // Обновляем счётчик непрочитанных для всех клиентов
+    await this.broadcastUnreadCount();
+
     return { success: true };
+  }
+
+  /**
+   * Подсчитывает общее количество непрочитанных входящих сообщений менеджерами.
+   */
+  async getUnreadCount(): Promise<number> {
+    const count = await this.prisma.message.count({
+      where: {
+        direction: 'INBOUND',
+        isReadByManager: false,
+      },
+    });
+    return count;
+  }
+
+  /**
+   * Считает и рассылает текущее значение непрочитанных в SSE.
+   */
+  async broadcastUnreadCount(): Promise<void> {
+    const count = await this.getUnreadCount();
+    this.messagesEventsService.emitUnreadCount(count);
+  }
+
+  /**
+   * Хелпер для входящего сообщения: оповестить фронт об увеличении счётчика и новом сообщении.
+   */
+  async notifyInboundMessage(conversationId: string, createdAt: Date): Promise<void> {
+    this.messagesEventsService.emitNewMessage(conversationId, createdAt);
+    await this.broadcastUnreadCount();
   }
 }

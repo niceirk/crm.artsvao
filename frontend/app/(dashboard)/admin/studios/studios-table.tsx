@@ -1,7 +1,17 @@
 'use client';
 
-import { useState } from 'react';
-import { MoreHorizontal, Pencil, Trash2, Palette, Eye } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Palette,
+  Eye,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+} from 'lucide-react';
 import Link from 'next/link';
 import {
   Table,
@@ -56,13 +66,76 @@ interface StudiosTableProps {
   isLoading: boolean;
 }
 
+type SortField = 'name' | 'type' | 'category' | 'groups' | 'status';
+type SortOrder = 'asc' | 'desc';
+
 export function StudiosTable({ studios, isLoading }: StudiosTableProps) {
+  const router = useRouter();
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
   const [selectedStudio, setSelectedStudio] = useState<Studio | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [studioToDelete, setStudioToDelete] = useState<Studio | null>(null);
 
   const deleteStudio = useDeleteStudio();
+
+  const sortedStudios = useMemo(() => {
+    const studiosCopy = [...studios];
+
+    const getValue = (studio: Studio, field: SortField) => {
+      switch (field) {
+        case 'name':
+          return studio.name.toLowerCase();
+        case 'type':
+          return typeLabels[studio.type]?.toLowerCase() || '';
+        case 'category':
+          return (studio.category || '').toLowerCase();
+        case 'groups':
+          return studio._count?.groups || 0;
+        case 'status':
+          return studio.status.toLowerCase();
+        default:
+          return '';
+      }
+    };
+
+    studiosCopy.sort((a, b) => {
+      const valueA = getValue(a, sortField);
+      const valueB = getValue(b, sortField);
+
+      if (typeof valueA === 'number' && typeof valueB === 'number') {
+        return sortOrder === 'asc' ? valueA - valueB : valueB - valueA;
+      }
+
+      return sortOrder === 'asc'
+        ? String(valueA).localeCompare(String(valueB))
+        : String(valueB).localeCompare(String(valueA));
+    });
+
+    return studiosCopy;
+  }, [sortField, sortOrder, studios]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="ml-2 h-4 w-4" />;
+    }
+
+    return sortOrder === 'asc' ? (
+      <ArrowUp className="ml-2 h-4 w-4" />
+    ) : (
+      <ArrowDown className="ml-2 h-4 w-4" />
+    );
+  };
 
   const handleEdit = (studio: Studio) => {
     setSelectedStudio(studio);
@@ -109,20 +182,70 @@ export function StudiosTable({ studios, isLoading }: StudiosTableProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Название</TableHead>
-              <TableHead>Тип</TableHead>
-              <TableHead>Категория</TableHead>
-              <TableHead>Группы</TableHead>
-              <TableHead>Статус</TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  className="h-auto p-0 font-medium"
+                  onClick={() => handleSort('name')}
+                >
+                  Название
+                  {getSortIcon('name')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  className="h-auto p-0 font-medium"
+                  onClick={() => handleSort('type')}
+                >
+                  Тип
+                  {getSortIcon('type')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  className="h-auto p-0 font-medium"
+                  onClick={() => handleSort('category')}
+                >
+                  Категория
+                  {getSortIcon('category')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  className="h-auto p-0 font-medium"
+                  onClick={() => handleSort('groups')}
+                >
+                  Группы
+                  {getSortIcon('groups')}
+                </Button>
+              </TableHead>
+              <TableHead>
+                <Button
+                  variant="ghost"
+                  className="h-auto p-0 font-medium"
+                  onClick={() => handleSort('status')}
+                >
+                  Статус
+                  {getSortIcon('status')}
+                </Button>
+              </TableHead>
               <TableHead className="w-[70px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {studios.map((studio) => (
-              <TableRow key={studio.id}>
+            {sortedStudios.map((studio) => (
+              <TableRow
+                key={studio.id}
+                onClick={() => router.push(`/studios/${studio.id}`)}
+                className="cursor-pointer hover:bg-muted/50"
+              >
                 <TableCell className="font-medium">
                   <Link
                     href={`/studios/${studio.id}`}
+                    onClick={(event) => event.stopPropagation()}
                     className="hover:underline hover:text-primary transition-colors"
                   >
                     {studio.name}
@@ -138,7 +261,7 @@ export function StudiosTable({ studios, isLoading }: StudiosTableProps) {
                     {statusLabels[studio.status]}
                   </Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell onClick={(event) => event.stopPropagation()}>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="ghost" size="icon">
@@ -148,18 +271,29 @@ export function StudiosTable({ studios, isLoading }: StudiosTableProps) {
                     <DropdownMenuContent align="end">
                       <DropdownMenuLabel>Действия</DropdownMenuLabel>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem asChild>
-                        <Link href={`/studios/${studio.id}`}>
-                          <Eye className="mr-2 h-4 w-4" />
-                          Просмотр
-                        </Link>
+                      <DropdownMenuItem
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          router.push(`/studios/${studio.id}`);
+                        }}
+                      >
+                        <Eye className="mr-2 h-4 w-4" />
+                        Просмотр
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleEdit(studio)}>
+                      <DropdownMenuItem
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleEdit(studio);
+                        }}
+                      >
                         <Pencil className="mr-2 h-4 w-4" />
                         Редактировать
                       </DropdownMenuItem>
                       <DropdownMenuItem
-                        onClick={() => handleDelete(studio)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDelete(studio);
+                        }}
                         className="text-destructive"
                       >
                         <Trash2 className="mr-2 h-4 w-4" />

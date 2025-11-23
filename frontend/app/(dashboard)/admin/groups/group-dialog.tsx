@@ -62,9 +62,19 @@ interface GroupDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   group?: Group;
+  defaultStudioId?: string;
+  disableStudioSelect?: boolean;
+  onSuccess?: (group: Group) => void;
 }
 
-export function GroupDialog({ open, onOpenChange, group }: GroupDialogProps) {
+export function GroupDialog({
+  open,
+  onOpenChange,
+  group,
+  defaultStudioId,
+  disableStudioSelect,
+  onSuccess,
+}: GroupDialogProps) {
   const createGroup = useCreateGroup();
   const updateGroup = useUpdateGroup();
   const { data: studios } = useStudios();
@@ -109,13 +119,13 @@ export function GroupDialog({ open, onOpenChange, group }: GroupDialogProps) {
         ageMin: undefined,
         ageMax: undefined,
         status: 'ACTIVE',
-        studioId: '',
+        studioId: defaultStudioId || '',
         teacherId: '',
         roomId: '',
         isPaid: true,
       });
     }
-  }, [group, form, open]);
+  }, [group, form, open, defaultStudioId]);
 
   const onSubmit = async (values: FormValues) => {
     try {
@@ -126,9 +136,11 @@ export function GroupDialog({ open, onOpenChange, group }: GroupDialogProps) {
       };
 
       if (group) {
-        await updateGroup.mutateAsync({ id: group.id, data: submitData });
+        const updated = await updateGroup.mutateAsync({ id: group.id, data: submitData });
+        onSuccess?.(updated);
       } else {
-        await createGroup.mutateAsync(submitData);
+        const created = await createGroup.mutateAsync(submitData);
+        onSuccess?.(created);
       }
       onOpenChange(false);
       form.reset();
@@ -183,6 +195,7 @@ export function GroupDialog({ open, onOpenChange, group }: GroupDialogProps) {
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
+                      disabled={disableStudioSelect}
                     >
                       <FormControl>
                         <SelectTrigger>

@@ -36,6 +36,7 @@ import {
   useUpdateSubscriptionType,
 } from '@/hooks/use-subscription-types';
 import { useGroups } from '@/hooks/use-groups';
+import { Group } from '@/lib/api/groups';
 import type { SubscriptionType } from '@/lib/types/subscriptions';
 
 const formSchema = z.object({
@@ -55,16 +56,26 @@ interface SubscriptionTypeDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   subscriptionType?: SubscriptionType;
+  defaultGroupId?: string;
+  studioId?: string;
+  groupsList?: Group[];
+  onSuccess?: (subscriptionType: SubscriptionType) => void;
 }
 
 export function SubscriptionTypeDialog({
   open,
   onOpenChange,
   subscriptionType,
+  defaultGroupId,
+  studioId,
+  groupsList,
+  onSuccess,
 }: SubscriptionTypeDialogProps) {
   const createMutation = useCreateSubscriptionType();
   const updateMutation = useUpdateSubscriptionType();
-  const { data: groups } = useGroups();
+  const { data: groups } = useGroups(
+    groupsList ? undefined : studioId ? { studioId, limit: 200 } : undefined
+  );
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -91,21 +102,23 @@ export function SubscriptionTypeDialog({
     } else {
       form.reset({
         name: '',
-        groupId: '',
+        groupId: defaultGroupId || '',
         type: 'UNLIMITED',
         price: 0,
         description: '',
         isActive: true,
       });
     }
-  }, [subscriptionType, form, open]);
+  }, [subscriptionType, form, open, defaultGroupId]);
 
   const onSubmit = async (values: FormValues) => {
     try {
       if (subscriptionType) {
-        await updateMutation.mutateAsync({ id: subscriptionType.id, data: values });
+        const updated = await updateMutation.mutateAsync({ id: subscriptionType.id, data: values });
+        onSuccess?.(updated);
       } else {
-        await createMutation.mutateAsync(values);
+        const created = await createMutation.mutateAsync(values);
+        onSuccess?.(created);
       }
       onOpenChange(false);
       form.reset();
@@ -162,9 +175,10 @@ export function SubscriptionTypeDialog({
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      {groups?.data?.map((group) => (
+                      {(groupsList || groups?.data || []).map((group) => (
                         <SelectItem key={group.id} value={group.id}>
-                          {group.name} ({group.studio.name})
+                          {group.name}
+                          {!groupsList && group.studio ? ` (${group.studio.name})` : ''}
                         </SelectItem>
                       ))}
                     </SelectContent>

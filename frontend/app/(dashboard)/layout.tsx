@@ -10,12 +10,14 @@ import { useAuthStore } from '@/lib/store/auth-store';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { BreadcrumbsProvider } from '@/lib/contexts/breadcrumbs-context';
+import { useMessagesNotifications } from '@/hooks/use-messages-notifications';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { sidebarCollapsed } = useNavigationStore();
   const { user, isLoading } = useAuth();
   const _hasHydrated = useAuthStore((state) => state._hasHydrated);
   const router = useRouter();
+  useMessagesNotifications();
 
   // Проверка авторизации
   useEffect(() => {

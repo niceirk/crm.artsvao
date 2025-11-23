@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3StorageService } from '../common/services/s3-storage.service';
+import { MessagesEventsService } from '../messages/messages-events.service';
 import axios, { AxiosInstance } from 'axios';
 import { validate as isValidUUID } from 'uuid';
 import { normalizePhone } from '../common/utils/phone.util';
@@ -25,6 +26,7 @@ export class TelegramService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly s3Storage: S3StorageService,
+    private readonly messagesEventsService: MessagesEventsService,
   ) {
     this.botToken = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
     if (!this.botToken) {
@@ -722,7 +724,7 @@ export class TelegramService {
     });
 
     // Сохраняем сообщение
-    await this.prisma.message.create({
+    const createdMessage = await this.prisma.message.create({
       data: {
         conversationId: conversation.id,
         direction: 'INBOUND',
@@ -741,6 +743,8 @@ export class TelegramService {
     });
 
     this.logger.log(`Message saved to conversation ${conversation.id}`);
+
+    await this.notifyNewInbound(conversation.id, createdMessage.createdAt);
   }
 
   /**
@@ -805,7 +809,7 @@ export class TelegramService {
       const uploadResult = await this.s3Storage.uploadImage(file, 'telegram-photos');
 
       // Сохраняем сообщение с метаданными изображения
-      await this.prisma.message.create({
+      const createdMessage = await this.prisma.message.create({
         data: {
           conversationId: conversation.id,
           direction: 'INBOUND',
@@ -836,10 +840,12 @@ export class TelegramService {
       this.logger.log(
         `Photo message saved to conversation ${conversation.id}, S3 URL: ${uploadResult.imageUrl}`,
       );
+
+      await this.notifyNewInbound(conversation.id, createdMessage.createdAt);
     } catch (error) {
       this.logger.error(`Failed to process photo: ${error.message}`, error.stack);
       // Fallback: сохраняем как текстовое сообщение
-      await this.prisma.message.create({
+      const fallbackMessage = await this.prisma.message.create({
         data: {
           conversationId: conversation.id,
           direction: 'INBOUND',
@@ -850,6 +856,8 @@ export class TelegramService {
           isReadByManager: false,
         },
       });
+
+      await this.notifyNewInbound(conversation.id, fallbackMessage.createdAt);
     }
   }
 
@@ -859,6 +867,27 @@ export class TelegramService {
   private async handleDocument(message: TelegramMessage): Promise<void> {
     // TODO: Сохранение документа и отображение в чате (расширение)
     await this.handleTextMessage(message, '[Документ отправлен]');
+  }
+
+  /**
+   * Оповещение фронта о новом входящем сообщении.
+   */
+  private async notifyNewInbound(conversationId: string, createdAt: Date) {
+    this.messagesEventsService.emitNewMessage(conversationId, createdAt);
+    const count = await this.countUnread();
+    this.messagesEventsService.emitUnreadCount(count);
+  }
+
+  /**
+   * Подсчет непрочитанных входящих для менеджеров.
+   */
+  private async countUnread(): Promise<number> {
+    return this.prisma.message.count({
+      where: {
+        direction: 'INBOUND',
+        isReadByManager: false,
+      },
+    });
   }
 
   /**

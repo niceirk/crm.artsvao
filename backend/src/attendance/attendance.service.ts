@@ -61,34 +61,30 @@ export class AttendanceService {
         schedule.date,
       );
 
-      if (!subscription) {
-        throw new BadRequestException(
-          'Не найден действующий абонемент для этого клиента и группы',
-        );
-      }
+      if (subscription) {
+        // Проверить остаток для SINGLE_VISIT
+        if (subscription.subscriptionType.type === 'SINGLE_VISIT') {
+          if (subscription.remainingVisits <= 0) {
+            throw new BadRequestException(
+              'На абонементе не осталось посещений',
+            );
+          }
 
-      // Проверить остаток для SINGLE_VISIT
-      if (subscription.subscriptionType.type === 'SINGLE_VISIT') {
-        if (subscription.remainingVisits <= 0) {
-          throw new BadRequestException(
-            'На абонементе не осталось посещений',
-          );
+          // Списать 1 посещение
+          await this.prisma.subscription.update({
+            where: { id: subscription.id },
+            data: {
+              remainingVisits: subscription.remainingVisits - 1,
+            },
+          });
         }
 
-        // Списать 1 посещение
-        await this.prisma.subscription.update({
-          where: { id: subscription.id },
-          data: {
-            remainingVisits: subscription.remainingVisits - 1,
-          },
-        });
+        // Обновить InvoiceItem writeOffStatus
+        await this.updateInvoiceItemStatus(subscription.id, schedule.date);
+
+        subscriptionId = subscription.id;
+        subscriptionDeducted = true;
       }
-
-      // Обновить InvoiceItem writeOffStatus
-      await this.updateInvoiceItemStatus(subscription.id, schedule.date);
-
-      subscriptionId = subscription.id;
-      subscriptionDeducted = true;
     }
 
     // 4. Создать запись посещения
@@ -109,6 +105,7 @@ export class AttendanceService {
             id: true,
             firstName: true,
             lastName: true,
+            middleName: true,
             phone: true,
           },
         },
@@ -324,28 +321,24 @@ export class AttendanceService {
         schedule.date,
       );
 
-      if (!subscription) {
-        throw new BadRequestException(
-          'Не найден действующий абонемент для этого клиента и группы',
-        );
-      }
+      if (subscription) {
+        if (subscription.subscriptionType.type === 'SINGLE_VISIT') {
+          if (subscription.remainingVisits <= 0) {
+            throw new BadRequestException(
+              'На абонементе не осталось посещений',
+            );
+          }
 
-      if (subscription.subscriptionType.type === 'SINGLE_VISIT') {
-        if (subscription.remainingVisits <= 0) {
-          throw new BadRequestException(
-            'На абонементе не осталось посещений',
-          );
+          await this.prisma.subscription.update({
+            where: { id: subscription.id },
+            data: {
+              remainingVisits: subscription.remainingVisits - 1,
+            },
+          });
         }
 
-        await this.prisma.subscription.update({
-          where: { id: subscription.id },
-          data: {
-            remainingVisits: subscription.remainingVisits - 1,
-          },
-        });
+        await this.updateInvoiceItemStatus(subscription.id, schedule.date);
       }
-
-      await this.updateInvoiceItemStatus(subscription.id, schedule.date);
 
       return this.prisma.attendance.update({
         where: { id },
@@ -354,8 +347,8 @@ export class AttendanceService {
           notes: dto.notes,
           markedBy: userId,
           markedAt: new Date(),
-          subscriptionId: subscription.id,
-          subscriptionDeducted: true,
+          subscriptionId: subscription?.id ?? null,
+          subscriptionDeducted: Boolean(subscription),
         },
         include: {
           client: true,
@@ -460,6 +453,7 @@ export class AttendanceService {
               id: true,
               firstName: true,
               lastName: true,
+              middleName: true,
               phone: true,
             },
           },
@@ -539,6 +533,7 @@ export class AttendanceService {
             id: true,
             firstName: true,
             lastName: true,
+            middleName: true,
             phone: true,
           },
         },

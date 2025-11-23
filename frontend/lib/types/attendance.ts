@@ -16,6 +16,7 @@ export interface Attendance {
     id: string;
     firstName: string;
     lastName: string;
+    middleName?: string | null;
     phone: string;
     email?: string;
     benefitCategory?: {

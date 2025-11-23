@@ -179,8 +179,18 @@ export class GroupsService {
       this.prisma.group.count({ where }),
     ]);
 
+    const memberCountsMap = await this.getMemberCountsMap(data.map((group) => group.id));
+
     return {
-      data,
+      data: data.map((group) => ({
+        ...group,
+        memberCounts: memberCountsMap.get(group.id) ?? {
+          active: 0,
+          waitlist: 0,
+          expelled: 0,
+          total: 0,
+        },
+      })),
       meta: {
         total,
         page,
@@ -229,7 +239,17 @@ export class GroupsService {
       throw new NotFoundException(`Group with ID ${id} not found`);
     }
 
-    return group;
+    const memberCountsMap = await this.getMemberCountsMap([id]);
+
+    return {
+      ...group,
+      memberCounts: memberCountsMap.get(id) ?? {
+        active: 0,
+        waitlist: 0,
+        expelled: 0,
+        total: 0,
+      },
+    };
   }
 
   async update(id: string, updateGroupDto: UpdateGroupDto) {
@@ -789,5 +809,45 @@ export class GroupsService {
     }
 
     return updated;
+  }
+
+  private async getMemberCountsMap(groupIds: string[]) {
+    if (!groupIds.length) {
+      return new Map<string, { active: number; waitlist: number; expelled: number; total: number }>();
+    }
+
+    const rawCounts = await this.prisma.groupMember.groupBy({
+      by: ['groupId', 'status'],
+      where: {
+        groupId: {
+          in: groupIds,
+        },
+      },
+      _count: {
+        _all: true,
+      },
+    });
+
+    const emptyCounts = { active: 0, waitlist: 0, expelled: 0, total: 0 };
+    const result = new Map<string, { active: number; waitlist: number; expelled: number; total: number }>();
+
+    groupIds.forEach((id) => result.set(id, { ...emptyCounts }));
+
+    rawCounts.forEach(({ groupId, status, _count }) => {
+      const entry = result.get(groupId);
+      if (!entry) {
+        return;
+      }
+      entry.total += _count._all;
+      if (status === 'ACTIVE') {
+        entry.active += _count._all;
+      } else if (status === 'WAITLIST') {
+        entry.waitlist += _count._all;
+      } else if (status === 'EXPELLED') {
+        entry.expelled += _count._all;
+      }
+    });
+
+    return result;
   }
 }

@@ -9,6 +9,7 @@ import { filterNavigationByRole, navigationConfig, type NavItem } from '@/lib/co
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { useMessagesStore } from '@/lib/stores/messages-store';
 import {
   Tooltip,
   TooltipContent,
@@ -21,6 +22,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const { user } = useAuth();
   const { sidebarCollapsed, toggleSidebar } = useNavigationStore();
+  const unreadCount = useMessagesStore((state) => state.unreadCount);
 
   const isAdmin = user?.role === 'ADMIN';
   const filteredNavigation = filterNavigationByRole(navigationConfig, isAdmin);
@@ -99,6 +101,7 @@ export function Sidebar() {
                     isActive={isParentActive(item)}
                     collapsed={sidebarCollapsed}
                     pathname={pathname}
+                    unreadCount={unreadCount}
                   />
                 ))}
               </div>
@@ -131,12 +134,16 @@ interface NavLinkProps {
   isActive: boolean;
   collapsed: boolean;
   pathname: string;
+  unreadCount: number;
 }
 
-function NavLink({ item, isActive, collapsed, pathname }: NavLinkProps) {
+function NavLink({ item, isActive, collapsed, pathname, unreadCount }: NavLinkProps) {
   const Icon = item.icon;
   const { expandedMenus, toggleMenu } = useNavigationStore();
   const isExpanded = expandedMenus.has(item.title);
+  const isMessages = item.href === '/messages';
+  const dynamicBadge =
+    isMessages && unreadCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount.toString()) : null;
 
   // Если есть children - рендерим Collapsible
   if (item.children) {
@@ -243,9 +250,9 @@ function NavLink({ item, isActive, collapsed, pathname }: NavLinkProps) {
       {!collapsed && (
         <>
           <span className="flex-1">{item.title}</span>
-          {item.badge && (
+          {(dynamicBadge || item.badge) && (
             <Badge variant="secondary" className="ml-auto">
-              {item.badge}
+              {dynamicBadge || item.badge}
             </Badge>
           )}
         </>
@@ -259,7 +266,9 @@ function NavLink({ item, isActive, collapsed, pathname }: NavLinkProps) {
         <TooltipTrigger asChild>{linkContent}</TooltipTrigger>
         <TooltipContent side="right" className="flex items-center gap-2">
           {item.title}
-          {item.badge && <Badge variant="secondary">{item.badge}</Badge>}
+          {(dynamicBadge || item.badge) && (
+            <Badge variant="secondary">{dynamicBadge || item.badge}</Badge>
+          )}
         </TooltipContent>
       </Tooltip>
     );

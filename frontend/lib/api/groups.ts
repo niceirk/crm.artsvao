@@ -41,6 +41,12 @@ export interface Group {
     schedules: number;
     subscriptions: number;
   };
+  memberCounts?: {
+    active: number;
+    waitlist: number;
+    expelled: number;
+    total: number;
+  };
 }
 
 export interface CreateGroupDto {

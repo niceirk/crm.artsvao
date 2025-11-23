@@ -283,6 +283,7 @@ export default function SchedulePage() {
           groupId={selectedSchedule.group.id}
           groupName={selectedSchedule.group.name}
           startTime={selectedSchedule.startTime}
+          scheduleDate={selectedSchedule.date}
         />
       )}
     </div>

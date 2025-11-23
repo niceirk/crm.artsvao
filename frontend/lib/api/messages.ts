@@ -1,4 +1,3 @@
-import { apiClient } from './client';
 import type {
   Conversation,
   ConversationsListParams,
@@ -11,6 +10,7 @@ import type {
   Message,
   UploadImageDto,
 } from '../types/messages';
+import { apiClient } from './client';
 
 /**
  * Получить список диалогов с фильтрацией и пагинацией
@@ -164,4 +164,12 @@ export const markAsRead = async (
     `/messages/conversations/${conversationId}/mark-read`,
     data || {}
   );
+};
+
+/**
+ * Получить общий счётчик непрочитанных входящих сообщений
+ */
+export const getUnreadMessagesCount = async (): Promise<number> => {
+  const response = await apiClient.get<{ count: number }>(`/messages/unread-count`);
+  return response.data.count;
 };
