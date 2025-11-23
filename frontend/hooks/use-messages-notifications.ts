@@ -30,6 +30,7 @@ export function useMessagesNotifications() {
     if (!accessToken) return;
 
     let eventSource: EventSource | null = null;
+    let detachListeners: (() => void) | null = null;
     let closed = false;
     let reconnectDelay = 2000;
     let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -52,23 +53,39 @@ export function useMessagesNotifications() {
 
     const handleEvent = (event: MessageEvent) => {
       if (!event.data) return;
-      let payload: any;
+
+      let payload: any = null;
       try {
-        payload = JSON.parse(event.data);
+        payload = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
       } catch (e) {
         return;
       }
 
-      if (payload.type === 'unread-count') {
-        setUnreadCount(payload.count ?? 0);
+      const eventType = payload?.type || event.type;
+
+      if (eventType === 'unread-count') {
+        setUnreadCount(payload?.count ?? 0);
       }
 
-      if (payload.type === 'new-message') {
-        if (payload.conversationId && payload.createdAt) {
+      if (eventType === 'new-message') {
+        if (payload?.conversationId && payload?.createdAt) {
           setLastIncoming(payload.conversationId, payload.createdAt);
           playSound();
         }
       }
+    };
+
+    const attachEventListeners = (source: EventSource) => {
+      const listener = handleEvent as EventListener;
+      source.addEventListener('message', listener);
+      source.addEventListener('unread-count', listener);
+      source.addEventListener('new-message', listener);
+
+      return () => {
+        source.removeEventListener('message', listener);
+        source.removeEventListener('unread-count', listener);
+        source.removeEventListener('new-message', listener);
+      };
     };
 
     const startPollingFallback = () => {
@@ -94,15 +111,15 @@ export function useMessagesNotifications() {
     const connect = () => {
       if (closed) return;
       eventSource = new EventSource(buildUrl());
+      detachListeners = attachEventListeners(eventSource);
 
       eventSource.onopen = () => {
         reconnectDelay = 2000;
         stopPollingFallback();
       };
 
-      eventSource.onmessage = handleEvent;
-
       eventSource.onerror = () => {
+        detachListeners?.();
         eventSource?.close();
         startPollingFallback();
         if (closed) return;
@@ -122,6 +139,7 @@ export function useMessagesNotifications() {
 
     return () => {
       closed = true;
+      detachListeners?.();
       eventSource?.close();
       stopPollingFallback();
     };
