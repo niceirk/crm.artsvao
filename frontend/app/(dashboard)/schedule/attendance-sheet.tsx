@@ -19,6 +19,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import {
   useAttendanceBySchedule,
@@ -28,7 +43,8 @@ import {
   useDeleteAttendance,
 } from '@/hooks/use-attendance';
 import { groupsApi } from '@/lib/api/groups';
-import { Loader2, Check, X, AlertCircle, Trash2 } from 'lucide-react';
+import { GroupMemberStatus } from '@/lib/types/groups';
+import { Loader2, Check, X, AlertCircle, Trash2, CreditCard, Banknote } from 'lucide-react';
 import { SellSubscriptionDialog } from '@/app/(dashboard)/subscriptions/components/sell-subscription-dialog';
 import type {
   Attendance,
@@ -37,8 +53,10 @@ import type {
 } from '@/lib/types/attendance';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/utils/toast';
-import { getClients, type Client } from '@/lib/api/clients';
+import { getClients } from '@/lib/api/clients';
+import type { Client } from '@/lib/types/clients';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { subscriptionsApi } from '@/lib/api/subscriptions';
 
 interface AttendanceSheetProps {
   open: boolean;
@@ -85,6 +103,8 @@ export function AttendanceSheet({
   const deleteAttendance = useDeleteAttendance();
   const [pendingClientId, setPendingClientId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<'name' | 'status'>('name');
+  const [groupData, setGroupData] = useState<{ singleSessionPrice: number } | null>(null);
+  const [singleSessionLoading, setSingleSessionLoading] = useState(false);
   const clientOptions: ComboboxOption[] = useMemo(() => {
     return clients.map((client) => ({
       value: client.id,
@@ -142,6 +162,25 @@ export function AttendanceSheet({
     });
   }, [basesResponse]);
 
+  // Загружаем данные группы (для singleSessionPrice) и обновляем данные абонементов при открытии
+  useEffect(() => {
+    if (!open) return;
+
+    // Загружаем данные группы
+    const loadGroupData = async () => {
+      try {
+        const group = await groupsApi.getGroup(groupId);
+        setGroupData({ singleSessionPrice: Number(group.singleSessionPrice) });
+      } catch (error) {
+        console.error('Failed to load group data:', error);
+      }
+    };
+
+    loadGroupData();
+    // Принудительно обновляем данные абонементов при каждом открытии
+    attendanceBasesQuery.refetch();
+  }, [open, groupId]);
+
   // Загружаем активных участников группы
   useEffect(() => {
     if (!open) return;
@@ -149,7 +188,7 @@ export function AttendanceSheet({
     const loadMembers = async () => {
       try {
         setLoadingMembers(true);
-        const activeMembers = await groupsApi.getGroupMembers(groupId, 'ACTIVE');
+        const activeMembers = await groupsApi.getGroupMembers(groupId, GroupMemberStatus.ACTIVE);
 
         // Создаём map посещаемости по clientId
         const attendanceMap = new Map<string, Attendance>();
@@ -296,6 +335,43 @@ export function AttendanceSheet({
 
   const handleOpenQuickSale = (clientId: string) => {
     setQuickSaleTarget(clientId);
+  };
+
+  // Продажа разового занятия через API с созданием подписки и счёта
+  const handleSellSingleSession = async (clientId: string) => {
+    if (!groupData || singleSessionLoading) return;
+
+    const member = members.find((m) => m.id === clientId);
+    if (!member) return;
+
+    try {
+      setSingleSessionLoading(true);
+      setPendingClientId(clientId);
+
+      // Вызываем API продажи разового посещения (создаёт подписку + счёт)
+      await subscriptionsApi.sellSingleSession({
+        clientId,
+        groupId,
+        scheduleId,
+        date: scheduleDate,
+        notes: `Разовое посещение на ${new Date(scheduleDate).toLocaleDateString('ru-RU')}`,
+      });
+
+      // Отмечаем присутствие
+      await markAttendance.mutateAsync({
+        scheduleId,
+        clientId,
+        status: 'PRESENT',
+      });
+
+      toast.success(`Разовое посещение продано за ${groupData.singleSessionPrice} ₽`);
+      attendanceBasesQuery.refetch();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Ошибка продажи разового занятия');
+    } finally {
+      setSingleSessionLoading(false);
+      setPendingClientId(null);
+    }
   };
 
   const handleSelectClientForAdd = async (clientId?: string | null) => {
@@ -527,6 +603,8 @@ export function AttendanceSheet({
                       selectedBasisId={selectedBases[member.id]}
                       onBasisChange={handleBasisChange}
                       onQuickSale={() => handleOpenQuickSale(member.id)}
+                      onSellSingleSession={() => handleSellSingleSession(member.id)}
+                      singleSessionPrice={groupData?.singleSessionPrice}
                     />
                   );
                 })}
@@ -546,6 +624,7 @@ export function AttendanceSheet({
         preselectedClientId={quickSaleTarget ?? undefined}
         preselectedGroupId={groupId}
         onSuccess={() => attendanceBasesQuery.refetch()}
+        excludeSingleVisit={true}
       />
 
     </Sheet>
@@ -562,6 +641,8 @@ interface AttendanceRowProps {
   selectedBasisId?: string;
   onBasisChange: (clientId: string, basisId: string) => void;
   onQuickSale: () => void;
+  onSellSingleSession: () => void;
+  singleSessionPrice?: number;
 }
 
 function AttendanceRow({
@@ -574,9 +655,13 @@ function AttendanceRow({
   selectedBasisId,
   onBasisChange,
   onQuickSale,
+  onSellSingleSession,
+  singleSessionPrice,
 }: AttendanceRowProps) {
+  const [showSingleSessionConfirm, setShowSingleSessionConfirm] = useState(false);
   const { attendance } = member;
   const selectedBase = availableBases.find((base) => base.id === selectedBasisId);
+  const hasBasis = availableBases.length > 0;
 
   const statusOptions: {
     value: AttendanceStatus;
@@ -604,80 +689,78 @@ function AttendanceRow({
     },
   ];
 
-  const statusColor =
-    attendance?.status === 'PRESENT'
-      ? 'bg-green-500'
-      : attendance?.status === 'ABSENT'
-        ? 'bg-red-500'
-        : attendance?.status === 'EXCUSED'
-          ? 'bg-yellow-500'
-          : 'bg-muted-foreground';
-
   return (
-    <div className="flex items-start gap-2 px-2.5 py-2 text-sm">
-      <span className="text-xs text-muted-foreground w-6 text-right mr-4">{index}.</span>
-      <span className={cn('h-2.5 w-2.5 rounded-full mt-0.5', statusColor)} />
+    <>
+    <div className={cn(
+      "flex items-start gap-2 px-2 py-1.5 text-sm",
+      !hasBasis && "bg-yellow-50/50"
+    )}>
+      <span className="text-[10px] text-muted-foreground w-5 text-right pt-0.5">{index}.</span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate font-medium text-sm">
+        <div className="flex items-center gap-1.5">
+          <span className="truncate font-medium text-xs">
             {member.lastName} {member.firstName} {member.middleName || ''}
           </span>
-          {member.promotedFromWaitlistAt && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-              Из листа ожидания
-            </Badge>
-          )}
-          {member.isGuest && (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-blue-50 text-blue-700 border-blue-200">
-              Разовое
-            </Badge>
-          )}
-        </div>
-        <div className="text-[11px] text-muted-foreground truncate">{member.phone}</div>
-        <div className="mt-1 flex flex-col gap-2 text-[11px] text-muted-foreground">
-          {availableBases.length > 0 ? (
-            <>
-              <Select
-                value={selectedBasisId || undefined}
-                onValueChange={(value) => onBasisChange(member.id, value)}
-                disabled={isLoading}
-              >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Выбрать основание">
-                  {selectedBase
-                    ? selectedBase.subscriptionType.name
-                    : undefined}
-                </SelectValue>
-              </SelectTrigger>
-                <SelectContent>
+          {/* Основание или иконки продажи */}
+          {hasBasis ? (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  className="text-[10px] text-muted-foreground underline decoration-dotted hover:text-primary cursor-pointer ml-1"
+                  disabled={isLoading}
+                >
+                  {selectedBase?.subscriptionType.type === 'SINGLE_VISIT' ? 'Разовое' : 'Абонемент'}
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2" align="start">
+                <div className="space-y-1">
                   {availableBases.map((base) => {
                     const saleDate = base.startDate
                       ? format(new Date(base.startDate), 'dd.MM.yyyy')
                       : 'дата не указана';
+                    const isSelected = selectedBasisId === base.id;
                     return (
-                      <SelectItem key={base.id} value={base.id}>
-                        <div className="flex flex-col">
-                          <span>{base.subscriptionType.name}</span>
-                          <span className="text-[10px] text-muted-foreground">
-                            Продано: {saleDate}
-                          </span>
+                      <button
+                        key={base.id}
+                        onClick={() => onBasisChange(member.id, base.id)}
+                        className={cn(
+                          'w-full text-left px-2 py-1.5 rounded text-xs hover:bg-muted',
+                          isSelected && 'bg-muted font-medium'
+                        )}
+                      >
+                        <div>{base.subscriptionType.name}</div>
+                        <div className="text-[10px] text-muted-foreground">
+                          Продано: {saleDate}
                         </div>
-                      </SelectItem>
+                      </button>
                     );
                   })}
-                </SelectContent>
-              </Select>
-            </>
+                </div>
+              </PopoverContent>
+            </Popover>
           ) : (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={onQuickSale}
-              disabled={isLoading}
-              className="w-full justify-start"
-            >
-              Продать абонемент / разовое
-            </Button>
+            <div className="flex gap-0.5 ml-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onQuickSale}
+                disabled={isLoading}
+                className="h-5 w-5 p-0"
+                title="Продать абонемент"
+              >
+                <CreditCard className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowSingleSessionConfirm(true)}
+                disabled={isLoading || !singleSessionPrice}
+                className="h-5 w-5 p-0"
+                title={singleSessionPrice ? `Разовое посещение: ${singleSessionPrice} ₽` : 'Цена не указана'}
+              >
+                <Banknote className="h-3.5 w-3.5 text-muted-foreground hover:text-green-600" />
+              </Button>
+            </div>
           )}
         </div>
       </div>
@@ -714,5 +797,30 @@ function AttendanceRow({
         </Button>
       </div>
     </div>
+
+    {/* Диалог подтверждения продажи разового посещения */}
+    <AlertDialog open={showSingleSessionConfirm} onOpenChange={setShowSingleSessionConfirm}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Продать разовое посещение?</AlertDialogTitle>
+          <AlertDialogDescription>
+            Будет сформирован счёт на сумму {singleSessionPrice} ₽ для клиента{' '}
+            <strong>{member.lastName} {member.firstName}</strong> и клиент будет отмечен как присутствующий на занятии.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Отмена</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              onSellSingleSession();
+              setShowSingleSessionConfirm(false);
+            }}
+          >
+            Продать за {singleSessionPrice} ₽
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }

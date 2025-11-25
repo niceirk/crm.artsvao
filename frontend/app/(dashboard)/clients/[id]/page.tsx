@@ -4,11 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { useClient } from '@/hooks/useClients';
 import { ClientHeader } from './components/client-header';
-import { ClientInfoCard } from './components/client-info-card';
-import { ClientRelationsCard } from './components/client-relations-card';
-import { ClientHistoryCard } from './components/client-history-card';
-import { ClientNotesCard } from './components/client-notes-card';
-import { ClientEditDialog } from '../components/client-edit-dialog';
+import { ClientMainPanel } from './components/client-main-panel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle } from 'lucide-react';
 import { useBreadcrumbs } from '@/lib/contexts/breadcrumbs-context';
@@ -17,6 +13,7 @@ export default function ClientDetailPage() {
   const params = useParams();
   const clientId = params.id as string;
   const [isEditing, setIsEditing] = useState(false);
+  const [activeTab, setActiveTab] = useState('main');
   const saveFunctionRef = useRef<(() => void) | null>(null);
   const { setCustomTitle } = useBreadcrumbs();
 
@@ -41,12 +38,7 @@ export default function ClientDetailPage() {
     return (
       <div className="flex-1 space-y-6">
         <Skeleton className="h-20 w-full" />
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Skeleton className="h-[400px]" />
-          <Skeleton className="h-[400px]" />
-          <Skeleton className="h-[400px]" />
-          <Skeleton className="h-[400px]" />
-        </div>
+        <Skeleton className="h-[600px] w-full" />
       </div>
     );
   }
@@ -75,34 +67,25 @@ export default function ClientDetailPage() {
       <ClientHeader
         client={client}
         isEditing={isEditing}
-        onEdit={() => setIsEditing(true)}
+        onEdit={() => {
+          setActiveTab('main');
+          setIsEditing(true);
+        }}
         onCancelEdit={() => setIsEditing(false)}
         onSave={() => saveFunctionRef.current && saveFunctionRef.current()}
       />
 
-      {/* Сетка с карточками информации */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Левая колонка */}
-        <div className="space-y-6">
-          <ClientInfoCard
-            client={client}
-            isEditing={isEditing}
-            onRefresh={refetch}
-            onSaveSuccess={() => setIsEditing(false)}
-            onCancel={() => setIsEditing(false)}
-            onSaveRequest={(fn) => { saveFunctionRef.current = fn; }}
-          />
-        </div>
-
-        {/* Правая колонка */}
-        <div className="space-y-6">
-          <ClientRelationsCard client={client} />
-          <ClientNotesCard clientId={client.id} />
-        </div>
-      </div>
-
-      {/* История активности на всю ширину */}
-      <ClientHistoryCard client={client} />
+      {/* Основной блок с вкладками */}
+      <ClientMainPanel
+        client={client}
+        isEditing={isEditing}
+        onRefresh={refetch}
+        onSaveSuccess={() => setIsEditing(false)}
+        onCancel={() => setIsEditing(false)}
+        onSaveRequest={(fn) => { saveFunctionRef.current = fn; }}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
     </div>
   );
 }

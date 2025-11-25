@@ -69,7 +69,7 @@ export class SubscriptionsService {
 
     const applyBenefit = sellDto.applyBenefit ?? true;
 
-    const { originalPrice, discountAmount, finalPrice, pricePerLesson } =
+    const { originalPrice, discountAmount, finalPrice, pricePerLesson, pricePerLessonWithDiscount } =
       this.calculateSubscriptionPrice({
         basePrice: subscriptionType.price,
         benefitCategory: client.benefitCategory,
@@ -96,6 +96,7 @@ export class SubscriptionsService {
         originalPrice: originalPrice,
         discountAmount: discountAmount,
         paidPrice: finalPrice,
+        pricePerLesson: pricePerLessonWithDiscount, // Стоимость 1 занятия с учетом скидки (для компенсаций)
         remainingVisits:
           subscriptionType.type === 'SINGLE_VISIT'
             ? this.calculateRemainingVisits(purchaseDate, endDate)
@@ -305,6 +306,7 @@ export class SubscriptionsService {
       discountAmount: number;
       finalPrice: number;
       pricePerLesson: number;
+      pricePerLessonWithDiscount: number;
     } {
     const basePriceNum = Number(basePrice);
     const { totalPlanned, remainingPlanned } = lessonStats;
@@ -325,18 +327,23 @@ export class SubscriptionsService {
     const totalPrice = firstMonthPrice + otherMonthsPrice;
 
     let discountAmount = 0;
+    let discountPercent = 0;
     if (applyBenefit && benefitCategory && benefitCategory.isActive) {
-      const discountPercent = Number(benefitCategory.discountPercent);
+      discountPercent = Number(benefitCategory.discountPercent);
       discountAmount = (totalPrice * discountPercent) / 100;
     }
 
     const finalPrice = totalPrice - discountAmount;
+
+    // Стоимость 1 занятия с учетом скидки (для расчета компенсаций)
+    const pricePerLessonWithDiscount = pricePerLesson * (1 - discountPercent / 100);
 
     return {
       originalPrice: this.toMoney(totalPrice),
       discountAmount: this.toMoney(discountAmount),
       finalPrice: this.toMoney(finalPrice),
       pricePerLesson: this.toMoney(pricePerLesson),
+      pricePerLessonWithDiscount: this.toMoney(pricePerLessonWithDiscount),
     };
   }
 
@@ -634,5 +641,143 @@ export class SubscriptionsService {
         ? 'Subscription is valid'
         : 'Subscription is invalid or expired',
     };
+  }
+
+  /**
+   * Продажа разового посещения по цене из настроек группы
+   */
+  async sellSingleSession(
+    dto: {
+      clientId: string;
+      groupId: string;
+      scheduleId: string;
+      date?: string;
+      notes?: string;
+    },
+    managerId?: string,
+  ) {
+    // 1. Получить группу с ценой разового посещения
+    const group = await this.prisma.group.findUnique({
+      where: { id: dto.groupId },
+      include: {
+        studio: { select: { id: true, name: true } },
+      },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Группа не найдена');
+    }
+
+    const singleSessionPrice = Number(group.singleSessionPrice);
+    if (singleSessionPrice <= 0) {
+      throw new BadRequestException('Цена разового посещения не установлена для данной группы');
+    }
+
+    // 2. Получить клиента
+    const client = await this.prisma.client.findUnique({
+      where: { id: dto.clientId },
+      include: { benefitCategory: true },
+    });
+
+    if (!client) {
+      throw new NotFoundException('Клиент не найден');
+    }
+
+    // 3. Найти или создать тип подписки SINGLE_VISIT для группы
+    let subscriptionType = await this.prisma.subscriptionType.findFirst({
+      where: {
+        groupId: dto.groupId,
+        type: 'SINGLE_VISIT',
+        isActive: true,
+      },
+    });
+
+    if (!subscriptionType) {
+      // Создаём тип подписки для разовых посещений
+      subscriptionType = await this.prisma.subscriptionType.create({
+        data: {
+          name: `Разовое посещение - ${group.name}`,
+          type: 'SINGLE_VISIT',
+          price: singleSessionPrice,
+          groupId: dto.groupId,
+          isActive: true,
+        },
+      });
+    }
+
+    // 4. Определить даты
+    const today = this.startOfDay(new Date());
+    const dateObj = dto.date ? new Date(dto.date) : today;
+    const validMonth = this.formatValidMonth(dateObj);
+
+    // 5. Создать подписку
+    const subscription = await this.prisma.subscription.create({
+      data: {
+        clientId: dto.clientId,
+        subscriptionTypeId: subscriptionType.id,
+        groupId: dto.groupId,
+        validMonth,
+        purchaseDate: today,
+        startDate: today,
+        endDate: this.endOfDay(dateObj),
+        originalPrice: singleSessionPrice,
+        discountAmount: 0,
+        paidPrice: singleSessionPrice,
+        pricePerLesson: singleSessionPrice, // Для разового посещения = полная цена
+        remainingVisits: 1,
+        purchasedMonths: 1,
+        status: 'ACTIVE',
+      },
+      include: {
+        client: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+        group: {
+          select: {
+            id: true,
+            name: true,
+            studio: {
+              select: { id: true, name: true },
+            },
+          },
+        },
+        subscriptionType: true,
+      },
+    });
+
+    // 6. Создать Invoice
+    try {
+      await this.invoicesService.create(
+        {
+          clientId: dto.clientId,
+          subscriptionId: subscription.id,
+          items: [
+            {
+              serviceType: ServiceType.SINGLE_SESSION,
+              serviceName: `Разовое посещение - ${group.name}`,
+              serviceDescription: `Занятие ${dateObj.toLocaleDateString('ru-RU')}`,
+              quantity: 1,
+              basePrice: singleSessionPrice,
+              unitPrice: singleSessionPrice,
+              vatRate: 0,
+              discountPercent: 0,
+              writeOffTiming: WriteOffTiming.ON_SALE,
+            },
+          ],
+          notes: dto.notes || `Разовое посещение группы "${group.name}"`,
+        },
+        managerId,
+      );
+    } catch (error) {
+      console.error('Failed to create invoice for single session:', error);
+    }
+
+    console.log(`✅ Sold single session for client ${dto.clientId} in group ${dto.groupId}`);
+
+    return subscription;
   }
 }

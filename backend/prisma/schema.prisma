@@ -171,6 +171,7 @@ model Client {
   subscriptions     Subscription[]
   telegramAccounts  TelegramAccount[]
   groupMemberships  GroupMember[]
+  compensations     Compensation[]
 
   @@index([phone])
   @@index([email])
@@ -323,6 +324,7 @@ model Group {
   subscriptionTypes  SubscriptionType[]
   subscriptions      Subscription[]
   members            GroupMember[]
+  compensations      Compensation[]
 
   @@map("groups")
 }
@@ -347,6 +349,7 @@ model GroupMember {
   @@index([clientId])
   @@index([status])
   @@index([waitlistPosition])
+  @@index([groupId, status])
   @@map("group_members")
 }
 
@@ -375,6 +378,7 @@ model Schedule {
   @@index([roomId])
   @@index([groupId])
   @@index([date, roomId])
+  @@index([groupId, date, status])
   @@map("schedules")
 }
 
@@ -402,6 +406,7 @@ model Attendance {
   @@index([createdAt])
   @@index([markedBy], map: "idx_attendance_marked_by")
   @@index([subscriptionId], map: "idx_attendance_subscription_id")
+  @@index([scheduleId, clientId])
   @@map("attendances")
 }
 
@@ -433,6 +438,7 @@ model Subscription {
   endDate            DateTime           @map("end_date") @db.Date
   originalPrice      Decimal            @map("original_price") @db.Decimal(10, 2)
   paidPrice          Decimal            @map("paid_price") @db.Decimal(10, 2)
+  pricePerLesson     Decimal?           @map("price_per_lesson") @db.Decimal(10, 2)
   remainingVisits    Int?               @map("remaining_visits")
   purchasedMonths    Int                @default(1) @map("purchased_months")
   status             SubscriptionStatus @default(ACTIVE)
@@ -452,6 +458,8 @@ model Subscription {
   @@index([validMonth])
   @@index([startDate, endDate])
   @@index([remainingVisits])
+  @@index([groupId, validMonth, status])
+  @@index([clientId, groupId, validMonth])
   @@map("subscriptions")
 }
 
@@ -1080,4 +1088,32 @@ model NotificationTemplate {
   @@unique([eventType])
   @@index([isActive])
   @@map("notification_templates")
+}
+
+// ============================================
+// Compensation Model (Компенсации за пропуски)
+// ============================================
+
+model Compensation {
+  id                 String   @id @default(uuid())
+  clientId           String   @map("client_id")
+  groupId            String   @map("group_id")
+  month              String   // Формат: "2025-11"
+  excusedCount       Int      @map("excused_count")
+  calculatedAmount   Decimal  @map("calculated_amount") @db.Decimal(10, 2)
+  adjustedAmount     Decimal? @map("adjusted_amount") @db.Decimal(10, 2)
+  notes              String?
+  appliedToInvoiceId String?  @map("applied_to_invoice_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  client  Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  group   Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, groupId, month])
+  @@index([clientId])
+  @@index([groupId])
+  @@index([month])
+  @@index([appliedToInvoiceId])
+  @@map("compensations")
 }

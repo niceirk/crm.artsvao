@@ -12,7 +12,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import {
   DropdownMenu,
@@ -113,17 +112,13 @@ export function ClientsTable({
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    const variants: Record<string, 'default' | 'secondary' | 'destructive'> = {
-      ACTIVE: 'default',
-      VIP: 'secondary',
-      INACTIVE: 'destructive',
+  const getStatusDotColor = (status: string) => {
+    const colors: Record<string, string> = {
+      ACTIVE: 'bg-green-500',
+      VIP: 'bg-amber-500',
+      INACTIVE: 'bg-gray-400',
     };
-    return (
-      <Badge variant={variants[status] || 'default'}>
-        {status}
-      </Badge>
-    );
+    return colors[status] || 'bg-gray-400';
   };
 
   const formatDate = (dateString: string) => {
@@ -153,7 +148,6 @@ export function ClientsTable({
               <SortableHeader field="dateOfBirth">Возраст</SortableHeader>
               <TableHead>Телефон</TableHead>
               <TableHead>Email</TableHead>
-              <SortableHeader field="status">Статус</SortableHeader>
               <SortableHeader field="createdAt">Дата создания</SortableHeader>
               <TableHead className="text-right">Действия</TableHead>
             </TableRow>
@@ -161,7 +155,7 @@ export function ClientsTable({
           <TableBody>
             {clients.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground">
+                <TableCell colSpan={7} className="text-center text-muted-foreground">
                   Клиенты не найдены
                 </TableCell>
               </TableRow>
@@ -175,7 +169,10 @@ export function ClientsTable({
                     className="cursor-pointer hover:bg-muted/50"
                   >
                     <TableCell className="font-medium">
-                      {client.lastName} {client.firstName} {client.middleName}
+                      <div className="flex items-center gap-3">
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${getStatusDotColor(client.status)}`} />
+                        {client.lastName} {client.firstName} {client.middleName}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {client.dateOfBirth ? formatDate(client.dateOfBirth) : '—'}
@@ -185,7 +182,6 @@ export function ClientsTable({
                     </TableCell>
                     <TableCell>{formatPhoneNumber(client.phone)}</TableCell>
                     <TableCell>{client.email || '—'}</TableCell>
-                    <TableCell>{getStatusBadge(client.status)}</TableCell>
                     <TableCell>{formatDate(client.createdAt)}</TableCell>
                     <TableCell className="text-right">
                     <DropdownMenu>

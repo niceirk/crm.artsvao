@@ -783,6 +783,14 @@ export class GroupsService {
       }
       updateData.waitlistPosition = null;
       updateData.promotedFromWaitlistAt = new Date();
+    } else if (status === 'ACTIVE' && member.status === 'EXPELLED') {
+      // Восстановление из отчисленных - проверить доступность мест
+      const availability = await this.checkAvailability(member.groupId);
+      if (availability.isFull) {
+        throw new BadRequestException('Group is full. Cannot restore expelled member.');
+      }
+      updateData.leftAt = null;
+      updateData.joinedAt = new Date(); // Обновляем дату зачисления
     }
 
     const updated = await this.prisma.groupMember.update({

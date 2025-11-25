@@ -38,6 +38,7 @@ import { EmailModule } from './email/email.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { MessagesModule } from './messages/messages.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { TimesheetsModule } from './timesheets/timesheets.module';
 
 @Module({
   imports: [
@@ -79,6 +80,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     CalendarModule,
     HealthModule,
     PyrusModule,
+    TimesheetsModule,
   ],
   controllers: [AppController],
   providers: [

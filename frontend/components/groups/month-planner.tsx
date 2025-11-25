@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Settings, ChevronDown, ChevronUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, Settings, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, CalendarDays, Clock, MapPin, Users, UserCheck } from 'lucide-react';
 import { Combobox } from '@/components/ui/combobox';
 import { schedulesApi, type CreateRecurringScheduleDto } from '@/lib/api/schedules';
 import { WeeklyScheduleItem, DAY_LABELS, DAYS_OF_WEEK } from '@/lib/types/weekly-schedule';
@@ -300,25 +300,50 @@ export function MonthPlanner({
                 : 'Настройте дни и время для создания расписания'}
             </CardDescription>
           </div>
-          {hasWeeklySchedule && (
+          <div className="flex items-center gap-3">
+            {/* Переключатель автозаписи */}
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="autoEnroll-header"
+                checked={autoEnroll}
+                onCheckedChange={(checked) => setAutoEnroll(checked as boolean)}
+              />
+              <Label htmlFor="autoEnroll-header" className="cursor-pointer font-normal text-sm whitespace-nowrap">
+                Автозапись участников
+              </Label>
+            </div>
+
+            {/* Кнопка создания расписания */}
             <Button
-              variant="outline"
+              onClick={handleCreateSchedule}
+              disabled={loading || !hasRoomId || (isCustomMode && customSchedule.length === 0) || (!isCustomMode && !hasWeeklySchedule)}
               size="sm"
-              onClick={() => setIsCustomMode(!isCustomMode)}
             >
-              {isCustomMode ? (
-                <>
-                  <ChevronUp className="h-4 w-4 mr-2" />
-                  Свернуть
-                </>
-              ) : (
-                <>
-                  <Settings className="h-4 w-4 mr-2" />
-                  Настроить
-                </>
-              )}
+              <Calendar className="h-4 w-4 mr-2" />
+              {loading ? 'Создание...' : 'Создать расписание'}
             </Button>
-          )}
+
+            {/* Кнопка настройки */}
+            {hasWeeklySchedule && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsCustomMode(!isCustomMode)}
+              >
+                {isCustomMode ? (
+                  <>
+                    <ChevronUp className="h-4 w-4 mr-2" />
+                    Свернуть
+                  </>
+                ) : (
+                  <>
+                    <Settings className="h-4 w-4 mr-2" />
+                    Настроить
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -368,11 +393,9 @@ export function MonthPlanner({
               </div>
             </div>
 
-            {/* Информация о базовом шаблоне */}
-            <div className="p-4 bg-primary/5 border border-primary/20 rounded-lg space-y-3">
-              <p className="text-sm font-medium">Базовый шаблон расписания:</p>
-
-              {/* Компактное отображение расписания */}
+            {/* Единый блок расписания */}
+            <div className="p-4 bg-muted/30 border rounded-lg space-y-4">
+              {/* Сетка дней недели */}
               <div className="grid grid-cols-7 gap-2">
                 {DAYS_OF_WEEK.map((day) => {
                   const scheduleItem = weeklySchedule.find((item) => item.day === day);
@@ -381,11 +404,11 @@ export function MonthPlanner({
                   return (
                     <div
                       key={day}
-                      className={`flex flex-col items-center gap-1 p-2 border rounded-lg ${
-                        enabled ? 'bg-background' : 'bg-muted/30'
+                      className={`flex flex-col items-center gap-1 p-2 border rounded-lg transition-colors ${
+                        enabled ? 'bg-primary/10 border-primary/30' : 'bg-background/50 border-muted'
                       }`}
                     >
-                      <div className="text-xs font-medium uppercase text-muted-foreground">
+                      <div className={`text-xs font-medium uppercase ${enabled ? 'text-primary' : 'text-muted-foreground'}`}>
                         {DAY_LABELS[day]}
                       </div>
                       {enabled ? (
@@ -400,35 +423,46 @@ export function MonthPlanner({
                 })}
               </div>
 
-              {duration > 0 && (
-                <p className="text-xs text-muted-foreground text-center">
-                  Длительность занятия: {duration} мин
-                </p>
-              )}
+              {/* Детали */}
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground pt-2 border-t">
+                <span className="flex items-center gap-1.5">
+                  <CalendarDays className="h-4 w-4" />
+                  <span className="font-medium text-foreground">
+                    {new Date(selectedMonth + '-01').toLocaleDateString('ru-RU', {
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                  </span>
+                </span>
+
+                {weeklySchedule.length > 0 && (
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="h-4 w-4" />
+                    <span className="font-medium text-foreground tabular-nums">
+                      {weeklySchedule[0].startTime}
+                      {duration > 0 && ` — ${calculateEndTime(weeklySchedule[0].startTime, duration)}`}
+                    </span>
+                  </span>
+                )}
+
+                {roomId && (
+                  <span className="flex items-center gap-1.5">
+                    <MapPin className="h-4 w-4" />
+                    <span className="font-medium text-foreground">
+                      {formatRoomName(getRoomById(roomId))}
+                    </span>
+                  </span>
+                )}
+
+                <span className="flex items-center gap-1.5">
+                  <UserCheck className="h-4 w-4" />
+                  <span className={`font-medium ${autoEnroll ? 'text-green-600' : 'text-muted-foreground'}`}>
+                    {autoEnroll ? 'Автозапись' : 'Без автозаписи'}
+                  </span>
+                </span>
+              </div>
             </div>
 
-            {/* Автозапись участников */}
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="autoEnroll"
-                checked={autoEnroll}
-                onCheckedChange={(checked) => setAutoEnroll(checked as boolean)}
-              />
-              <Label htmlFor="autoEnroll" className="cursor-pointer font-normal text-sm">
-                Автоматически записать участников группы
-              </Label>
-            </div>
-
-            {/* Кнопка создания */}
-            <Button
-              onClick={handleCreateSchedule}
-              disabled={loading || !hasRoomId}
-              className="w-full"
-              size="lg"
-            >
-              <Calendar className="h-4 w-4 mr-2" />
-              {loading ? 'Создание...' : 'Создать расписание на месяц'}
-            </Button>
           </>
         ) : (
           /* РЕЖИМ НАСТРОЙКИ */
@@ -545,18 +579,6 @@ export function MonthPlanner({
               )}
             </div>
 
-            {/* Автозапись участников */}
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="autoEnroll-custom"
-                checked={autoEnroll}
-                onCheckedChange={(checked) => setAutoEnroll(checked as boolean)}
-              />
-              <Label htmlFor="autoEnroll-custom" className="cursor-pointer font-normal text-sm">
-                Автоматически записать участников группы
-              </Label>
-            </div>
-
             {/* Информация о создаваемом расписании */}
             {customSchedule.length > 0 && (
               <div className="p-4 bg-muted rounded-lg space-y-2 text-sm">
@@ -577,16 +599,6 @@ export function MonthPlanner({
                 </ul>
               </div>
             )}
-
-            {/* Кнопка создания */}
-            <Button
-              onClick={handleCreateSchedule}
-              disabled={loading || customSchedule.length === 0 || !hasRoomId}
-              className="w-full"
-            >
-              <Calendar className="h-4 w-4 mr-2" />
-              {loading ? 'Создание...' : 'Создать расписание на месяц'}
-            </Button>
 
             {customSchedule.length === 0 && (
               <p className="text-sm text-muted-foreground text-center">

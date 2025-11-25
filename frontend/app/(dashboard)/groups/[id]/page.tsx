@@ -13,7 +13,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { ArrowLeft, Edit, Users, Calendar, Clock, Save, X, LayoutGrid, UserCircle, CalendarDays, Coins, UserPlus, UserMinus, UserCheck, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Edit, Users, Calendar, Clock, Save, X, LayoutGrid, UserCircle, CalendarDays, Coins, UserPlus, UserMinus, UserCheck, AlertCircle, RotateCcw, Search, ArrowUpDown } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import Link from 'next/link';
 import { formatWeeklySchedule, DAY_LABELS, DAYS_OF_WEEK, formatTimeRange, type WeeklyScheduleItem } from '@/lib/types/weekly-schedule';
 import { useForm } from 'react-hook-form';
@@ -75,6 +76,10 @@ export default function GroupDetailPage() {
   const [selectedMonth, setSelectedMonth] = useState<string | undefined>();
   const [memberToRemove, setMemberToRemove] = useState<GroupMember | null>(null);
   const [memberToPromote, setMemberToPromote] = useState<GroupMember | null>(null);
+  const [memberToRestore, setMemberToRestore] = useState<GroupMember | null>(null);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [memberSortBy, setMemberSortBy] = useState<'name' | 'date'>('name');
+  const [memberSortOrder, setMemberSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const form = useForm<z.infer<typeof groupSchema>>({
     resolver: zodResolver(groupSchema),
@@ -285,6 +290,80 @@ export default function GroupDetailPage() {
     } catch (error) {
       console.error('Failed to promote member:', error);
       toast.error('Не удалось перевести участника');
+    }
+  };
+
+  const handleRestoreMember = async (member: GroupMember) => {
+    if (!memberToRestore) {
+      setMemberToRestore(member);
+      return;
+    }
+
+    try {
+      await groupsApi.updateMemberStatus(member.id, 'ACTIVE');
+      toast.success('Участник восстановлен в группе');
+      setMemberToRestore(null);
+      await fetchMembers();
+    } catch (error: any) {
+      console.error('Failed to restore member:', error);
+      const message = error.response?.data?.message || 'Не удалось восстановить участника';
+      toast.error(message);
+    }
+  };
+
+  // Функция получения полного ФИО
+  const getFullName = (member: GroupMember) => {
+    return `${member.client.lastName} ${member.client.firstName} ${member.client.middleName || ''}`.trim();
+  };
+
+  // Функция расчета возраста
+  const getAge = (dateOfBirth: string | null | undefined): string => {
+    if (!dateOfBirth) return '—';
+    const today = new Date();
+    const birth = new Date(dateOfBirth);
+    let age = today.getFullYear() - birth.getFullYear();
+    const monthDiff = today.getMonth() - birth.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--;
+    }
+    return age > 0 ? `${age}` : '—';
+  };
+
+  // Функция фильтрации участников по поиску
+  const filterMembers = (members: GroupMember[]) => {
+    if (!memberSearch.trim()) return members;
+    const search = memberSearch.toLowerCase().trim();
+    return members.filter(member =>
+      getFullName(member).toLowerCase().includes(search) ||
+      member.client.phone.includes(search)
+    );
+  };
+
+  // Функция сортировки участников
+  const sortMembers = (members: GroupMember[]) => {
+    return [...members].sort((a, b) => {
+      let comparison = 0;
+      if (memberSortBy === 'name') {
+        comparison = getFullName(a).localeCompare(getFullName(b), 'ru');
+      } else {
+        comparison = new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime();
+      }
+      return memberSortOrder === 'asc' ? comparison : -comparison;
+    });
+  };
+
+  // Применяем фильтрацию и сортировку
+  const filteredActiveMembers = sortMembers(filterMembers(activeMembers));
+  const filteredWaitlistMembers = sortMembers(filterMembers(waitlistMembers));
+  const filteredExpelledMembers = sortMembers(filterMembers(expelledMembers));
+
+  // Переключение сортировки
+  const toggleSort = (field: 'name' | 'date') => {
+    if (memberSortBy === field) {
+      setMemberSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setMemberSortBy(field);
+      setMemberSortOrder('asc');
     }
   };
 
@@ -611,7 +690,7 @@ export default function GroupDetailPage() {
           </TabsTrigger>
           <TabsTrigger value="schedule" className="flex items-center gap-2">
             <CalendarDays className="h-4 w-4" />
-            Расписание занятий
+            Планирование расписания
           </TabsTrigger>
         </TabsList>
 
@@ -747,60 +826,104 @@ export default function GroupDetailPage() {
                   </TabsTrigger>
                 </TabsList>
 
+                {/* Поиск и сортировка */}
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="relative flex-1 max-w-sm">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Поиск по ФИО или телефону..."
+                      value={memberSearch}
+                      onChange={(e) => setMemberSearch(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant={memberSortBy === 'name' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => toggleSort('name')}
+                    >
+                      <ArrowUpDown className="h-3 w-3 mr-1" />
+                      ФИО {memberSortBy === 'name' && (memberSortOrder === 'asc' ? '↑' : '↓')}
+                    </Button>
+                    <Button
+                      variant={memberSortBy === 'date' ? 'default' : 'outline'}
+                      size="sm"
+                      onClick={() => toggleSort('date')}
+                    >
+                      <ArrowUpDown className="h-3 w-3 mr-1" />
+                      Дата {memberSortBy === 'date' && (memberSortOrder === 'asc' ? '↑' : '↓')}
+                    </Button>
+                  </div>
+                </div>
+
                 {/* Активные участники */}
                 <TabsContent value="active" className="space-y-3">
                   {loadingMembers ? (
                     <div className="text-center py-8">
                       <p className="text-muted-foreground">Загрузка...</p>
                     </div>
-                  ) : activeMembers.length === 0 ? (
+                  ) : filteredActiveMembers.length === 0 ? (
                     <div className="text-center py-8">
                       <p className="text-muted-foreground">
-                        Нет активных участников
+                        {activeMembers.length === 0 ? 'Нет активных участников' : 'Участники не найдены'}
                       </p>
                     </div>
                   ) : (
-                    activeMembers.map((member) => (
-                      <div
-                        key={member.id}
-                        className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <Link
-                              href={`/clients/${member.clientId}`}
-                              className="font-medium hover:underline"
-                            >
-                              {member.client.lastName} {member.client.firstName}{' '}
-                              {member.client.middleName}
-                            </Link>
-                            {member.promotedFromWaitlistAt && (
-                              <Badge variant="outline" className="text-xs">
-                                Переведен из листа ожидания
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            <div>{member.client.phone}</div>
-                            <div className="text-xs mt-0.5">
-                              Присоединился: {new Date(member.joinedAt).toLocaleDateString('ru-RU')}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="default" className="bg-green-600 hover:bg-green-700">
-                            Активен
-                          </Badge>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleRemoveMember(member)}
-                          >
-                            <UserMinus className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>ФИО</TableHead>
+                            <TableHead className="w-[70px]">Возраст</TableHead>
+                            <TableHead>Телефон</TableHead>
+                            <TableHead>Дата зачисления</TableHead>
+                            <TableHead className="w-[100px]">Действия</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredActiveMembers.map((member) => (
+                            <TableRow key={member.id}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" title="Активен" />
+                                  <Link
+                                    href={`/clients/${member.clientId}`}
+                                    className="font-medium hover:underline"
+                                  >
+                                    {getFullName(member)}
+                                  </Link>
+                                  {member.promotedFromWaitlistAt && (
+                                    <Badge variant="outline" className="text-xs">
+                                      Из очереди
+                                    </Badge>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {getAge(member.client.dateOfBirth)}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {member.client.phone}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {new Date(member.joinedAt).toLocaleDateString('ru-RU')}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleRemoveMember(member)}
+                                  title="Отчислить"
+                                >
+                                  <UserMinus className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
                   )}
                 </TabsContent>
 
@@ -810,10 +933,10 @@ export default function GroupDetailPage() {
                     <div className="text-center py-8">
                       <p className="text-muted-foreground">Загрузка...</p>
                     </div>
-                  ) : waitlistMembers.length === 0 ? (
+                  ) : filteredWaitlistMembers.length === 0 ? (
                     <div className="text-center py-8">
                       <p className="text-muted-foreground">
-                        Лист ожидания пуст
+                        {waitlistMembers.length === 0 ? 'Лист ожидания пуст' : 'Участники не найдены'}
                       </p>
                     </div>
                   ) : (
@@ -826,55 +949,73 @@ export default function GroupDetailPage() {
                           </p>
                         </div>
                       )}
-                      {waitlistMembers.map((member) => (
-                        <div
-                          key={member.id}
-                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors"
-                        >
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="secondary" className="w-8 h-8 rounded-full flex items-center justify-center">
-                                {member.waitlistPosition}
-                              </Badge>
-                              <Link
-                                href={`/clients/${member.clientId}`}
-                                className="font-medium hover:underline"
-                              >
-                                {member.client.lastName} {member.client.firstName}{' '}
-                                {member.client.middleName}
-                              </Link>
-                            </div>
-                            <div className="text-sm text-muted-foreground mt-1">
-                              <div>{member.client.phone}</div>
-                              <div className="text-xs mt-0.5">
-                                В очереди с: {new Date(member.joinedAt).toLocaleDateString('ru-RU')}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-                              В очереди
-                            </Badge>
-                            {!availability?.isFull && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => handlePromoteMember(member)}
-                              >
-                                <UserCheck className="h-4 w-4 mr-1" />
-                                В активные
-                              </Button>
-                            )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleRemoveMember(member)}
-                            >
-                              <UserMinus className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                      <div className="rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-[60px]">№</TableHead>
+                              <TableHead>ФИО</TableHead>
+                              <TableHead className="w-[70px]">Возраст</TableHead>
+                              <TableHead>Телефон</TableHead>
+                              <TableHead>В очереди с</TableHead>
+                              <TableHead className="w-[150px]">Действия</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredWaitlistMembers.map((member) => (
+                              <TableRow key={member.id}>
+                                <TableCell>
+                                  <Badge variant="secondary" className="w-8 h-8 rounded-full flex items-center justify-center">
+                                    {member.waitlistPosition}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-2">
+                                    <span className="w-2 h-2 rounded-full bg-amber-500 flex-shrink-0" title="В очереди" />
+                                    <Link
+                                      href={`/clients/${member.clientId}`}
+                                      className="font-medium hover:underline"
+                                    >
+                                      {getFullName(member)}
+                                    </Link>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {getAge(member.client.dateOfBirth)}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {member.client.phone}
+                                </TableCell>
+                                <TableCell className="text-muted-foreground">
+                                  {new Date(member.joinedAt).toLocaleDateString('ru-RU')}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex items-center gap-1">
+                                    {!availability?.isFull && (
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => handlePromoteMember(member)}
+                                        title="Перевести в активные"
+                                      >
+                                        <UserCheck className="h-4 w-4" />
+                                      </Button>
+                                    )}
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => handleRemoveMember(member)}
+                                      title="Удалить из очереди"
+                                    >
+                                      <UserMinus className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
                     </>
                   )}
                 </TabsContent>
@@ -885,40 +1026,71 @@ export default function GroupDetailPage() {
                     <div className="text-center py-8">
                       <p className="text-muted-foreground">Загрузка...</p>
                     </div>
-                  ) : expelledMembers.length === 0 ? (
+                  ) : filteredExpelledMembers.length === 0 ? (
                     <div className="text-center py-8">
                       <p className="text-muted-foreground">
-                        Нет отчисленных участников
+                        {expelledMembers.length === 0 ? 'Нет отчисленных участников' : 'Участники не найдены'}
                       </p>
                     </div>
                   ) : (
-                    expelledMembers.map((member) => (
-                      <div
-                        key={member.id}
-                        className="flex items-center justify-between p-4 border rounded-lg opacity-60"
-                      >
-                        <div className="flex-1">
-                          <Link
-                            href={`/clients/${member.clientId}`}
-                            className="font-medium hover:underline"
-                          >
-                            {member.client.lastName} {member.client.firstName}{' '}
-                            {member.client.middleName}
-                          </Link>
-                          <div className="text-sm text-muted-foreground mt-1">
-                            <div>{member.client.phone}</div>
-                            {member.leftAt && (
-                              <div className="text-xs mt-0.5">
-                                Отчислен: {new Date(member.leftAt).toLocaleDateString('ru-RU')}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                        <Badge variant="secondary">
-                          Отчислен
-                        </Badge>
-                      </div>
-                    ))
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>ФИО</TableHead>
+                            <TableHead className="w-[70px]">Возраст</TableHead>
+                            <TableHead>Телефон</TableHead>
+                            <TableHead>Дата отчисления</TableHead>
+                            <TableHead className="w-[100px]">Действия</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {filteredExpelledMembers.map((member) => (
+                            <TableRow key={member.id} className="opacity-70">
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" title="Отчислен" />
+                                  <Link
+                                    href={`/clients/${member.clientId}`}
+                                    className="font-medium hover:underline"
+                                  >
+                                    {getFullName(member)}
+                                  </Link>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {getAge(member.client.dateOfBirth)}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {member.client.phone}
+                              </TableCell>
+                              <TableCell className="text-muted-foreground">
+                                {member.leftAt ? new Date(member.leftAt).toLocaleDateString('ru-RU') : '—'}
+                              </TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => handleRestoreMember(member)}
+                                  title="Восстановить в группе"
+                                  disabled={availability?.isFull}
+                                >
+                                  <RotateCcw className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                  {availability?.isFull && expelledMembers.length > 0 && (
+                    <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-lg mt-4">
+                      <AlertCircle className="h-5 w-5 text-amber-600" />
+                      <p className="text-sm text-amber-800 dark:text-amber-200">
+                        Группа заполнена. Для восстановления участника необходимо освободить место.
+                      </p>
+                    </div>
                   )}
                 </TabsContent>
               </Tabs>
@@ -926,7 +1098,7 @@ export default function GroupDetailPage() {
           </Card>
         </TabsContent>
 
-        {/* Вкладка "Расписание занятий" */}
+        {/* Вкладка "Планирование расписания" */}
         <TabsContent value="schedule" className="space-y-6">
           {/* Планировщик месяца */}
           <MonthPlanner
@@ -993,6 +1165,27 @@ export default function GroupDetailPage() {
             </AlertDialogCancel>
             <AlertDialogAction onClick={() => memberToPromote && handlePromoteMember(memberToPromote)}>
               Перевести
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Диалог подтверждения восстановления */}
+      <AlertDialog open={!!memberToRestore} onOpenChange={(open) => !open && setMemberToRestore(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Восстановить участника в группе?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы уверены, что хотите восстановить {memberToRestore?.client.firstName} {memberToRestore?.client.lastName} в группе?
+              Участник будет добавлен в активные участники.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setMemberToRestore(null)}>
+              Отмена
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => memberToRestore && handleRestoreMember(memberToRestore)}>
+              Восстановить
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -74,11 +74,27 @@ export const subscriptionTypesApi = {
   },
 };
 
+export interface SellSingleSessionDto {
+  clientId: string;
+  groupId: string;
+  scheduleId: string;
+  date?: string;
+  notes?: string;
+}
+
 // Subscriptions API
 export const subscriptionsApi = {
   sell: async (data: SellSubscriptionDto): Promise<Subscription> => {
     const response = await apiClient.post<Subscription>(
       '/subscriptions/sell',
+      data,
+    );
+    return response.data;
+  },
+
+  sellSingleSession: async (data: SellSingleSessionDto): Promise<Subscription> => {
+    const response = await apiClient.post<Subscription>(
+      '/subscriptions/sell-single-session',
       data,
     );
     return response.data;

@@ -184,13 +184,33 @@ export default function MessagesPage() {
     }
   }, [selectedChatId, loadConversation]);
 
-  // Polling для новых сообщений
+  // Polling для новых сообщений в активном чате
   useEffect(() => {
     if (!selectedChatId) return;
 
     const interval = setInterval(checkForNewMessages, 5000);
     return () => clearInterval(interval);
   }, [selectedChatId, checkForNewMessages]);
+
+  // Тихое обновление списка диалогов (без спиннера)
+  const silentRefreshConversations = useCallback(async () => {
+    try {
+      const params: any = { page: 1, limit: 50 };
+      if (search) params.search = search;
+      if (hasUnreadFilter) params.hasUnread = true;
+
+      const response = await getConversations(params);
+      setConversations(response.data || []);
+    } catch (error) {
+      console.error('Failed to refresh conversations:', error);
+    }
+  }, [search, hasUnreadFilter]);
+
+  // Polling для обновления списка диалогов (каждые 10 секунд)
+  useEffect(() => {
+    const interval = setInterval(silentRefreshConversations, 10000);
+    return () => clearInterval(interval);
+  }, [silentRefreshConversations]);
 
   // Обработчики
   const handleClearSearch = () => {

@@ -73,6 +73,7 @@ interface SellSubscriptionDialogProps {
   preselectedClientId?: string;
   preselectedGroupId?: string;
   onSuccess?: (subscription: Subscription) => void;
+  excludeSingleVisit?: boolean; // Исключить разовые посещения из списка типов
 }
 
 export function SellSubscriptionDialog({
@@ -81,6 +82,7 @@ export function SellSubscriptionDialog({
   preselectedClientId,
   preselectedGroupId,
   onSuccess,
+  excludeSingleVisit = false,
 }: SellSubscriptionDialogProps) {
   const sellMutation = useSellSubscription();
   const { data: groups } = useGroups();
@@ -129,6 +131,10 @@ export function SellSubscriptionDialog({
   const normalizedSubscriptionSearch = subscriptionSearch.trim().toLowerCase();
   const filteredSubscriptionTypes =
     subscriptionTypes?.filter((type) => {
+      // Исключаем разовые посещения если установлен флаг
+      if (excludeSingleVisit && type.type === 'SINGLE_VISIT') {
+        return false;
+      }
       const label = `${type.name} ${type.group?.name ?? ''}`.toLowerCase();
       return label.includes(normalizedSubscriptionSearch);
     }) ?? [];
@@ -493,6 +499,11 @@ export function SellSubscriptionDialog({
                         mode="single"
                         selected={field.value}
                         onSelect={field.onChange}
+                        locale={ru}
+                        weekStartsOn={1}
+                        captionLayout="dropdown"
+                        fromYear={new Date().getFullYear()}
+                        toYear={new Date().getFullYear() + 2}
                         initialFocus
                       />
                     </PopoverContent>

@@ -299,6 +299,70 @@ export class NotificationsService {
   }
 
   /**
+   * Отправить уведомление о выставленном счете
+   */
+  async sendInvoiceNotification(invoiceId: string): Promise<void> {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: {
+        client: {
+          include: {
+            telegramAccounts: {
+              where: { isNotificationsEnabled: true },
+            },
+          },
+        },
+        items: true,
+      },
+    });
+
+    if (!invoice) {
+      this.logger.warn(`Invoice ${invoiceId} not found`);
+      return;
+    }
+
+    const client = invoice.client;
+
+    if (!client.telegramAccounts || client.telegramAccounts.length === 0) {
+      this.logger.log(
+        `Client ${client.id} has no Telegram accounts, skipping invoice notification`,
+      );
+      return;
+    }
+
+    // Формируем описание услуг
+    const servicesDescription = invoice.items
+      .map((item) => `• ${item.serviceName}: ${item.totalPrice} руб.`)
+      .join('\n');
+
+    const message = `📄 Выставлен счет №${invoice.invoiceNumber}
+
+${client.firstName}, вам выставлен счет на оплату:
+
+${servicesDescription}
+
+💰 Итого к оплате: ${invoice.totalAmount} руб.
+
+Для оплаты вы можете перевести средства на карту или оплатить через мобильное приложение банка.`;
+
+    // Отправляем уведомление только на первый Telegram аккаунт
+    const telegramAccount = client.telegramAccounts[0];
+    try {
+      await this.telegramService.sendMessage(
+        telegramAccount.chatId,
+        message,
+      );
+      this.logger.log(
+        `Invoice notification sent to client ${client.id} via Telegram ${telegramAccount.telegramUserId}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to send invoice notification to ${telegramAccount.telegramUserId}: ${error.message}`,
+      );
+    }
+  }
+
+  /**
    * Получить шаблон уведомления по типу события
    */
   private async getTemplate(eventType: string) {

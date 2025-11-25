@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { SubscriptionsService } from './subscriptions.service';
 import { SellSubscriptionDto } from './dto/sell-subscription.dto';
+import { SellSingleSessionDto } from './dto/sell-single-session.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { SubscriptionFilterDto } from './dto/subscription-filter.dto';
 
@@ -29,6 +30,15 @@ export class SubscriptionsController {
   ) {
     const managerId = req.user?.sub;
     return this.subscriptionsService.sellSubscription(sellDto, managerId);
+  }
+
+  @Post('sell-single-session')
+  async sellSingleSession(
+    @Body() dto: SellSingleSessionDto,
+    @Req() req: any,
+  ) {
+    const managerId = req.user?.sub;
+    return this.subscriptionsService.sellSingleSession(dto, managerId);
   }
 
   @Get()

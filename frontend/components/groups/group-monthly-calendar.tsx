@@ -10,7 +10,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ChevronLeft, ChevronRight, Users, MapPin, Trash2 } from 'lucide-react';
-import { groupsApi } from '@/lib/api/groups';
+import { groupsApi, type ScheduledMonth } from '@/lib/api/groups';
 import { schedulesApi } from '@/lib/api/schedules';
 import { toast } from '@/lib/utils/toast';
 
@@ -18,8 +18,20 @@ interface GroupMonthlyCalendarProps {
   groupId: string;
 }
 
+// Названия месяцев на русском
+const MONTH_NAMES = [
+  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+];
+
+const SHORT_MONTH_NAMES = [
+  'Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн',
+  'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'
+];
+
 export function GroupMonthlyCalendar({ groupId }: GroupMonthlyCalendarProps) {
   const [schedules, setSchedules] = useState<any[]>([]);
+  const [scheduledMonths, setScheduledMonths] = useState<ScheduledMonth[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedSchedules, setSelectedSchedules] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
@@ -31,8 +43,21 @@ export function GroupMonthlyCalendar({ groupId }: GroupMonthlyCalendarProps) {
   });
 
   useEffect(() => {
+    loadScheduledMonths();
+  }, [groupId]);
+
+  useEffect(() => {
     loadSchedules();
   }, [groupId, selectedMonth]);
+
+  const loadScheduledMonths = async () => {
+    try {
+      const months = await groupsApi.getScheduledMonths(groupId);
+      setScheduledMonths(months);
+    } catch (error) {
+      console.error('Failed to load scheduled months:', error);
+    }
+  };
 
   const loadSchedules = async () => {
     try {
@@ -47,6 +72,11 @@ export function GroupMonthlyCalendar({ groupId }: GroupMonthlyCalendarProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatMonthChip = (yearMonth: string): string => {
+    const [year, month] = yearMonth.split('-').map(Number);
+    return `${SHORT_MONTH_NAMES[month - 1]} ${year}`;
   };
 
   const handleSelectAll = (checked: boolean) => {
@@ -121,25 +151,29 @@ export function GroupMonthlyCalendar({ groupId }: GroupMonthlyCalendarProps) {
   const formatTime = (timeString: string) => {
     if (!timeString) return '';
 
-    // Если это уже строка в формате HH:mm:ss или HH:mm
-    if (typeof timeString === 'string' && timeString.includes(':')) {
-      return timeString.substring(0, 5);
-    }
-
-    // Если это Date объект или ISO строка
-    try {
-      const date = new Date(timeString);
-      if (!isNaN(date.getTime())) {
-        return date.toLocaleTimeString('ru-RU', {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
+    // Если это уже строка в формате HH:mm:ss или HH:mm (без даты)
+    if (typeof timeString === 'string') {
+      // Формат "HH:mm:ss" или "HH:mm"
+      const timeOnlyMatch = timeString.match(/^(\d{2}):(\d{2})(:\d{2})?$/);
+      if (timeOnlyMatch) {
+        return `${timeOnlyMatch[1]}:${timeOnlyMatch[2]}`;
       }
-    } catch (e) {
-      console.error('Failed to parse time:', timeString, e);
+
+      // Если это ISO строка с датой
+      try {
+        const date = new Date(timeString);
+        if (!isNaN(date.getTime())) {
+          // Используем UTC часы и минуты, так как время хранится без учета временной зоны
+          const hours = date.getUTCHours().toString().padStart(2, '0');
+          const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+          return `${hours}:${minutes}`;
+        }
+      } catch (e) {
+        console.error('Failed to parse time:', timeString, e);
+      }
     }
 
-    return timeString;
+    return String(timeString);
   };
 
   const getStatusBadge = (status: string) => {
@@ -159,7 +193,12 @@ export function GroupMonthlyCalendar({ groupId }: GroupMonthlyCalendarProps) {
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Расписание группы</CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle>Расписание группы</CardTitle>
+              {schedules.length > 0 && (
+                <Badge variant="secondary">{schedules.length} {schedules.length === 1 ? 'занятие' : schedules.length < 5 ? 'занятия' : 'занятий'}</Badge>
+              )}
+            </div>
             <CardDescription>
               Занятия на месяц
             </CardDescription>
@@ -208,7 +247,26 @@ export function GroupMonthlyCalendar({ groupId }: GroupMonthlyCalendarProps) {
         </div>
       </CardHeader>
 
-      <CardContent>
+      <CardContent className="space-y-4">
+        {/* Навигация по месяцам */}
+        {scheduledMonths.length > 0 && (
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
+            {scheduledMonths.map((month) => (
+              <span
+                key={month.yearMonth}
+                className={`cursor-pointer border-b border-dashed transition-colors ${
+                  selectedMonth === month.yearMonth
+                    ? 'text-primary border-primary font-medium'
+                    : 'text-muted-foreground border-muted-foreground/50 hover:text-foreground hover:border-foreground'
+                }`}
+                onClick={() => setSelectedMonth(month.yearMonth)}
+              >
+                {formatMonthChip(month.yearMonth)} ({month.count})
+              </span>
+            ))}
+          </div>
+        )}
+
         {loading ? (
           <div className="space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (

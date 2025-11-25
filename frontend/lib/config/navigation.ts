@@ -84,6 +84,12 @@ export const navigationConfig: NavGroup[] = [
         icon: CreditCard,
         description: 'Управление платежами',
       },
+      {
+        title: 'Табели',
+        href: '/timesheets',
+        icon: CalendarClock,
+        description: 'Табели посещаемости и компенсации',
+      },
     ],
   },
   {
