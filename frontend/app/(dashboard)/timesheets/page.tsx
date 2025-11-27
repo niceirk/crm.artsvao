@@ -14,6 +14,7 @@ import {
   Pencil,
   FileText,
   Send,
+  Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -52,7 +53,7 @@ import { AttendanceSheet } from '@/app/(dashboard)/schedule/attendance-sheet';
 import { useMarkAttendance, useUpdateAttendance } from '@/hooks/use-attendance';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { createBulkInvoices } from '@/lib/api/timesheets';
+import { createBulkInvoices, timesheetsApi } from '@/lib/api/timesheets';
 import type { TimesheetClient, TimesheetScheduleDate, TimesheetAttendance } from '@/lib/types/timesheets';
 import type { AttendanceStatus } from '@/lib/types/attendance';
 
@@ -406,6 +407,28 @@ export default function TimesheetsPage() {
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
+
+        {selectedGroupId && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={async () => {
+              try {
+                await timesheetsApi.exportToExcel({
+                  groupId: selectedGroupId,
+                  month: selectedMonth,
+                });
+                toast.success('Табель экспортирован');
+              } catch (error) {
+                toast.error('Ошибка при экспорте табеля');
+              }
+            }}
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Экспорт
+          </Button>
+        )}
       </div>
 
       {/* Таблица табеля */}

@@ -8,7 +8,10 @@ import {
   Body,
   UseGuards,
   Request,
+  Res,
+  Header,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { TimesheetsService } from './timesheets.service';
 import { TimesheetFilterDto } from './dto/timesheet-filter.dto';
 import { UpdateCompensationDto } from './dto/update-compensation.dto';
@@ -26,6 +29,25 @@ export class TimesheetsController {
   @Get()
   async getTimesheet(@Query() filter: TimesheetFilterDto) {
     return this.timesheetsService.getTimesheet(filter);
+  }
+
+  /**
+   * Экспорт табеля в Excel
+   */
+  @Get('export')
+  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  async exportToExcel(
+    @Query() filter: TimesheetFilterDto,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.timesheetsService.exportToExcel(filter);
+
+    // Формируем имя файла
+    const month = filter.month || new Date().toISOString().slice(0, 7);
+    const filename = encodeURIComponent(`Табель_${month}.xlsx`);
+
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${filename}`);
+    res.send(buffer);
   }
 
   /**

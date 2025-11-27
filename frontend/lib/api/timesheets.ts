@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import { useAuthStore } from '../store/auth-store';
 import type {
   TimesheetFilterDto,
   UpdateCompensationDto,
@@ -7,6 +8,8 @@ import type {
   GroupForFilter,
   Compensation,
 } from '../types/timesheets';
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
 
 export const timesheetsApi = {
   /**
@@ -77,6 +80,39 @@ export const timesheetsApi = {
       invoiceIds: string[];
     }>('/timesheets/create-invoices', params);
     return response.data;
+  },
+
+  /**
+   * Экспорт табеля в Excel
+   */
+  exportToExcel: async (filter: TimesheetFilterDto): Promise<void> => {
+    const params = new URLSearchParams();
+    if (filter.groupId) params.append('groupId', filter.groupId);
+    if (filter.month) params.append('month', filter.month);
+
+    const token = useAuthStore.getState().accessToken;
+    const query = params.toString();
+    const url = `${API_URL}/timesheets/export${query ? `?${query}` : ''}`;
+
+    const response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Ошибка при экспорте табеля');
+    }
+
+    const blob = await response.blob();
+    const downloadUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = `Табель_${filter.month || 'export'}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(downloadUrl);
   },
 };
 

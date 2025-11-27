@@ -6,6 +6,7 @@ import { TimesheetFilterDto } from './dto/timesheet-filter.dto';
 import { UpdateCompensationDto } from './dto/update-compensation.dto';
 import { CreateBulkInvoicesDto } from './dto/create-bulk-invoices.dto';
 import { CalendarEventStatus, AttendanceStatus, GroupMemberStatus, ServiceType, WriteOffTiming } from '@prisma/client';
+import * as ExcelJS from 'exceljs';
 
 @Injectable()
 export class TimesheetsService {
@@ -316,15 +317,19 @@ export class TimesheetsService {
 
     // 11. Сформировать даты занятий
     const scheduleDates = schedules.map(s => {
-      // Используем локальное время для форматирования даты
+      // Используем UTC для корректного определения дня недели
       const dateObj = new Date(s.date);
-      const year = dateObj.getFullYear();
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const day = String(dateObj.getDate()).padStart(2, '0');
+      // Корректируем на UTC чтобы избежать сдвига дня
+      const utcDate = new Date(dateObj.getTime() + dateObj.getTimezoneOffset() * 60000);
+      const year = utcDate.getFullYear();
+      const month = String(utcDate.getMonth() + 1).padStart(2, '0');
+      const day = String(utcDate.getDate()).padStart(2, '0');
+      // Получаем день недели и приводим к нижнему регистру
+      const dayOfWeek = utcDate.toLocaleDateString('ru-RU', { weekday: 'short' }).toLowerCase();
       return {
         date: `${year}-${month}-${day}`,
         scheduleId: s.id,
-        dayOfWeek: dateObj.toLocaleDateString('ru-RU', { weekday: 'short' }),
+        dayOfWeek,
         startTime: s.startTime.toISOString(),
       };
     });
@@ -558,6 +563,320 @@ export class TimesheetsService {
     }
 
     return results;
+  }
+
+  /**
+   * Экспорт табеля в Excel
+   */
+  async exportToExcel(filter: TimesheetFilterDto): Promise<Buffer> {
+    // 1. Получить данные табеля
+    const timesheet = await this.getTimesheet(filter);
+
+    // 2. Создать workbook
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet('TDSheet');
+
+    // Шрифт по умолчанию - Arial
+    const defaultFont = 'Arial';
+
+    // Настройка ширины колонок
+    sheet.columns = [
+      { width: 5 },   // A - № п/п
+      { width: 15 },  // B - Фамилия
+      { width: 15 },  // C - Имя
+      { width: 12 },  // D - Плата по ставке
+      // Дни 1-31 (E-AI)
+      ...Array(31).fill({ width: 3.5 }),
+      { width: 8 },   // AJ - Пропущено дней
+      { width: 12 },  // AK - Сумма за месяц
+      { width: 20 },  // AL - Причины непосещения
+    ];
+
+    // 3. Заголовок
+    sheet.mergeCells('A2:AK2');
+    sheet.getCell('A2').value = 'ТАБЕЛЬ';
+    sheet.getCell('A2').font = { name: defaultFont, bold: true, size: 14 };
+    sheet.getCell('A2').alignment = { horizontal: 'center' };
+
+    sheet.mergeCells('A3:AK3');
+    sheet.getCell('A3').value = 'УЧЕТА ПОСЕЩАЕМОСТИ ДЕТЕЙ';
+    sheet.getCell('A3').font = { name: defaultFont, bold: true, size: 12 };
+    sheet.getCell('A3').alignment = { horizontal: 'center' };
+
+    // Форматирование месяца
+    const [year, monthNum] = timesheet.month.split('-').map(Number);
+    const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+                        'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+    const monthName = monthNames[monthNum - 1];
+
+    sheet.mergeCells('A4:AK4');
+    sheet.getCell('A4').value = `за период ${monthName} ${year}`;
+    sheet.getCell('A4').alignment = { horizontal: 'center' };
+
+    sheet.mergeCells('A5:AK5');
+    sheet.getCell('A5').value = timesheet.group.studio?.name || '';
+    sheet.getCell('A5').alignment = { horizontal: 'center' };
+
+    // 4. Информационный блок
+    sheet.mergeCells('A10:B10');
+    sheet.getCell('A10').value = 'Организация';
+    sheet.mergeCells('C10:AJ10');
+    sheet.getCell('C10').value = 'ГБУ г. Москвы "ОКЦ СВАО"';
+
+    sheet.mergeCells('A11:B11');
+    sheet.getCell('A11').value = 'Структурное подразделение';
+    sheet.mergeCells('C11:AJ11');
+    sheet.getCell('C11').value = `${timesheet.group.studio?.name || ''} "${timesheet.group.name}"`;
+
+    sheet.mergeCells('A12:B12');
+    sheet.getCell('A12').value = 'Вид расчета';
+    sheet.mergeCells('C12:AJ12');
+    sheet.getCell('C12').value = 'Внебюджет';
+
+    // Режим работы (извлекаем уникальные дни недели и сортируем)
+    const dayOrder: Record<string, number> = {
+      'пн': 1, 'вт': 2, 'ср': 3, 'чт': 4, 'пт': 5, 'сб': 6, 'вс': 7
+    };
+    const dayNamesMap: Record<string, string> = {
+      'пн': 'Понедельник', 'вт': 'Вторник', 'ср': 'Среда',
+      'чт': 'Четверг', 'пт': 'Пятница', 'сб': 'Суббота', 'вс': 'Воскресенье'
+    };
+    const daysOfWeek = [...new Set(timesheet.scheduleDates.map(s => s.dayOfWeek))]
+      .filter(d => dayOrder[d] !== undefined) // Только валидные дни
+      .sort((a, b) => dayOrder[a] - dayOrder[b]); // Сортировка по порядку
+    const workDays = daysOfWeek.map(d => dayNamesMap[d] || d).join(', ');
+
+    sheet.mergeCells('A13:B13');
+    sheet.getCell('A13').value = 'Режим работы';
+    sheet.mergeCells('C13:AJ13');
+    sheet.getCell('C13').value = workDays;
+
+    // Время работы (извлекаем уникальные времена)
+    const times = [...new Set(timesheet.scheduleDates.map(s => {
+      const date = new Date(s.startTime);
+      return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+    }))];
+
+    sheet.mergeCells('A14:B14');
+    sheet.getCell('A14').value = 'Время работы';
+    sheet.mergeCells('C14:D14');
+    sheet.getCell('C14').value = times.join(', ');
+
+    // 5. Заголовки таблицы (строки 16-17)
+    // Строка 16 - основные заголовки
+    sheet.mergeCells('A16:A17');
+    sheet.getCell('A16').value = '№ п/п';
+    sheet.getCell('A16').alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    sheet.getCell('A16').font = { name: defaultFont, bold: true, size: 9 };
+
+    sheet.mergeCells('B16:C17');
+    sheet.getCell('B16').value = 'Фамилия, имя ребенка';
+    sheet.getCell('B16').alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    sheet.getCell('B16').font = { name: defaultFont, bold: true, size: 9 };
+
+    sheet.mergeCells('D16:D17');
+    sheet.getCell('D16').value = 'Плата по ставке( по договору)';
+    sheet.getCell('D16').alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    sheet.getCell('D16').font = { bold: true, size: 9 };
+
+    // Заголовок "Дни посещения" охватывает колонки E-AI (дни 1-31)
+    sheet.mergeCells('E16:AI16');
+    sheet.getCell('E16').value = 'Дни посещения';
+    sheet.getCell('E16').alignment = { horizontal: 'center' };
+    sheet.getCell('E16').font = { bold: true, size: 9 };
+
+    // Строка 17 - номера дней 1-31
+    for (let day = 1; day <= 31; day++) {
+      const col = String.fromCharCode(68 + day); // E=69 (ASCII), но 68 + 1 = 69 = 'E'
+      const colIndex = 4 + day; // E = 5, F = 6, ...
+      sheet.getCell(17, colIndex).value = day;
+      sheet.getCell(17, colIndex).alignment = { horizontal: 'center' };
+      sheet.getCell(17, colIndex).font = { size: 8 };
+    }
+
+    // Пропущено дней (AJ = 36)
+    sheet.mergeCells('AJ16:AJ17');
+    sheet.getCell('AJ16').value = 'Пропущено дней';
+    sheet.getCell('AJ16').alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    sheet.getCell('AJ16').font = { bold: true, size: 9 };
+
+    // Сумма за месяц (AK = 37)
+    sheet.mergeCells('AK16:AK17');
+    sheet.getCell('AK16').value = 'Сумма за месяц';
+    sheet.getCell('AK16').alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    sheet.getCell('AK16').font = { bold: true, size: 9 };
+
+    // Причины непосещения (AL = 38)
+    sheet.mergeCells('AL16:AL17');
+    sheet.getCell('AL16').value = 'Причины непосещения (основание)';
+    sheet.getCell('AL16').alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+    sheet.getCell('AL16').font = { bold: true, size: 9 };
+
+    // 6. Данные клиентов (с строки 18)
+    // Фильтруем только клиентов с абонементами (не SINGLE_VISIT)
+    const clients = timesheet.clients.filter(c => c.subscription?.type !== 'SINGLE_VISIT');
+
+    // Создаем Set дат занятий для быстрого поиска
+    const scheduleDatesSet = new Set(timesheet.scheduleDates.map(s => {
+      const [y, m, d] = s.date.split('-').map(Number);
+      return d; // Номер дня в месяце
+    }));
+
+    // Добавляем серый фон для заголовков нерабочих дней (строка 17)
+    for (let day = 1; day <= 31; day++) {
+      if (!scheduleDatesSet.has(day)) {
+        const colIndex = 4 + day;
+        sheet.getCell(17, colIndex).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFE0E0E0' },
+        };
+      }
+    }
+
+    let rowIndex = 18;
+    let clientNum = 1;
+
+    for (const client of clients) {
+      // № п/п
+      sheet.getCell(rowIndex, 1).value = clientNum;
+      sheet.getCell(rowIndex, 1).alignment = { horizontal: 'center' };
+
+      // ФИО (объединяем B и C)
+      sheet.mergeCells(rowIndex, 2, rowIndex, 3);
+      const fullName = `${client.lastName} ${client.firstName}${client.middleName ? ' ' + client.middleName : ''}`;
+      sheet.getCell(rowIndex, 2).value = fullName;
+
+      // Плата по ставке (цена абонемента с учетом льготы)
+      const subscriptionPrice = client.subscription?.price || 0;
+      const discountPercent = client.benefitDiscount || 0;
+      const priceWithDiscount = Math.round(subscriptionPrice * (1 - discountPercent / 100));
+      sheet.getCell(rowIndex, 4).value = priceWithDiscount;
+      sheet.getCell(rowIndex, 4).alignment = { horizontal: 'center' };
+
+      // Создаем Map посещений по дню месяца
+      const attendanceByDay = new Map<number, string | null>();
+      for (const att of client.attendances) {
+        const [y, m, d] = att.date.split('-').map(Number);
+        attendanceByDay.set(d, att.status);
+      }
+
+      // Заполняем дни 1-31
+      for (let day = 1; day <= 31; day++) {
+        const colIndex = 4 + day; // E = 5
+        const cell = sheet.getCell(rowIndex, colIndex);
+
+        // Проверяем, есть ли занятие в этот день
+        if (!scheduleDatesSet.has(day)) {
+          // Нет занятия - нерабочий день (серый фон)
+          cell.value = 'в';
+          cell.alignment = { horizontal: 'center' };
+          cell.font = { size: 8 };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FFE0E0E0' }, // Светло-серый фон
+          };
+        } else {
+          // Есть занятие - проверяем статус посещения
+          const status = attendanceByDay.get(day);
+          if (status === 'EXCUSED') {
+            cell.value = 'н';
+            cell.alignment = { horizontal: 'center' };
+            cell.font = { size: 8 };
+          } else {
+            // PRESENT, ABSENT или null - пустая ячейка
+            cell.value = '';
+          }
+        }
+      }
+
+      // Пропущено дней всего (AJ = 36)
+      sheet.getCell(rowIndex, 36).value = client.summary.excused;
+      sheet.getCell(rowIndex, 36).alignment = { horizontal: 'center' };
+
+      // Сумма за месяц (AK = 37) - используем nextMonthInvoice
+      sheet.getCell(rowIndex, 37).value = client.nextMonthInvoice ?? priceWithDiscount;
+      sheet.getCell(rowIndex, 37).alignment = { horizontal: 'center' };
+
+      // Причины непосещения (AL = 38)
+      const reasons: string[] = [];
+      if (client.summary.excused > 0) {
+        reasons.push('больничный');
+      }
+      sheet.getCell(rowIndex, 38).value = reasons.join(', ');
+
+      rowIndex++;
+      clientNum++;
+    }
+
+    // 7. Итоговая строка "Всего отсутствует"
+    sheet.mergeCells(rowIndex, 2, rowIndex, 3);
+    sheet.getCell(rowIndex, 4).value = 'Всего отсутствует ';
+    sheet.getCell(rowIndex, 4).font = { italic: true };
+
+    rowIndex += 5;
+
+    // 8. Блок подписей
+    sheet.getCell(rowIndex, 2).value = 'Руководитель организации';
+    sheet.getCell(rowIndex + 1, 2).value = '(ответственный исполнитель)';
+    sheet.getCell(rowIndex + 1, 2).font = { size: 8, italic: true };
+
+    sheet.getCell(rowIndex, 19).value = 'Ответственный';
+    sheet.getCell(rowIndex + 1, 19).value = 'исполнитель';
+
+    sheet.getCell(rowIndex + 2, 3).value = '(должность)';
+    sheet.getCell(rowIndex + 2, 3).font = { size: 8, italic: true };
+    sheet.getCell(rowIndex + 2, 5).value = '(подпись)';
+    sheet.getCell(rowIndex + 2, 5).font = { size: 8, italic: true };
+    sheet.getCell(rowIndex + 2, 12).value = '(расшифровка подписи)';
+    sheet.getCell(rowIndex + 2, 12).font = { size: 8, italic: true };
+
+    rowIndex += 5;
+
+    sheet.getCell(rowIndex, 3).value = 'Руководитель кружка';
+    sheet.getCell(rowIndex + 1, 5).value = '(подпись)';
+    sheet.getCell(rowIndex + 1, 5).font = { size: 8, italic: true };
+    sheet.getCell(rowIndex + 1, 12).value = '(расшифровка подписи)';
+    sheet.getCell(rowIndex + 1, 12).font = { size: 8, italic: true };
+    sheet.getCell(rowIndex + 1, 26).value = '(Дата сдачи табеля)';
+    sheet.getCell(rowIndex + 1, 26).font = { size: 8, italic: true };
+
+    rowIndex += 4;
+
+    // 9. Легенда
+    sheet.getCell(rowIndex, 2).value = 'В- это те дни когда секция не работает( расписание)';
+    sheet.getCell(rowIndex, 2).font = { size: 8, italic: true };
+
+    // 10. Применить границы к таблице данных
+    const dataStartRow = 16;
+    const dataEndRow = 18 + clients.length;
+    for (let row = dataStartRow; row <= dataEndRow; row++) {
+      for (let col = 1; col <= 38; col++) {
+        const cell = sheet.getCell(row, col);
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' },
+        };
+      }
+    }
+
+    // 11. Применить шрифт Arial ко всем ячейкам
+    sheet.eachRow((row) => {
+      row.eachCell((cell) => {
+        if (cell.font) {
+          cell.font = { ...cell.font, name: defaultFont };
+        } else {
+          cell.font = { name: defaultFont };
+        }
+      });
+    });
+
+    // 12. Вернуть Buffer
+    const buffer = await workbook.xlsx.writeBuffer();
+    return Buffer.from(buffer);
   }
 
   private getCurrentMonth(): string {
