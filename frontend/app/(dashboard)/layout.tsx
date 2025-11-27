@@ -58,7 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           )}
         >
           {/* Top Bar */}
-          {pathname !== '/schedule' && (
+          {pathname !== '/schedule' && pathname !== '/room-planner' && (
             <TopBar sidebarCollapsed={sidebarCollapsed} />
           )}
 

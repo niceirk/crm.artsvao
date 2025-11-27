@@ -480,7 +480,7 @@ export default function GroupDetailPage() {
                   <Label htmlFor="status">Статус *</Label>
                   <Select
                     value={form.watch('status')}
-                    onValueChange={(value) => form.setValue('status', value as any)}
+                    onValueChange={(value) => form.setValue('status', value as 'ACTIVE' | 'INACTIVE' | 'ARCHIVED')}
                   >
                     <SelectTrigger className="w-[160px]">
                       <SelectValue />

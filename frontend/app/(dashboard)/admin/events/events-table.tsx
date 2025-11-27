@@ -383,8 +383,7 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
             <TableRow>
               <TableHead className="w-[50px]">
                 <Checkbox
-                  checked={allSelected}
-                  indeterminate={someSelected}
+                  checked={allSelected ? true : someSelected ? 'indeterminate' : false}
                   onCheckedChange={handleSelectAll}
                   aria-label="Выбрать все"
                 />

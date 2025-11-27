@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import * as path from 'path';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, RelationType } from '@prisma/client';
 import {
   normalizePhone,
   transformBirthDate,
@@ -11,7 +11,6 @@ import {
   extractAddress,
   extractEmail,
   buildDocumentsMap,
-  parseDocumentDate,
   parseRegistrationDate,
 } from './import-utils';
 
@@ -19,11 +18,21 @@ const prisma = new PrismaClient();
 
 const IMPORT_DIR = path.join(__dirname, '../../../import');
 const LIMIT = process.env.IMPORT_LIMIT ? parseInt(process.env.IMPORT_LIMIT, 10) : null;
+const BATCH_SIZE = 100;
+
+interface ExistingClientInfo {
+  id: string;
+  firstName: string;
+  lastName: string;
+  middleName: string | null;
+  dateOfBirth: Date | null;
+}
 
 interface ImportStats {
   total: number;
   imported: number;
-  duplicates: number;
+  duplicatePhonesProcessed: number;
+  relationsCreated: number;
   documentsImported: number;
   filteredOut: number;
   errors: Array<{
@@ -31,6 +40,37 @@ interface ImportStats {
     error: string;
     data: any;
   }>;
+}
+
+/**
+ * Определение типа родственной связи по дате рождения
+ */
+function determineRelationType(
+  existingBirthDate: Date | null,
+  newBirthDate: Date | null
+): RelationType {
+  // Если нет дат - по умолчанию SIBLING
+  if (!existingBirthDate || !newBirthDate) {
+    return RelationType.SIBLING;
+  }
+
+  const ageDiffYears = Math.abs(
+    (existingBirthDate.getTime() - newBirthDate.getTime()) / (1000 * 60 * 60 * 24 * 365)
+  );
+
+  // Если разница < 15 лет - братья/сёстры
+  if (ageDiffYears < 15) {
+    return RelationType.SIBLING;
+  }
+
+  // Если разница >= 15 лет - родитель/ребёнок
+  if (existingBirthDate < newBirthDate) {
+    // Существующий старше → новый клиент - его ребёнок
+    return RelationType.CHILD;
+  } else {
+    // Новый старше → новый клиент - родитель существующего
+    return RelationType.PARENT;
+  }
 }
 
 /**
@@ -45,7 +85,6 @@ function readExcelFile(filePath: string, headerRow: number = 5): any[] {
   const headers = rawData[headerRow];
   const dataRows = rawData.slice(headerRow + 1);
 
-  // Преобразуем в объекты
   return dataRows.map(row => {
     const obj: any = {};
     headers.forEach((header, idx) => {
@@ -58,18 +97,15 @@ function readExcelFile(filePath: string, headerRow: number = 5): any[] {
 }
 
 /**
- * Построение карт для склейки данных
+ * Загрузка карты СНИЛС
  */
-async function buildMaps() {
-  console.log('\n📊 Построение карт для склейки данных...');
-
-  // Карта СНИЛС: ФИО -> СНИЛС
+function loadSnilsMap(): Map<string, string> {
   const snilsMap = new Map<string, string>();
   try {
     const snilsData = readExcelFile(path.join(IMPORT_DIR, 'СНИЛС.xlsx'), 5);
     console.log(`   СНИЛС: найдено ${snilsData.length} записей`);
 
-    snilsData.forEach(row => {
+    for (const row of snilsData) {
       const fullName = row['Ссылка'];
       const snilsValue = row['Значение'];
 
@@ -80,91 +116,136 @@ async function buildMaps() {
           snilsMap.set(key, normalized);
         }
       }
-    });
+    }
 
     console.log(`   СНИЛС: обработано ${snilsMap.size} уникальных записей`);
-  } catch (error) {
+  } catch (error: any) {
     console.error(`   ⚠️  Ошибка чтения СНИЛС: ${error.message}`);
   }
+  return snilsMap;
+}
 
-  // Карта адресов и email: ФИО -> { addresses: [], emails: [], phones: [] }
-  const contactsMap = new Map<string, { addresses: string[], emails: string[], phones: string[] }>();
+/**
+ * Загрузка карты контактов (с оптимизацией через Set)
+ */
+function loadContactsMap(): Map<string, { addresses: string[], emails: string[], phones: string[] }> {
+  const contactsMap = new Map<string, { addresses: Set<string>, emails: Set<string>, phones: Set<string> }>();
   try {
     const addressesData = readExcelFile(path.join(IMPORT_DIR, 'Адреса.xlsx'), 5);
     console.log(`   Контакты: найдено ${addressesData.length} записей`);
 
-    addressesData.forEach(row => {
+    for (const row of addressesData) {
       const fullName = row['Ссылка'];
       const type = row['Тип'];
       const presentation = row['Представление'];
       const emailField = row['Адрес ЭП'];
 
-      if (!fullName) return;
+      if (!fullName) continue;
 
       const key = fullName.trim().toLowerCase();
 
       if (!contactsMap.has(key)) {
-        contactsMap.set(key, { addresses: [], emails: [], phones: [] });
+        contactsMap.set(key, { addresses: new Set(), emails: new Set(), phones: new Set() });
       }
 
       const contacts = contactsMap.get(key)!;
 
       if (type === 'Адрес' && presentation) {
         const address = extractAddress(presentation);
-        if (address && !contacts.addresses.includes(address)) {
-          contacts.addresses.push(address);
-        }
+        if (address) contacts.addresses.add(address);
       } else if (type === 'Адрес электронной почты' && (presentation || emailField)) {
         const email = extractEmail(emailField || presentation);
-        if (email && !contacts.emails.includes(email)) {
-          contacts.emails.push(email);
-        }
+        if (email) contacts.emails.add(email);
       } else if (type === 'Телефон' && presentation) {
         const phone = normalizePhone(presentation);
-        if (phone && !contacts.phones.includes(phone)) {
-          contacts.phones.push(phone);
-        }
+        if (phone) contacts.phones.add(phone);
       }
-    });
+    }
 
     console.log(`   Контакты: обработано ${contactsMap.size} уникальных клиентов`);
-  } catch (error) {
+  } catch (error: any) {
     console.error(`   ⚠️  Ошибка чтения контактов: ${error.message}`);
   }
 
-  // Карта документов: ФИО -> Документы[]
+  const result = new Map<string, { addresses: string[], emails: string[], phones: string[] }>();
+  for (const [key, value] of contactsMap) {
+    result.set(key, {
+      addresses: Array.from(value.addresses),
+      emails: Array.from(value.emails),
+      phones: Array.from(value.phones),
+    });
+  }
+  return result;
+}
+
+/**
+ * Загрузка карты документов
+ */
+function loadDocumentsMap(): Map<string, any[]> {
   let documentsMap = new Map<string, any[]>();
   try {
     const documentsWorkbook = XLSX.readFile(path.join(IMPORT_DIR, 'Документы.xlsx'));
     const documentsSheet = documentsWorkbook.Sheets[documentsWorkbook.SheetNames[0]];
     const documentsData = XLSX.utils.sheet_to_json(documentsSheet, { header: 1, defval: null });
 
-    // Пропускаем служебные строки 0-6, данные начинаются с строки 7
     const documentsRows = documentsData.slice(7);
-
     console.log(`   Документы: найдено ${documentsRows.length} записей`);
 
     documentsMap = buildDocumentsMap(documentsRows);
 
     console.log(`   Документы: обработано ${documentsMap.size} уникальных клиентов`);
-  } catch (error) {
+  } catch (error: any) {
     console.error(`   ⚠️  Ошибка чтения документов: ${error.message}`);
   }
+  return documentsMap;
+}
+
+/**
+ * Построение карт для склейки данных (ПАРАЛЛЕЛЬНО)
+ */
+async function buildMaps() {
+  console.log('\n📊 Построение карт для склейки данных (параллельно)...');
+
+  const [snilsMap, contactsMap, documentsMap] = await Promise.all([
+    Promise.resolve(loadSnilsMap()),
+    Promise.resolve(loadContactsMap()),
+    Promise.resolve(loadDocumentsMap()),
+  ]);
 
   return { snilsMap, contactsMap, documentsMap };
 }
 
 /**
- * Проверка дубликата по телефону
+ * Загрузка существующих клиентов по телефону для создания родственных связей
  */
-async function checkDuplicate(phone: string | null): Promise<boolean> {
-  if (!phone) return false;
-
-  const existing = await prisma.client.findFirst({
-    where: { phone },
+async function loadExistingClients(): Promise<Map<string, ExistingClientInfo>> {
+  console.log('\n📱 Загрузка существующих клиентов для создания родственных связей...');
+  const clients = await prisma.client.findMany({
+    select: {
+      id: true,
+      phone: true,
+      firstName: true,
+      lastName: true,
+      middleName: true,
+      dateOfBirth: true,
+    },
   });
 
-  return !!existing;
+  const clientsByPhone = new Map<string, ExistingClientInfo>();
+  for (const client of clients) {
+    if (client.phone && !clientsByPhone.has(client.phone)) {
+      clientsByPhone.set(client.phone, {
+        id: client.id,
+        firstName: client.firstName,
+        lastName: client.lastName,
+        middleName: client.middleName,
+        dateOfBirth: client.dateOfBirth,
+      });
+    }
+  }
+
+  console.log(`   Найдено ${clientsByPhone.size} клиентов с уникальными телефонами`);
+  return clientsByPhone;
 }
 
 /**
@@ -172,21 +253,32 @@ async function checkDuplicate(phone: string | null): Promise<boolean> {
  */
 async function importClients() {
   console.log('===========================================');
-  console.log('🚀 ИМПОРТ КЛИЕНТОВ В CRM');
+  console.log('🚀 ИМПОРТ КЛИЕНТОВ С РОДСТВЕННЫМИ СВЯЗЯМИ');
   console.log('===========================================\n');
+
+  const startTime = Date.now();
 
   const stats: ImportStats = {
     total: 0,
     imported: 0,
-    duplicates: 0,
+    duplicatePhonesProcessed: 0,
+    relationsCreated: 0,
     documentsImported: 0,
     filteredOut: 0,
     errors: [],
   };
 
   try {
-    // 1. Построение карт
-    const { snilsMap, contactsMap, documentsMap } = await buildMaps();
+    // 1. Параллельная загрузка данных
+    const [maps, existingClientsByPhone] = await Promise.all([
+      buildMaps(),
+      loadExistingClients(),
+    ]);
+
+    const { snilsMap, contactsMap, documentsMap } = maps;
+
+    // Также отслеживаем телефоны в текущем импорте для связей между новыми клиентами
+    const importedClientsByPhone = new Map<string, ExistingClientInfo>();
 
     // 2. Чтение основного файла клиентов
     console.log('\n📖 Чтение файла клиентов...');
@@ -200,17 +292,28 @@ async function importClients() {
       console.log(`   ⚠️  ВНИМАНИЕ: Установлен лимит импорта - ${LIMIT} клиентов`);
     }
 
-    // 3. Обработка каждого клиента
-    console.log('\n💾 Начало импорта...\n');
+    // 3. Подготовка данных для batch импорта
+    console.log('\n💾 Подготовка данных для импорта...');
+
+    interface ClientToCreate {
+      data: any;
+      fullNameKey: string;
+      rowNumber: number;
+      relateToClientId?: string;
+      relateToDateOfBirth?: Date | null;
+    }
+
+    const clientsToCreate: ClientToCreate[] = [];
+    const clientDocumentsToCreate: Map<number, any[]> = new Map();
 
     for (let i = 0; i < totalClients; i++) {
       const row = clients[i];
-      const rowNumber = i + 7; // +6 для служебных строк +1 для заголовка
+      const rowNumber = i + 7;
 
       try {
-        // Фильтрация по структурному подразделению
+        // Фильтрация по структурному подразделению - только артсвао.ру
         const structuralUnit = row['Структурная единица'];
-        if (structuralUnit && structuralUnit.trim().toLowerCase() !== 'артсвао.ру') {
+        if (!structuralUnit || structuralUnit.trim().toLowerCase() !== 'артсвао.ру') {
           stats.filteredOut++;
           continue;
         }
@@ -230,43 +333,33 @@ async function importClients() {
           continue;
         }
 
-        // Получение телефона (сначала из контактов, потом из основного файла)
+        // Получение телефона
         const fullNameRef = row['Ссылка'] || row['Полное наименование'];
         const fullNameKey = fullNameRef ? fullNameRef.trim().toLowerCase() : createFullNameKey(lastName, firstName, middleName);
 
         const contacts = contactsMap.get(fullNameKey) || { addresses: [], emails: [], phones: [] };
-        let phone = contacts.phones[0] || normalizePhone(row['Телефон']);
+        const phone = contacts.phones[0] || normalizePhone(row['Телефон']);
         const phoneAdditional = contacts.phones[1] || null;
-
-        // Проверка дубликата
-        if (phone && await checkDuplicate(phone)) {
-          stats.duplicates++;
-          continue;
-        }
-
-        // Если нет телефона, пропускаем (необязательное поле по требованиям)
-        // Но логируем для информации
-        if (!phone) {
-          console.log(`   ⚠️  Строка ${rowNumber}: нет телефона для ${lastName} ${firstName}`);
-        }
 
         // Подготовка данных
         const registrationDate = parseRegistrationDate(row['Дата регистрации']);
+        const dateOfBirth = transformBirthDate(row['Дата рождения']);
+
         const clientData: any = {
           firstName,
           lastName,
           middleName: middleName || null,
           clientType: transformClientType(row['Юр. / физ. лицо']),
-          dateOfBirth: transformBirthDate(row['Дата рождения']),
+          dateOfBirth,
           gender: transformGender(row['Пол']),
-          phone: phone || '+70000000000', // Временный телефон если нет
+          phone: phone || '+70000000000',
           email: contacts.emails[0] || null,
           address: contacts.addresses[0] || null,
           notes: row['Комментарий'] || null,
           snils: snilsMap.get(fullNameKey) || null,
           phoneAdditional,
           status: 'ACTIVE',
-          createdAt: registrationDate || undefined, // Дата создания из файла
+          createdAt: registrationDate || undefined,
         };
 
         // Для юридических лиц
@@ -275,36 +368,55 @@ async function importClients() {
           clientData.inn = row['ИНН'] || null;
         }
 
-        // Создание клиента
-        const client = await prisma.client.create({ data: clientData });
+        // Проверка на совпадение телефона
+        let relateToClientId: string | undefined;
+        let relateToDateOfBirth: Date | null | undefined;
 
-        stats.imported++;
-
-        // Создание документов клиента
-        const clientDocuments = documentsMap.get(fullNameKey) || [];
-        if (clientDocuments.length > 0) {
-          for (const doc of clientDocuments) {
-            try {
-              await prisma.clientDocument.create({
-                data: {
-                  clientId: client.id,
-                  ...doc,
-                },
+        if (phone) {
+          // Сначала проверяем в существующих клиентах БД
+          const existingClient = existingClientsByPhone.get(phone);
+          if (existingClient) {
+            relateToClientId = existingClient.id;
+            relateToDateOfBirth = existingClient.dateOfBirth;
+            stats.duplicatePhonesProcessed++;
+            console.log(`   👨‍👩‍👧 ${lastName} ${firstName} → связь с существующим ${existingClient.lastName} ${existingClient.firstName}`);
+          } else {
+            // Проверяем среди уже подготовленных к импорту
+            const importedClient = importedClientsByPhone.get(phone);
+            if (importedClient) {
+              relateToClientId = importedClient.id; // Временный ID - будет заменён
+              relateToDateOfBirth = importedClient.dateOfBirth;
+              stats.duplicatePhonesProcessed++;
+              console.log(`   👨‍👩‍👧 ${lastName} ${firstName} → связь с импортируемым ${importedClient.lastName} ${importedClient.firstName}`);
+            } else {
+              // Первый клиент с этим телефоном - запоминаем
+              importedClientsByPhone.set(phone, {
+                id: `temp_${clientsToCreate.length}`, // Временный ID
+                firstName,
+                lastName,
+                middleName: middleName || null,
+                dateOfBirth,
               });
-              stats.documentsImported++;
-            } catch (docError) {
-              // Игнорируем ошибки создания документов (например, дубликаты типов)
-              console.log(`   ⚠️  Строка ${rowNumber}: ошибка создания документа ${doc.documentType}: ${docError.message}`);
             }
           }
         }
 
-        // Прогресс
-        if ((i + 1) % 100 === 0) {
-          console.log(`   ✓ Импортировано: ${stats.imported}/${totalClients}`);
+        const clientIndex = clientsToCreate.length;
+        clientsToCreate.push({
+          data: clientData,
+          fullNameKey,
+          rowNumber,
+          relateToClientId,
+          relateToDateOfBirth,
+        });
+
+        // Сохраняем документы для этого клиента
+        const clientDocuments = documentsMap.get(fullNameKey) || [];
+        if (clientDocuments.length > 0) {
+          clientDocumentsToCreate.set(clientIndex, clientDocuments);
         }
 
-      } catch (error) {
+      } catch (error: any) {
         stats.errors.push({
           row: rowNumber,
           error: error.message,
@@ -313,19 +425,193 @@ async function importClients() {
       }
     }
 
-    // 4. Вывод статистики
+    console.log(`\n   Подготовлено клиентов для импорта: ${clientsToCreate.length}`);
+    console.log(`   Клиентов с совпадающими телефонами: ${stats.duplicatePhonesProcessed}`);
+
+    // 4. Batch импорт клиентов
+    console.log('\n⚡ Batch импорт клиентов...');
+
+    // Хранилище для созданных клиентов и их связей
+    const createdClientsMap = new Map<number, string>(); // index -> clientId
+    const relationsToCreate: Array<{
+      clientId: string;
+      relatedClientId: string;
+      relationType: RelationType;
+      newClientDateOfBirth: Date | null;
+    }> = [];
+
+    // Также нужно обновить временные ID на реальные для связей между новыми клиентами
+    const tempIdToRealId = new Map<string, string>(); // temp_X -> real UUID
+
+    for (let batchStart = 0; batchStart < clientsToCreate.length; batchStart += BATCH_SIZE) {
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, clientsToCreate.length);
+      const batch = clientsToCreate.slice(batchStart, batchEnd);
+
+      // Создаём клиентов в транзакции
+      const createdClients = await prisma.$transaction(
+        batch.map(item => prisma.client.create({ data: item.data }))
+      );
+
+      stats.imported += createdClients.length;
+
+      // Сохраняем ID созданных клиентов
+      for (let i = 0; i < createdClients.length; i++) {
+        const clientIndex = batchStart + i;
+        const createdClient = createdClients[i];
+        const clientInfo = batch[i];
+
+        createdClientsMap.set(clientIndex, createdClient.id);
+        tempIdToRealId.set(`temp_${clientIndex}`, createdClient.id);
+
+        // Если есть связь с существующим клиентом
+        if (clientInfo.relateToClientId) {
+          relationsToCreate.push({
+            clientId: createdClient.id,
+            relatedClientId: clientInfo.relateToClientId,
+            relationType: RelationType.SIBLING, // Временно, определим позже
+            newClientDateOfBirth: clientInfo.data.dateOfBirth,
+          });
+        }
+      }
+
+      // Создаём документы для каждого клиента
+      const documentsBatch: any[] = [];
+      for (let i = 0; i < createdClients.length; i++) {
+        const clientIndex = batchStart + i;
+        const documents = clientDocumentsToCreate.get(clientIndex);
+        if (documents) {
+          for (const doc of documents) {
+            documentsBatch.push({
+              clientId: createdClients[i].id,
+              ...doc,
+            });
+          }
+        }
+      }
+
+      // Batch создание документов
+      if (documentsBatch.length > 0) {
+        try {
+          const result = await prisma.clientDocument.createMany({
+            data: documentsBatch,
+            skipDuplicates: true,
+          });
+          stats.documentsImported += result.count;
+        } catch (docError: any) {
+          console.log(`   ⚠️  Ошибка batch создания документов: ${docError.message}`);
+          for (const doc of documentsBatch) {
+            try {
+              await prisma.clientDocument.create({ data: doc });
+              stats.documentsImported++;
+            } catch (e) {
+              // Игнорируем дубликаты
+            }
+          }
+        }
+      }
+
+      // Прогресс
+      console.log(`   ✓ Импортировано: ${stats.imported}/${clientsToCreate.length}`);
+    }
+
+    // 5. Создание родственных связей
+    if (relationsToCreate.length > 0) {
+      console.log('\n👨‍👩‍👧‍👦 Создание родственных связей...');
+
+      // Заменяем временные ID на реальные и определяем тип связи
+      const finalRelations: Array<{
+        clientId: string;
+        relatedClientId: string;
+        relationType: RelationType;
+      }> = [];
+
+      for (const relation of relationsToCreate) {
+        let relatedClientId = relation.relatedClientId;
+
+        // Если это временный ID - заменяем на реальный
+        if (relatedClientId.startsWith('temp_')) {
+          const realId = tempIdToRealId.get(relatedClientId);
+          if (realId) {
+            relatedClientId = realId;
+          } else {
+            console.log(`   ⚠️ Не найден реальный ID для ${relatedClientId}`);
+            continue;
+          }
+        }
+
+        // Получаем дату рождения связанного клиента
+        let relatedDateOfBirth: Date | null = null;
+
+        // Сначала проверяем в существующих клиентах
+        for (const [, clientInfo] of existingClientsByPhone) {
+          if (clientInfo.id === relatedClientId) {
+            relatedDateOfBirth = clientInfo.dateOfBirth;
+            break;
+          }
+        }
+
+        // Если не нашли - загружаем из БД
+        if (!relatedDateOfBirth) {
+          const relatedClient = await prisma.client.findUnique({
+            where: { id: relatedClientId },
+            select: { dateOfBirth: true },
+          });
+          relatedDateOfBirth = relatedClient?.dateOfBirth || null;
+        }
+
+        // Определяем тип связи
+        const relationType = determineRelationType(relatedDateOfBirth, relation.newClientDateOfBirth);
+
+        finalRelations.push({
+          clientId: relation.clientId,
+          relatedClientId,
+          relationType,
+        });
+      }
+
+      // Batch создание связей
+      if (finalRelations.length > 0) {
+        try {
+          const result = await prisma.clientRelation.createMany({
+            data: finalRelations,
+            skipDuplicates: true,
+          });
+          stats.relationsCreated = result.count;
+          console.log(`   ✓ Создано ${result.count} родственных связей`);
+
+          // Логируем типы связей
+          const relationTypes = finalRelations.reduce((acc, r) => {
+            acc[r.relationType] = (acc[r.relationType] || 0) + 1;
+            return acc;
+          }, {} as Record<string, number>);
+
+          for (const [type, count] of Object.entries(relationTypes)) {
+            console.log(`      - ${type}: ${count}`);
+          }
+        } catch (relError: any) {
+          console.log(`   ⚠️ Ошибка создания связей: ${relError.message}`);
+        }
+      }
+    }
+
+    // 6. Вывод статистики
+    const endTime = Date.now();
+    const duration = ((endTime - startTime) / 1000).toFixed(1);
+
     console.log('\n===========================================');
     console.log('📈 РЕЗУЛЬТАТЫ ИМПОРТА');
     console.log('===========================================');
+    console.log(`⏱️  Время выполнения:     ${duration} сек`);
     console.log(`Всего обработано:        ${stats.total}`);
     console.log(`✅ Импортировано:        ${stats.imported}`);
     console.log(`📄 Документов:           ${stats.documentsImported}`);
-    console.log(`🔄 Дубликаты:            ${stats.duplicates}`);
+    console.log(`👨‍👩‍👧 Совпадающие телефоны: ${stats.duplicatePhonesProcessed}`);
+    console.log(`🔗 Родственных связей:   ${stats.relationsCreated}`);
     console.log(`🚫 Отфильтровано:        ${stats.filteredOut}`);
     console.log(`❌ Ошибки:               ${stats.errors.length}`);
     console.log('===========================================\n');
 
-    // 5. Вывод первых ошибок
+    // 7. Вывод первых ошибок
     if (stats.errors.length > 0) {
       console.log('⚠️  ПЕРВЫЕ 10 ОШИБОК:\n');
       stats.errors.slice(0, 10).forEach(err => {

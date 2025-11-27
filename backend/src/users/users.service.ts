@@ -66,12 +66,24 @@ export class UsersService {
     // Проверяем существование пользователя
     await this.findById(userId);
 
+    // Если меняется email, проверяем его уникальность
+    if (dto.email) {
+      const existingUser = await this.prisma.user.findUnique({
+        where: { email: dto.email },
+      });
+
+      if (existingUser && existingUser.id !== userId) {
+        throw new ConflictException('Пользователь с таким email уже существует');
+      }
+    }
+
     // Обновляем данные
     const updatedUser = await this.prisma.user.update({
       where: { id: userId },
       data: {
         ...(dto.firstName && { firstName: dto.firstName }),
         ...(dto.lastName && { lastName: dto.lastName }),
+        ...(dto.email && { email: dto.email }),
       },
       select: {
         id: true,

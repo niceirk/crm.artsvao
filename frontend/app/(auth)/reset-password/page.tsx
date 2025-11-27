@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Logo } from '@/components/logo';
-import { Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { apiClient } from '@/lib/api/client';
 
 const resetPasswordSchema = z.object({
@@ -32,6 +32,8 @@ function ResetPasswordContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const {
     register,
@@ -177,13 +179,24 @@ function ResetPasswordContent() {
               <label htmlFor="newPassword" className="text-sm font-medium">
                 Новый пароль
               </label>
-              <Input
-                id="newPassword"
-                type="password"
-                placeholder="••••••"
-                {...register('newPassword')}
-                disabled={isSubmitting}
-              />
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••"
+                  {...register('newPassword')}
+                  disabled={isSubmitting}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
               {errors.newPassword && (
                 <p className="text-sm text-red-500">{errors.newPassword.message}</p>
               )}
@@ -193,13 +206,24 @@ function ResetPasswordContent() {
               <label htmlFor="confirmPassword" className="text-sm font-medium">
                 Подтвердите пароль
               </label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                placeholder="••••••"
-                {...register('confirmPassword')}
-                disabled={isSubmitting}
-              />
+              <div className="relative">
+                <Input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  placeholder="••••••"
+                  {...register('confirmPassword')}
+                  disabled={isSubmitting}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  tabIndex={-1}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
               {errors.confirmPassword && (
                 <p className="text-sm text-red-500">{errors.confirmPassword.message}</p>
               )}

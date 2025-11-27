@@ -44,6 +44,7 @@ import {
   FileText,
   Phone,
   Mail,
+  Archive,
 } from 'lucide-react';
 import { useClientInvoices } from '@/hooks/use-invoices';
 import { useClientSubscriptions } from '@/hooks/use-subscriptions';
@@ -58,6 +59,7 @@ import { ClientInfoSection } from './client-info-section';
 import { ClientRelationsSection } from './client-relations-section';
 import { ClientNotesSection } from './client-notes-section';
 import { ClientDocumentsSection } from './client-documents-section';
+import { ClientArchivedSalesSection } from './client-archived-sales-section';
 import type { Client } from '@/lib/types/clients';
 import type { InvoiceStatus } from '@/lib/types/invoices';
 import type { SubscriptionStatus } from '@/lib/types/subscriptions';
@@ -332,7 +334,7 @@ export function ClientMainPanel({
     <Card>
       <CardContent className="p-0">
         <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
-          <TabsList className="grid w-full grid-cols-5 h-auto p-1">
+          <TabsList className="grid w-full grid-cols-6 h-auto p-1">
             <TabsTrigger value="main" className="flex items-center gap-2 py-2">
               <User className="h-4 w-4" />
               <span className="hidden sm:inline">Основное</span>
@@ -352,6 +354,10 @@ export function ClientMainPanel({
             <TabsTrigger value="payments" className="flex items-center gap-2 py-2">
               <Receipt className="h-4 w-4" />
               <span className="hidden sm:inline">Платежи</span>
+            </TabsTrigger>
+            <TabsTrigger value="archived-sales" className="flex items-center gap-2 py-2">
+              <Archive className="h-4 w-4" />
+              <span className="hidden sm:inline">Архив</span>
             </TabsTrigger>
           </TabsList>
 
@@ -776,6 +782,11 @@ export function ClientMainPanel({
                 </Table>
               </div>
             )}
+          </TabsContent>
+
+          {/* Вкладка "Архив продаж" */}
+          <TabsContent value="archived-sales" className="p-4">
+            <ClientArchivedSalesSection clientId={client.id} />
           </TabsContent>
         </Tabs>
       </CardContent>

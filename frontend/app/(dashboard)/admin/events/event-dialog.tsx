@@ -55,8 +55,8 @@ const formSchema = z.object({
   responsibleUserId: z.string().optional(),
   status: z.enum(['PLANNED', 'ONGOING', 'COMPLETED', 'CANCELLED']).optional(),
   notes: z.string().optional(),
-  participants: z.coerce.number().min(0).optional(),
-  budget: z.coerce.number().min(0).optional(),
+  participants: z.number().min(0).optional(),
+  budget: z.number().min(0).optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -359,7 +359,11 @@ export function EventDialog({ open, onOpenChange, event }: EventDialogProps) {
                       <Input
                         type="number"
                         placeholder="100"
-                        {...field}
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormMessage />
@@ -377,7 +381,11 @@ export function EventDialog({ open, onOpenChange, event }: EventDialogProps) {
                       <Input
                         type="number"
                         placeholder="50000"
-                        {...field}
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormDescription>Рублей</FormDescription>

@@ -1,10 +1,14 @@
 import { apiClient } from './client';
 import { CalendarEventStatus } from './calendar-event-status';
 
+// Re-export for convenience
+export { CalendarEventStatus };
+
 export interface Event {
   id: string;
   name: string;
   description?: string;
+  fullDescription?: string;
   eventTypeId?: string;
   roomId: string;
   date: string;
@@ -20,6 +24,11 @@ export interface Event {
   externalId?: string;
   createdAt: string;
   updatedAt: string;
+  // Optional fields for UI (may not exist in all cases)
+  timepadLink?: string;
+  isPaid?: boolean;
+  isGovernmentTask?: boolean;
+  eventFormat?: string;
   eventType?: {
     id: string;
     name: string;

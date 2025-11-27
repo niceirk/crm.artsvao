@@ -40,11 +40,11 @@ const formSchema = z.object({
   description: z.string().optional(),
   categoryId: z.string().min(1, 'Выберите категорию'),
   serviceType: z.enum(['SUBSCRIPTION', 'RENTAL', 'SINGLE_SESSION', 'INDIVIDUAL_LESSON', 'OTHER']),
-  basePrice: z.coerce.number().min(0, 'Минимум 0'),
-  vatRate: z.coerce.number().min(0).max(100).default(20),
+  basePrice: z.number().min(0, 'Минимум 0'),
+  vatRate: z.number().min(0).max(100),
   unitOfMeasure: z.enum(['MONTH', 'HOUR', 'SESSION', 'DAY', 'PIECE']),
   writeOffTiming: z.enum(['ON_SALE', 'ON_USE']),
-  isActive: z.boolean().default(true),
+  isActive: z.boolean(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -235,7 +235,16 @@ export function ServiceDialog({ open, onOpenChange, service }: ServiceDialogProp
                   <FormItem>
                     <FormLabel>Базовая цена *</FormLabel>
                     <FormControl>
-                      <Input type="number" min={0} step="0.01" {...field} />
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={field.value}
+                        onChange={(e) => field.onChange(e.target.valueAsNumber || 0)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -249,7 +258,16 @@ export function ServiceDialog({ open, onOpenChange, service }: ServiceDialogProp
                   <FormItem>
                     <FormLabel>Ставка НДС (%) *</FormLabel>
                     <FormControl>
-                      <Input type="number" min={0} max={100} {...field} />
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={field.value}
+                        onChange={(e) => field.onChange(e.target.valueAsNumber || 0)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
+                      />
                     </FormControl>
                     <FormDescription>0 для образовательных услуг</FormDescription>
                     <FormMessage />

@@ -4,6 +4,7 @@ import { User } from '../types/auth';
 export interface UpdateProfileDto {
   firstName?: string;
   lastName?: string;
+  email?: string;
 }
 
 export interface ChangePasswordDto {

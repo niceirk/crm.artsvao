@@ -50,9 +50,9 @@ export const navigationConfig: NavGroup[] = [
     items: [
       {
         title: 'Расписание',
-        href: '/schedule',
+        href: '/room-planner',
         icon: Calendar,
-        description: 'Просмотр и редактирование расписания',
+        description: 'Занятость и подбор помещений',
       },
       {
         title: 'Клиенты',

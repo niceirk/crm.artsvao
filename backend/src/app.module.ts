@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -39,6 +40,7 @@ import { TelegramModule } from './telegram/telegram.module';
 import { MessagesModule } from './messages/messages.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { TimesheetsModule } from './timesheets/timesheets.module';
+import { ArchivedSalesModule } from './archived-sales/archived-sales.module';
 
 @Module({
   imports: [
@@ -47,6 +49,13 @@ import { TimesheetsModule } from './timesheets/timesheets.module';
       envFilePath: '.env',
     }),
     ScheduleModule.forRoot(),
+    // Rate limiting: 100 запросов за 60 секунд с одного IP
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 60 секунд
+        limit: 100, // максимум 100 запросов
+      },
+    ]),
     PrismaModule,
     EmailModule,
     TelegramModule,
@@ -81,10 +90,15 @@ import { TimesheetsModule } from './timesheets/timesheets.module';
     HealthModule,
     PyrusModule,
     TimesheetsModule,
+    ArchivedSalesModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard, // Apply rate limiting globally
+    },
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard, // Apply JWT guard globally

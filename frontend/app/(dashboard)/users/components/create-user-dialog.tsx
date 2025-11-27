@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Copy, Loader2, UserPlus } from 'lucide-react';
+import { Copy, Loader2, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -41,6 +41,7 @@ type CreateUserFormData = z.infer<typeof createUserSchema>;
 export function CreateUserDialog() {
   const [open, setOpen] = useState(false);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const createUser = useCreateUser();
 
@@ -161,7 +162,7 @@ export function CreateUserDialog() {
               <Label htmlFor="role">Роль</Label>
               <Select
                 value={selectedRole}
-                onValueChange={(value) => setValue('role', value as any)}
+                onValueChange={(value) => setValue('role', value as 'MANAGER' | 'ADMIN')}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -175,13 +176,25 @@ export function CreateUserDialog() {
 
             <div className="space-y-2">
               <Label htmlFor="password">Пароль (опционально)</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Минимум 6 символов"
-                {...register('password')}
-                disabled={sendInvite}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Минимум 6 символов"
+                  {...register('password')}
+                  disabled={sendInvite}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  tabIndex={-1}
+                  disabled={sendInvite}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
               {errors.password && (
                 <p className="text-sm text-red-500">{errors.password.message}</p>
               )}

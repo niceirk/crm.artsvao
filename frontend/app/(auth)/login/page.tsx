@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -11,7 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Logo } from '@/components/logo';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Eye, EyeOff } from 'lucide-react';
+import { useState } from 'react';
 
 const loginSchema = z.object({
   email: z.string().email('Введите корректный email'),
@@ -22,7 +22,7 @@ type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
   const { login, isLoggingIn, loginError } = useAuth();
-  const [showCredentials, setShowCredentials] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const {
     register,
@@ -38,18 +38,6 @@ export default function LoginPage() {
 
   const onSubmit = (data: LoginFormData) => {
     login(data);
-  };
-
-  const fillAdmin = () => {
-    const form = document.querySelector('form') as HTMLFormElement;
-    (form.elements.namedItem('email') as HTMLInputElement).value = 'admin@artsvao.ru';
-    (form.elements.namedItem('password') as HTMLInputElement).value = 'admin123';
-  };
-
-  const fillManager = () => {
-    const form = document.querySelector('form') as HTMLFormElement;
-    (form.elements.namedItem('email') as HTMLInputElement).value = 'manager@artsvao.ru';
-    (form.elements.namedItem('password') as HTMLInputElement).value = 'manager123';
   };
 
   return (
@@ -77,7 +65,7 @@ export default function LoginPage() {
               <Input
                 id="email"
                 type="email"
-                placeholder="admin@artsvao.ru"
+                placeholder="email@example.com"
                 {...register('email')}
                 disabled={isLoggingIn}
               />
@@ -98,13 +86,24 @@ export default function LoginPage() {
                   Забыли пароль?
                 </Link>
               </div>
-              <Input
-                id="password"
-                type="password"
-                placeholder="••••••"
-                {...register('password')}
-                disabled={isLoggingIn}
-              />
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="••••••"
+                  {...register('password')}
+                  disabled={isLoggingIn}
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  tabIndex={-1}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
               {errors.password && (
                 <p className="text-sm text-red-500">{errors.password.message}</p>
               )}
@@ -130,50 +129,6 @@ export default function LoginPage() {
                 'Войти'
               )}
             </Button>
-
-            <div className="space-y-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full"
-                onClick={() => setShowCredentials(!showCredentials)}
-              >
-                {showCredentials ? 'Скрыть' : 'Показать'} тестовые учетные данные
-              </Button>
-
-              {showCredentials && (
-                <div className="p-4 bg-gray-100 rounded-md space-y-2 text-sm">
-                  <div>
-                    <p className="font-semibold">Администратор:</p>
-                    <p>Email: admin@artsvao.ru</p>
-                    <p>Пароль: admin123</p>
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      onClick={fillAdmin}
-                      className="p-0 h-auto"
-                    >
-                      Заполнить форму
-                    </Button>
-                  </div>
-                  <div>
-                    <p className="font-semibold">Менеджер:</p>
-                    <p>Email: manager@artsvao.ru</p>
-                    <p>Пароль: manager123</p>
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      onClick={fillManager}
-                      className="p-0 h-auto"
-                    >
-                      Заполнить форму
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
           </form>
         </CardContent>
       </Card>

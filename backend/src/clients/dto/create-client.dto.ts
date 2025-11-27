@@ -32,9 +32,8 @@ export class CreateClientDto {
   @IsEnum(Gender)
   gender?: Gender;
 
-  @IsOptional()
   @IsPhoneNumber()
-  phone?: string;
+  phone: string;
 
   @IsOptional()
   @IsEmail()

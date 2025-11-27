@@ -335,7 +335,7 @@ export default function StudioDetailPage() {
                   <Label htmlFor="type">Тип *</Label>
                   <Select
                     value={form.watch('type')}
-                    onValueChange={(value) => form.setValue('type', value as any)}
+                    onValueChange={(value) => form.setValue('type', value as 'GROUP' | 'INDIVIDUAL' | 'BOTH')}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -361,7 +361,7 @@ export default function StudioDetailPage() {
                   <Label htmlFor="status">Статус *</Label>
                   <Select
                     value={form.watch('status')}
-                    onValueChange={(value) => form.setValue('status', value as any)}
+                    onValueChange={(value) => form.setValue('status', value as 'ACTIVE' | 'INACTIVE')}
                   >
                     <SelectTrigger>
                       <SelectValue />

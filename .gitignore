@@ -51,11 +51,19 @@ yarn-error.log*
 # OS
 Thumbs.db
 
-# SSL Certificates (if you store them locally)
+# SSL Certificates
 .cloud-certs/
 *.crt
 *.key
-*.pem
+# Приватные ключи SSL (НИКОГДА не коммитить!)
+certbot/conf/live/*/privkey.pem
+certbot/conf/archive/*/privkey*.pem
+# Но храним публичные сертификаты для бэкапа
+# certbot/conf/live/*/fullchain.pem - OK
+# certbot/conf/live/*/cert.pem - OK
+
+# Старые скрипты деплоя
+*.old
 
 # Logs
 logs/

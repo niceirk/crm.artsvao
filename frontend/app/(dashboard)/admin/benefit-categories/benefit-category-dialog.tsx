@@ -32,13 +32,10 @@ import type { BenefitCategory } from '@/lib/types/benefit-categories';
 
 const formSchema = z.object({
   name: z.string().min(1, 'Введите название'),
-  discountPercent: z.coerce
-    .number()
-    .min(0, 'Минимум 0%')
-    .max(100, 'Максимум 100%'),
+  discountPercent: z.number().min(0, 'Минимум 0%').max(100, 'Максимум 100%'),
   description: z.string().optional(),
-  requiresDocument: z.boolean().default(false),
-  isActive: z.boolean().default(true),
+  requiresDocument: z.boolean(),
+  isActive: z.boolean(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -142,7 +139,11 @@ export function BenefitCategoryDialog({
                       min={0}
                       max={100}
                       placeholder="20"
-                      {...field}
+                      value={field.value}
+                      onChange={(e) => field.onChange(e.target.valueAsNumber || 0)}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                      ref={field.ref}
                     />
                   </FormControl>
                   <FormDescription>От 0 до 100</FormDescription>

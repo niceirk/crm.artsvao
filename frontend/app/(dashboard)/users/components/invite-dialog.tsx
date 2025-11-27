@@ -146,7 +146,7 @@ export function InviteDialog() {
               <Label htmlFor="role">Роль</Label>
               <Select
                 value={selectedRole}
-                onValueChange={(value) => setValue('role', value as any)}
+                onValueChange={(value) => setValue('role', value as 'MANAGER' | 'ADMIN')}
               >
                 <SelectTrigger>
                   <SelectValue />

@@ -10,7 +10,7 @@ export default function Home() {
 
   useEffect(() => {
     if (isAuthenticated) {
-      router.push('/schedule');
+      router.push('/room-planner');
     } else {
       router.push('/login');
     }

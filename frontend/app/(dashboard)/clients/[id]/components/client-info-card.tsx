@@ -291,7 +291,7 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
               </Label>
               <Select
                 value={clientTypeValue}
-                onValueChange={(value) => setValue('clientType', value as any)}
+                onValueChange={(value) => setValue('clientType', value as 'INDIVIDUAL' | 'LEGAL_ENTITY')}
               >
                 <SelectTrigger id="clientType" className="bg-yellow-50">
                   <SelectValue />
@@ -449,7 +449,7 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
                   Статус
                   <span className="text-yellow-600">*</span>
                 </Label>
-                <Select value={statusValue} onValueChange={(value) => setValue('status', value as any)}>
+                <Select value={statusValue} onValueChange={(value) => setValue('status', value as 'ACTIVE' | 'VIP' | 'INACTIVE')}>
                   <SelectTrigger id="status" className="bg-yellow-50">
                     <SelectValue />
                   </SelectTrigger>

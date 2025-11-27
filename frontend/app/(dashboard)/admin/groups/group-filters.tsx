@@ -125,7 +125,7 @@ export function GroupFilters({ filters, onFiltersChange }: GroupFiltersProps) {
           <Select
             value={filters.ageRange || 'all'}
             onValueChange={(value) =>
-              onFiltersChange({ ...filters, ageRange: value === 'all' ? undefined : value as any })
+              onFiltersChange({ ...filters, ageRange: value === 'all' ? undefined : value as 'child' | 'teen' | 'adult' })
             }
           >
             <SelectTrigger>
@@ -170,7 +170,7 @@ export function GroupFilters({ filters, onFiltersChange }: GroupFiltersProps) {
           <Select
             value={filters.status || '__empty__'}
             onValueChange={(value) =>
-              onFiltersChange({ ...filters, status: value === '__empty__' ? undefined : value as any })
+              onFiltersChange({ ...filters, status: value === '__empty__' ? undefined : value as 'ACTIVE' | 'INACTIVE' | 'ARCHIVED' })
             }
           >
             <SelectTrigger>

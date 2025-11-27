@@ -104,7 +104,7 @@ export function ClientCreateDialog({ open, onOpenChange }: ClientCreateDialogPro
             <Label htmlFor="clientType">Тип клиента</Label>
             <Select
               value={clientTypeValue || 'INDIVIDUAL'}
-              onValueChange={(value) => setValue('clientType', value as any)}
+              onValueChange={(value) => setValue('clientType', value as 'INDIVIDUAL' | 'LEGAL_ENTITY')}
             >
               <SelectTrigger id="clientType">
                 <SelectValue />

@@ -45,10 +45,10 @@ const statusOptions = [
 
 const formSchema = z.object({
   name: z.string().min(1, 'Введите название'),
-  maxParticipants: z.coerce.number().min(1, 'Минимум 1 участник'),
-  singleSessionPrice: z.coerce.number().min(0, 'Минимум 0'),
-  ageMin: z.coerce.number().min(0, 'Минимум 0').optional(),
-  ageMax: z.coerce.number().min(0, 'Минимум 0').optional(),
+  maxParticipants: z.number().min(1, 'Минимум 1 участник'),
+  singleSessionPrice: z.number().min(0, 'Минимум 0'),
+  ageMin: z.number().min(0, 'Минимум 0').optional(),
+  ageMax: z.number().min(0, 'Минимум 0').optional(),
   status: z.enum(['ACTIVE', 'INACTIVE', 'ARCHIVED']).optional(),
   studioId: z.string().min(1, 'Выберите студию'),
   teacherId: z.string().min(1, 'Выберите преподавателя'),
@@ -255,7 +255,11 @@ export function GroupDialog({
                       <Input
                         type="number"
                         placeholder="15"
-                        {...field}
+                        value={field.value}
+                        onChange={(e) => field.onChange(e.target.valueAsNumber || 1)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormMessage />
@@ -273,7 +277,11 @@ export function GroupDialog({
                       <Input
                         type="number"
                         placeholder="500"
-                        {...field}
+                        value={field.value}
+                        onChange={(e) => field.onChange(e.target.valueAsNumber || 0)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormDescription>Рублей за одно занятие</FormDescription>
@@ -294,7 +302,11 @@ export function GroupDialog({
                       <Input
                         type="number"
                         placeholder="5"
-                        {...field}
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormDescription>Лет</FormDescription>
@@ -313,7 +325,11 @@ export function GroupDialog({
                       <Input
                         type="number"
                         placeholder="18"
-                        {...field}
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormDescription>Лет</FormDescription>

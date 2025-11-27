@@ -21,12 +21,17 @@ export class MessagesService {
   ) {}
 
   /**
-   * Преобразует BigInt в строки для JSON сериализации
+   * Преобразует BigInt и Decimal в строки для JSON сериализации
    */
   private serializeBigInt(obj: any): any {
     if (obj === null || obj === undefined) return obj;
 
     if (typeof obj === 'bigint') {
+      return obj.toString();
+    }
+
+    // Обработка Prisma Decimal (имеет метод toNumber/toString)
+    if (obj && typeof obj === 'object' && typeof obj.toNumber === 'function' && obj.constructor?.name === 'Decimal') {
       return obj.toString();
     }
 
@@ -41,7 +46,9 @@ export class MessagesService {
     if (typeof obj === 'object') {
       const result: any = {};
       for (const key in obj) {
-        result[key] = this.serializeBigInt(obj[key]);
+        if (Object.prototype.hasOwnProperty.call(obj, key)) {
+          result[key] = this.serializeBigInt(obj[key]);
+        }
       }
       return result;
     }

@@ -26,9 +26,10 @@ export class SubscriptionsService {
 
   /**
    * Продажа абонемента с автоматическим созданием Invoice
+   * Использует транзакцию для обеспечения целостности данных
    */
   async sellSubscription(sellDto: SellSubscriptionDto, managerId?: string) {
-    // 1. Получить тип абонемента
+    // 1. Получить тип абонемента (вне транзакции - только чтение)
     const subscriptionType = await this.prisma.subscriptionType.findUnique({
       where: { id: sellDto.subscriptionTypeId },
       include: { group: true },
@@ -42,7 +43,7 @@ export class SubscriptionsService {
       throw new BadRequestException('Subscription type is not active');
     }
 
-    // 2. Получить клиента с льготной категорией
+    // 2. Получить клиента с льготной категорией (вне транзакции - только чтение)
     const client = await this.prisma.client.findUnique({
       where: { id: sellDto.clientId },
       include: { benefitCategory: true },
@@ -83,55 +84,33 @@ export class SubscriptionsService {
       this.validateMinimumThreshold(lessonStats.remainingPlanned);
     }
 
-    // 5. Создать абонемент
-    const subscription = await this.prisma.subscription.create({
-      data: {
-        clientId: sellDto.clientId,
-        subscriptionTypeId: sellDto.subscriptionTypeId,
-        groupId: sellDto.groupId,
-        validMonth: resolvedValidMonth,
-        purchaseDate,
-        startDate,
-        endDate,
-        originalPrice: originalPrice,
-        discountAmount: discountAmount,
-        paidPrice: finalPrice,
-        pricePerLesson: pricePerLessonWithDiscount, // Стоимость 1 занятия с учетом скидки (для компенсаций)
-        remainingVisits:
-          subscriptionType.type === 'SINGLE_VISIT'
-            ? this.calculateRemainingVisits(purchaseDate, endDate)
-            : null,
-        purchasedMonths: sellDto.purchasedMonths || 1,
-        status: 'ACTIVE',
-      },
-      include: {
-        client: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            benefitCategory: true,
-          },
+    // 5. Выполнить все критические операции в транзакции
+    const subscription = await this.prisma.$transaction(async (tx) => {
+      // 5.1. Создать абонемент
+      const newSubscription = await tx.subscription.create({
+        data: {
+          clientId: sellDto.clientId,
+          subscriptionTypeId: sellDto.subscriptionTypeId,
+          groupId: sellDto.groupId,
+          validMonth: resolvedValidMonth,
+          purchaseDate,
+          startDate,
+          endDate,
+          originalPrice: originalPrice,
+          discountAmount: discountAmount,
+          paidPrice: finalPrice,
+          pricePerLesson: pricePerLessonWithDiscount,
+          remainingVisits:
+            subscriptionType.type === 'SINGLE_VISIT'
+              ? this.calculateRemainingVisits(purchaseDate, endDate)
+              : null,
+          purchasedMonths: sellDto.purchasedMonths || 1,
+          status: 'ACTIVE',
         },
-        group: {
-          select: {
-            id: true,
-            name: true,
-            studio: {
-              select: {
-                id: true,
-                name: true,
-              },
-            },
-          },
-        },
-        subscriptionType: true,
-      },
-    });
+      });
 
-    // 6. Автоматически добавить клиента в группу (если его там нет)
-    try {
-      const existingMember = await this.prisma.groupMember.findUnique({
+      // 5.2. Добавить клиента в группу (если его там нет)
+      const existingMember = await tx.groupMember.findUnique({
         where: {
           groupId_clientId: {
             groupId: sellDto.groupId,
@@ -141,70 +120,107 @@ export class SubscriptionsService {
       });
 
       if (!existingMember) {
-        const memberResult = await this.groupsService.addMember(
-          sellDto.groupId,
-          sellDto.clientId,
-        );
+        // Проверяем лимит группы
+        const group = await tx.group.findUnique({
+          where: { id: sellDto.groupId },
+          select: { maxParticipants: true },
+        });
 
-        if (memberResult.waitlisted) {
-          console.log(
-            `⚠️ Client ${sellDto.clientId} added to waitlist (position ${memberResult.position}) for group ${sellDto.groupId}`,
-          );
-        } else {
-          console.log(
-            `✅ Client ${sellDto.clientId} automatically added to group ${sellDto.groupId}`,
-          );
-        }
-      } else {
+        const currentMemberCount = await tx.groupMember.count({
+          where: { groupId: sellDto.groupId, status: 'ACTIVE' },
+        });
+
+        const shouldWaitlist = group?.maxParticipants ? currentMemberCount >= group.maxParticipants : false;
+        const waitlistPosition = shouldWaitlist
+          ? (await tx.groupMember.count({ where: { groupId: sellDto.groupId, status: 'WAITLIST' } })) + 1
+          : null;
+
+        await tx.groupMember.create({
+          data: {
+            groupId: sellDto.groupId,
+            clientId: sellDto.clientId,
+            status: shouldWaitlist ? 'WAITLIST' : 'ACTIVE',
+            waitlistPosition,
+          },
+        });
+
         console.log(
-          `ℹ️ Client ${sellDto.clientId} is already a member of group ${sellDto.groupId}`,
+          shouldWaitlist
+            ? `⚠️ Client ${sellDto.clientId} added to waitlist (position ${waitlistPosition}) for group ${sellDto.groupId}`
+            : `✅ Client ${sellDto.clientId} automatically added to group ${sellDto.groupId}`,
         );
       }
-    } catch (error) {
-      console.error('Failed to add client to group:', error);
-      // Не прерываем выполнение если не удалось добавить в группу
-    }
 
-    // 7. Создать Invoice с InvoiceItem
-    try {
-      const invoice = await this.invoicesService.create(
-        {
+      // 5.3. Создать Invoice с InvoiceItem
+      const invoiceNumber = `INV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+      const invoice = await tx.invoice.create({
+        data: {
+          invoiceNumber,
           clientId: sellDto.clientId,
-          subscriptionId: subscription.id,
-          items: [
-            {
+          subscriptionId: newSubscription.id,
+          subtotal: originalPrice,
+          discountAmount,
+          totalAmount: finalPrice,
+          status: 'PENDING',
+          notes: sellDto.notes,
+          issuedAt: new Date(),
+          createdBy: managerId,
+          items: {
+            create: {
               serviceType: ServiceType.SUBSCRIPTION,
               serviceName: `Абонемент "${subscriptionType.name}" - ${subscriptionType.group.name}`,
-              serviceDescription: `Период: ${resolvedValidMonth} (${sellDto.purchasedMonths} мес.) — ${lessonStats.remainingPlanned} занятий`,
+              serviceDescription: `Период: ${resolvedValidMonth} (${sellDto.purchasedMonths || 1} мес.) — ${lessonStats.remainingPlanned} занятий`,
               quantity: lessonStats.remainingPlanned,
               basePrice: Number(pricePerLesson),
               unitPrice: Number(pricePerLesson),
-              vatRate: 0, // Абонементы без НДС
+              vatRate: 0,
+              vatAmount: 0,
               discountPercent:
                 applyBenefit && client.benefitCategory?.isActive
                   ? Number(client.benefitCategory.discountPercent)
                   : 0,
+              totalPrice: finalPrice,
               writeOffTiming: WriteOffTiming.ON_USE,
             },
-          ],
-          discountAmount,
-          notes: sellDto.notes,
+          },
         },
-        managerId,
-      );
+      });
 
-      console.log(
-        `✅ Created subscription ${subscription.id} with invoice ${invoice.id}`,
-      );
-    } catch (error) {
-      console.error('Failed to create invoice for subscription:', error);
-      // Не удаляем абонемент если счет не создался - можно создать вручную
-    }
+      console.log(`✅ Created subscription ${newSubscription.id} with invoice ${invoice.id}`);
 
-    // Отправить уведомление клиенту о покупке абонемента
+      // Вернуть абонемент с нужными связями
+      return tx.subscription.findUnique({
+        where: { id: newSubscription.id },
+        include: {
+          client: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              benefitCategory: true,
+            },
+          },
+          group: {
+            select: {
+              id: true,
+              name: true,
+              studio: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          subscriptionType: true,
+        },
+      });
+    });
+
+    // 6. Отправить уведомление клиенту (вне транзакции - не критично)
     try {
       await this.notificationsService.sendSubscriptionPurchaseConfirmation(
-        subscription.id,
+        subscription!.id,
       );
     } catch (error) {
       console.error(
@@ -224,7 +240,7 @@ export class SubscriptionsService {
     validMonth: string,
     startDateInput: Date,
   ): { startDate: Date; endDate: Date } {
-    const [year, month] = validMonth.split('-').map(Number);
+    const { year, month } = this.parseValidMonth(validMonth);
 
     const monthStart = this.startOfDay(new Date(year, month - 1, 1));
     const startDate =
@@ -246,7 +262,7 @@ export class SubscriptionsService {
     totalPlanned: number;
     remainingPlanned: number;
   }> {
-    const [year, month] = validMonth.split('-').map(Number);
+    const { year, month } = this.parseValidMonth(validMonth);
     const monthStart = this.startOfDay(new Date(year, month - 1, 1));
     const monthEnd = this.endOfDay(new Date(year, month, 0));
     const normalizedCalculationStart =
@@ -293,15 +309,19 @@ export class SubscriptionsService {
     applyBenefit,
     lessonStats,
   }: {
-    basePrice: number | any;
-    benefitCategory: any;
+    basePrice: Prisma.Decimal | number;
+    benefitCategory: {
+      id: string;
+      discountPercent: Prisma.Decimal;
+      isActive: boolean;
+    } | null;
     purchasedMonths: number;
     applyBenefit: boolean;
-      lessonStats: {
-        totalPlanned: number;
-        remainingPlanned: number;
-      };
-    }): {
+    lessonStats: {
+      totalPlanned: number;
+      remainingPlanned: number;
+    };
+  }): {
       originalPrice: number;
       discountAmount: number;
       finalPrice: number;
@@ -405,6 +425,38 @@ export class SubscriptionsService {
 
   private toMoney(amount: number): number {
     return Math.round(amount * 100) / 100;
+  }
+
+  /**
+   * Парсинг и валидация формата validMonth (YYYY-MM)
+   */
+  private parseValidMonth(validMonth: string): { year: number; month: number } {
+    if (!validMonth || typeof validMonth !== 'string') {
+      throw new BadRequestException('Некорректный формат месяца: значение отсутствует');
+    }
+
+    const parts = validMonth.split('-');
+    if (parts.length !== 2) {
+      throw new BadRequestException(`Некорректный формат месяца: "${validMonth}". Ожидается YYYY-MM`);
+    }
+
+    const [yearStr, monthStr] = parts;
+    const year = parseInt(yearStr, 10);
+    const month = parseInt(monthStr, 10);
+
+    if (isNaN(year) || isNaN(month)) {
+      throw new BadRequestException(`Некорректный формат месяца: "${validMonth}". Год и месяц должны быть числами`);
+    }
+
+    if (year < 2000 || year > 2100) {
+      throw new BadRequestException(`Некорректный год: ${year}. Допустимый диапазон: 2000-2100`);
+    }
+
+    if (month < 1 || month > 12) {
+      throw new BadRequestException(`Некорректный месяц: ${month}. Допустимый диапазон: 1-12`);
+    }
+
+    return { year, month };
   }
 
   /**
@@ -645,6 +697,7 @@ export class SubscriptionsService {
 
   /**
    * Продажа разового посещения по цене из настроек группы
+   * Использует транзакцию для обеспечения целостности данных
    */
   async sellSingleSession(
     dto: {
@@ -656,7 +709,7 @@ export class SubscriptionsService {
     },
     managerId?: string,
   ) {
-    // 1. Получить группу с ценой разового посещения
+    // 1. Получить группу с ценой разового посещения (вне транзакции - только чтение)
     const group = await this.prisma.group.findUnique({
       where: { id: dto.groupId },
       include: {
@@ -673,7 +726,7 @@ export class SubscriptionsService {
       throw new BadRequestException('Цена разового посещения не установлена для данной группы');
     }
 
-    // 2. Получить клиента
+    // 2. Получить клиента (вне транзакции - только чтение)
     const client = await this.prisma.client.findUnique({
       where: { id: dto.clientId },
       include: { benefitCategory: true },
@@ -683,80 +736,70 @@ export class SubscriptionsService {
       throw new NotFoundException('Клиент не найден');
     }
 
-    // 3. Найти или создать тип подписки SINGLE_VISIT для группы
-    let subscriptionType = await this.prisma.subscriptionType.findFirst({
-      where: {
-        groupId: dto.groupId,
-        type: 'SINGLE_VISIT',
-        isActive: true,
-      },
-    });
-
-    if (!subscriptionType) {
-      // Создаём тип подписки для разовых посещений
-      subscriptionType = await this.prisma.subscriptionType.create({
-        data: {
-          name: `Разовое посещение - ${group.name}`,
-          type: 'SINGLE_VISIT',
-          price: singleSessionPrice,
-          groupId: dto.groupId,
-          isActive: true,
-        },
-      });
-    }
-
-    // 4. Определить даты
+    // 3. Определить даты
     const today = this.startOfDay(new Date());
     const dateObj = dto.date ? new Date(dto.date) : today;
     const validMonth = this.formatValidMonth(dateObj);
 
-    // 5. Создать подписку
-    const subscription = await this.prisma.subscription.create({
-      data: {
-        clientId: dto.clientId,
-        subscriptionTypeId: subscriptionType.id,
-        groupId: dto.groupId,
-        validMonth,
-        purchaseDate: today,
-        startDate: today,
-        endDate: this.endOfDay(dateObj),
-        originalPrice: singleSessionPrice,
-        discountAmount: 0,
-        paidPrice: singleSessionPrice,
-        pricePerLesson: singleSessionPrice, // Для разового посещения = полная цена
-        remainingVisits: 1,
-        purchasedMonths: 1,
-        status: 'ACTIVE',
-      },
-      include: {
-        client: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
+    // 4. Выполнить все критические операции в транзакции
+    const subscription = await this.prisma.$transaction(async (tx) => {
+      // 4.1. Найти или создать тип подписки SINGLE_VISIT для группы
+      let subscriptionType = await tx.subscriptionType.findFirst({
+        where: {
+          groupId: dto.groupId,
+          type: 'SINGLE_VISIT',
+          isActive: true,
         },
-        group: {
-          select: {
-            id: true,
-            name: true,
-            studio: {
-              select: { id: true, name: true },
-            },
-          },
-        },
-        subscriptionType: true,
-      },
-    });
+      });
 
-    // 6. Создать Invoice
-    try {
-      await this.invoicesService.create(
-        {
+      if (!subscriptionType) {
+        subscriptionType = await tx.subscriptionType.create({
+          data: {
+            name: `Разовое посещение - ${group.name}`,
+            type: 'SINGLE_VISIT',
+            price: singleSessionPrice,
+            groupId: dto.groupId,
+            isActive: true,
+          },
+        });
+      }
+
+      // 4.2. Создать подписку
+      const newSubscription = await tx.subscription.create({
+        data: {
           clientId: dto.clientId,
-          subscriptionId: subscription.id,
-          items: [
-            {
+          subscriptionTypeId: subscriptionType.id,
+          groupId: dto.groupId,
+          validMonth,
+          purchaseDate: today,
+          startDate: today,
+          endDate: this.endOfDay(dateObj),
+          originalPrice: singleSessionPrice,
+          discountAmount: 0,
+          paidPrice: singleSessionPrice,
+          pricePerLesson: singleSessionPrice,
+          remainingVisits: 1,
+          purchasedMonths: 1,
+          status: 'ACTIVE',
+        },
+      });
+
+      // 4.3. Создать Invoice с InvoiceItem
+      const invoiceNumber = `INV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+      await tx.invoice.create({
+        data: {
+          invoiceNumber,
+          clientId: dto.clientId,
+          subscriptionId: newSubscription.id,
+          subtotal: singleSessionPrice,
+          discountAmount: 0,
+          totalAmount: singleSessionPrice,
+          status: 'PENDING',
+          notes: dto.notes || `Разовое посещение группы "${group.name}"`,
+          issuedAt: new Date(),
+          createdBy: managerId,
+          items: {
+            create: {
               serviceType: ServiceType.SINGLE_SESSION,
               serviceName: `Разовое посещение - ${group.name}`,
               serviceDescription: `Занятие ${dateObj.toLocaleDateString('ru-RU')}`,
@@ -764,19 +807,41 @@ export class SubscriptionsService {
               basePrice: singleSessionPrice,
               unitPrice: singleSessionPrice,
               vatRate: 0,
+              vatAmount: 0,
               discountPercent: 0,
+              totalPrice: singleSessionPrice,
               writeOffTiming: WriteOffTiming.ON_SALE,
             },
-          ],
-          notes: dto.notes || `Разовое посещение группы "${group.name}"`,
+          },
         },
-        managerId,
-      );
-    } catch (error) {
-      console.error('Failed to create invoice for single session:', error);
-    }
+      });
 
-    console.log(`✅ Sold single session for client ${dto.clientId} in group ${dto.groupId}`);
+      console.log(`✅ Sold single session for client ${dto.clientId} in group ${dto.groupId}`);
+
+      // Вернуть подписку с нужными связями
+      return tx.subscription.findUnique({
+        where: { id: newSubscription.id },
+        include: {
+          client: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          group: {
+            select: {
+              id: true,
+              name: true,
+              studio: {
+                select: { id: true, name: true },
+              },
+            },
+          },
+          subscriptionType: true,
+        },
+      });
+    });
 
     return subscription;
   }

@@ -51,8 +51,8 @@ export class SchedulesService {
 
     // Convert time strings to Date objects (Prisma expects DateTime for Time fields)
     // Use UTC to avoid timezone conversion issues
-    const [startHour, startMin] = createScheduleDto.startTime.split(':').map(Number);
-    const [endHour, endMin] = createScheduleDto.endTime.split(':').map(Number);
+    const { hours: startHour, minutes: startMin } = this.parseTime(createScheduleDto.startTime, 'startTime');
+    const { hours: endHour, minutes: endMin } = this.parseTime(createScheduleDto.endTime, 'endTime');
 
     const createData = {
       ...createScheduleDto,
@@ -276,12 +276,12 @@ export class SchedulesService {
       updateData.date = new Date(updateScheduleDto.date);
     }
     if (updateScheduleDto.startTime) {
-      const [hour, min] = updateScheduleDto.startTime.split(':').map(Number);
-      updateData.startTime = new Date(Date.UTC(1970, 0, 1, hour, min, 0));
+      const { hours, minutes } = this.parseTime(updateScheduleDto.startTime, 'startTime');
+      updateData.startTime = new Date(Date.UTC(1970, 0, 1, hours, minutes, 0));
     }
     if (updateScheduleDto.endTime) {
-      const [hour, min] = updateScheduleDto.endTime.split(':').map(Number);
-      updateData.endTime = new Date(Date.UTC(1970, 0, 1, hour, min, 0));
+      const { hours, minutes } = this.parseTime(updateScheduleDto.endTime, 'endTime');
+      updateData.endTime = new Date(Date.UTC(1970, 0, 1, hours, minutes, 0));
     }
 
     const updatedSchedule = await this.prisma.schedule.update({
@@ -359,5 +359,36 @@ export class SchedulesService {
     const hours = dateTime.getUTCHours().toString().padStart(2, '0');
     const minutes = dateTime.getUTCMinutes().toString().padStart(2, '0');
     return `${hours}:${minutes}`;
+  }
+
+  /**
+   * Parse and validate time string in HH:MM format
+   */
+  private parseTime(time: string, fieldName: string): { hours: number; minutes: number } {
+    if (!time || typeof time !== 'string') {
+      throw new BadRequestException(`${fieldName}: время не указано`);
+    }
+
+    const parts = time.split(':');
+    if (parts.length !== 2) {
+      throw new BadRequestException(`${fieldName}: некорректный формат времени "${time}". Ожидается HH:MM`);
+    }
+
+    const hours = parseInt(parts[0], 10);
+    const minutes = parseInt(parts[1], 10);
+
+    if (isNaN(hours) || isNaN(minutes)) {
+      throw new BadRequestException(`${fieldName}: часы и минуты должны быть числами`);
+    }
+
+    if (hours < 0 || hours > 23) {
+      throw new BadRequestException(`${fieldName}: некорректные часы ${hours}. Допустимый диапазон: 0-23`);
+    }
+
+    if (minutes < 0 || minutes > 59) {
+      throw new BadRequestException(`${fieldName}: некорректные минуты ${minutes}. Допустимый диапазон: 0-59`);
+    }
+
+    return { hours, minutes };
   }
 }

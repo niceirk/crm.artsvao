@@ -197,7 +197,7 @@ export default function NewClientPage() {
                         </Label>
                         <Select
                           value={clientTypeValue || 'INDIVIDUAL'}
-                          onValueChange={(value) => setValue('clientType', value as any)}
+                          onValueChange={(value) => setValue('clientType', value as 'INDIVIDUAL' | 'LEGAL_ENTITY')}
                         >
                           <SelectTrigger id="clientType" className="bg-yellow-50">
                             <SelectValue />
@@ -215,7 +215,7 @@ export default function NewClientPage() {
                         </Label>
                         <Select
                           value={statusValue || 'ACTIVE'}
-                          onValueChange={(value) => setValue('status', value as any)}
+                          onValueChange={(value) => setValue('status', value as 'ACTIVE' | 'VIP' | 'INACTIVE')}
                         >
                           <SelectTrigger id="status" className="bg-yellow-50">
                             <SelectValue />

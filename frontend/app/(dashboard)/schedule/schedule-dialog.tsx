@@ -69,7 +69,12 @@ interface ScheduleDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   schedule?: Schedule;
-  initialData?: { date: string; startTime: string; endTime: string } | null;
+  initialData?: {
+    date: string;
+    startTime: string;
+    endTime: string;
+    roomId?: string;
+  } | null;
 }
 
 export function ScheduleDialog({ open, onOpenChange, schedule, initialData }: ScheduleDialogProps) {
@@ -122,7 +127,7 @@ export function ScheduleDialog({ open, onOpenChange, schedule, initialData }: Sc
       form.reset({
         groupId: '',
         teacherId: '',
-        roomId: '',
+        roomId: initialData.roomId || '',
         date: initialData.date,
         startTime: initialData.startTime,
         endTime: initialData.endTime,

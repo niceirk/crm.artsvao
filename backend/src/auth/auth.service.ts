@@ -50,7 +50,7 @@ export class AuthService {
     return user;
   }
 
-  async login(loginDto: LoginDto): Promise<AuthResponseDto> {
+  async login(loginDto: LoginDto, userAgent?: string, ipAddress?: string): Promise<AuthResponseDto> {
     const user = await this.validateUser(loginDto.email, loginDto.password);
 
     const payload: JwtPayload = {
@@ -69,13 +69,26 @@ export class AuthService {
       secret: this.configService.get<string>('JWT_SECRET'),
     });
 
-    // Update last login
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
-    });
+    // Рассчитываем дату истечения refresh token
+    const refreshTokenExpiresAt = new Date();
+    refreshTokenExpiresAt.setDate(refreshTokenExpiresAt.getDate() + 30);
 
-    // TODO: Store refresh token in database or Redis for invalidation
+    // Сохраняем refresh token в БД и обновляем lastLoginAt в транзакции
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      }),
+      this.prisma.refreshToken.create({
+        data: {
+          userId: user.id,
+          token: refreshToken,
+          expiresAt: refreshTokenExpiresAt,
+          userAgent,
+          ipAddress,
+        },
+      }),
+    ]);
 
     return {
       accessToken,
@@ -91,11 +104,36 @@ export class AuthService {
     };
   }
 
-  async refresh(refreshToken: string): Promise<AuthResponseDto> {
+  async refresh(refreshToken: string, userAgent?: string, ipAddress?: string): Promise<AuthResponseDto> {
     try {
+      // Проверяем подпись JWT
       const payload = this.jwtService.verify<JwtPayload>(refreshToken, {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
+
+      // Проверяем что токен существует в БД и не отозван
+      const storedToken = await this.prisma.refreshToken.findUnique({
+        where: { token: refreshToken },
+      });
+
+      if (!storedToken) {
+        throw new UnauthorizedException('Refresh token not found');
+      }
+
+      if (storedToken.revokedAt) {
+        // Токен был отозван - возможна попытка использования украденного токена
+        // Отзываем все токены пользователя для безопасности
+        await this.prisma.refreshToken.updateMany({
+          where: { userId: storedToken.userId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+        this.logger.warn(`Attempted use of revoked refresh token for user ${storedToken.userId}`);
+        throw new UnauthorizedException('Refresh token has been revoked');
+      }
+
+      if (new Date() > storedToken.expiresAt) {
+        throw new UnauthorizedException('Refresh token has expired');
+      }
 
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
@@ -121,6 +159,27 @@ export class AuthService {
         secret: this.configService.get<string>('JWT_SECRET'),
       });
 
+      // Рассчитываем дату истечения нового refresh token
+      const newRefreshTokenExpiresAt = new Date();
+      newRefreshTokenExpiresAt.setDate(newRefreshTokenExpiresAt.getDate() + 30);
+
+      // Ротация токенов: отзываем старый, создаём новый
+      await this.prisma.$transaction([
+        this.prisma.refreshToken.update({
+          where: { id: storedToken.id },
+          data: { revokedAt: new Date() },
+        }),
+        this.prisma.refreshToken.create({
+          data: {
+            userId: user.id,
+            token: newRefreshToken,
+            expiresAt: newRefreshTokenExpiresAt,
+            userAgent,
+            ipAddress,
+          },
+        }),
+      ]);
+
       return {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
@@ -134,6 +193,9 @@ export class AuthService {
         },
       };
     } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
       throw new UnauthorizedException('Invalid refresh token');
     }
   }
@@ -161,7 +223,11 @@ export class AuthService {
   }
 
   async logout(userId: string) {
-    // TODO: Invalidate refresh token in database or Redis
+    // Отзываем все активные refresh токены пользователя
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
     return { message: 'Logged out successfully' };
   }
 
@@ -241,10 +307,17 @@ export class AuthService {
     // Хешируем новый пароль
     const passwordHash = await bcrypt.hash(dto.newPassword, 10);
 
-    // Обновляем пароль пользователя
+    // Проверяем, является ли это приглашённым пользователем (BLOCKED и никогда не входил)
+    // Если да - активируем его при установке пароля
+    const shouldActivate = resetToken.user.status === 'BLOCKED' && !resetToken.user.lastLoginAt;
+
+    // Обновляем пароль пользователя и активируем если нужно
     await this.prisma.user.update({
       where: { id: resetToken.userId },
-      data: { passwordHash },
+      data: {
+        passwordHash,
+        ...(shouldActivate && { status: 'ACTIVE' }),
+      },
     });
 
     // Помечаем токен как использованный
@@ -254,7 +327,9 @@ export class AuthService {
     });
 
     return {
-      message: 'Пароль успешно изменен',
+      message: shouldActivate
+        ? 'Пароль установлен. Аккаунт активирован.'
+        : 'Пароль успешно изменен',
     };
   }
 }

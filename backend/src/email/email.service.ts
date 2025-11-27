@@ -42,7 +42,7 @@ export class EmailService {
   ): Promise<void> {
     try {
       const frontendUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3001';
-      const resetUrl = `${frontendUrl}/auth/reset-password?token=${token}`;
+      const resetUrl = `${frontendUrl}/reset-password?token=${token}`;
 
       const html = await render(
         React.createElement(PasswordResetEmail, {
@@ -85,7 +85,7 @@ export class EmailService {
   ): Promise<void> {
     try {
       const frontendUrl = this.configService.get('FRONTEND_URL') || 'http://localhost:3001';
-      const inviteUrl = `${frontendUrl}/auth/set-password?token=${token}`;
+      const inviteUrl = `${frontendUrl}/set-password?token=${token}`;
 
       const html = await render(
         React.createElement(UserInviteEmail, {

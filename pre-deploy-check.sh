@@ -91,6 +91,54 @@ else
     CHECK_RESULTS+=("✗ Зависимости")
 fi
 
+# 3.5. Проверка SSH ключа
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Проверка SSH ключа для деплоя${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+((TOTAL_CHECKS++))
+
+SSH_KEY="$HOME/.ssh/artsvao_deploy"
+if [ -f "$SSH_KEY" ]; then
+    echo -e "${GREEN}✓${NC} SSH ключ найден: $SSH_KEY"
+    ((PASSED_CHECKS++))
+    CHECK_RESULTS+=("✓ SSH ключ")
+else
+    echo -e "${RED}✗${NC} SSH ключ не найден: $SSH_KEY"
+    echo -e "${YELLOW}  Создайте ключ командами:${NC}"
+    echo -e "${YELLOW}    ssh-keygen -t ed25519 -f ~/.ssh/artsvao_deploy -C 'artsvao-deploy'${NC}"
+    echo -e "${YELLOW}    ssh-copy-id -i ~/.ssh/artsvao_deploy.pub root@109.196.102.90${NC}"
+    ((FAILED_CHECKS++))
+    CHECK_RESULTS+=("✗ SSH ключ")
+fi
+
+# 3.6. Проверка SSL сертификатов
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}Проверка SSL сертификатов${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+
+((TOTAL_CHECKS++))
+
+DOMAIN="crm.artsvao.ru"
+if [ -f "./certbot/conf/live/$DOMAIN/fullchain.pem" ]; then
+    echo -e "${GREEN}✓${NC} Локальный бэкап SSL сертификатов найден"
+    # Проверка срока действия
+    EXPIRY=$(openssl x509 -in "./certbot/conf/live/$DOMAIN/fullchain.pem" -noout -enddate 2>/dev/null | cut -d= -f2)
+    if [ -n "$EXPIRY" ]; then
+        echo -e "  Срок действия до: ${YELLOW}$EXPIRY${NC}"
+    fi
+    ((PASSED_CHECKS++))
+    CHECK_RESULTS+=("✓ SSL сертификаты (локально)")
+else
+    echo -e "${YELLOW}⚠${NC} Локальный бэкап SSL сертификатов не найден"
+    echo -e "${YELLOW}  Сертификаты будут скачаны с сервера при деплое${NC}"
+    echo -e "${YELLOW}  Или запустите: bash scripts/backup-ssl.sh${NC}"
+    ((PASSED_CHECKS++))
+    CHECK_RESULTS+=("⚠ SSL сертификаты (будут скачаны)")
+fi
+
 # 4. Проверка подключения к базе данных (если не пропущено)
 if [ "$SKIP_CONNECTION_CHECKS" = false ]; then
     echo ""

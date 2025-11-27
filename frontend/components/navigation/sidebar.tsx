@@ -55,12 +55,12 @@ export function Sidebar() {
       <div className="flex h-16 items-center justify-between border-b px-4 flex-shrink-0">
         {!sidebarCollapsed ? (
           <>
-            <div className="flex items-center gap-2 font-semibold">
+            <Link href="/room-planner" className="flex items-center gap-2 font-semibold hover:opacity-80 transition-opacity">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 АВ
               </div>
               <span className="text-lg">артсвао</span>
-            </div>
+            </Link>
             <Button
               variant="ghost"
               size="icon"
@@ -72,11 +72,11 @@ export function Sidebar() {
             </Button>
           </>
         ) : (
-          <div className="flex w-full items-center justify-center">
+          <Link href="/room-planner" className="flex w-full items-center justify-center hover:opacity-80 transition-opacity">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground text-xs">
               АВ
             </div>
-          </div>
+          </Link>
         )}
       </div>
 

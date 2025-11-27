@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { SERVER_URL } from '@/lib/api/client';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Upload, Trash2, Loader2, User as UserIcon } from 'lucide-react';
+import { Upload, Trash2, Loader2, User as UserIcon, Eye, EyeOff } from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 
@@ -21,6 +21,7 @@ import { ru } from 'date-fns/locale';
 const profileSchema = z.object({
   firstName: z.string().min(2, 'Минимум 2 символа').max(50, 'Максимум 50 символов'),
   lastName: z.string().min(2, 'Минимум 2 символа').max(50, 'Максимум 50 символов'),
+  email: z.string().email('Введите корректный email'),
 });
 
 const passwordSchema = z.object({
@@ -50,6 +51,9 @@ export default function ProfilePage() {
   } = useProfile();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // Форма профиля
   const profileForm = useForm<ProfileFormData>({
@@ -57,6 +61,7 @@ export default function ProfilePage() {
     values: profile ? {
       firstName: profile.firstName,
       lastName: profile.lastName,
+      email: profile.email,
     } : undefined,
   });
 
@@ -285,6 +290,20 @@ export default function ProfilePage() {
                 )}
               </div>
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                {...profileForm.register('email')}
+                placeholder="Введите email"
+              />
+              {profileForm.formState.errors.email && (
+                <p className="text-sm text-destructive">
+                  {profileForm.formState.errors.email.message}
+                </p>
+              )}
+            </div>
             <Button type="submit" disabled={isUpdatingProfile}>
               {isUpdatingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Сохранить изменения
@@ -305,12 +324,23 @@ export default function ProfilePage() {
           <form onSubmit={passwordForm.handleSubmit(handlePasswordSubmit)} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="currentPassword">Текущий пароль</Label>
-              <Input
-                id="currentPassword"
-                type="password"
-                {...passwordForm.register('currentPassword')}
-                placeholder="Введите текущий пароль"
-              />
+              <div className="relative">
+                <Input
+                  id="currentPassword"
+                  type={showCurrentPassword ? 'text' : 'password'}
+                  {...passwordForm.register('currentPassword')}
+                  placeholder="Введите текущий пароль"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  tabIndex={-1}
+                >
+                  {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
               {passwordForm.formState.errors.currentPassword && (
                 <p className="text-sm text-destructive">
                   {passwordForm.formState.errors.currentPassword.message}
@@ -319,12 +349,23 @@ export default function ProfilePage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="newPassword">Новый пароль</Label>
-              <Input
-                id="newPassword"
-                type="password"
-                {...passwordForm.register('newPassword')}
-                placeholder="Введите новый пароль"
-              />
+              <div className="relative">
+                <Input
+                  id="newPassword"
+                  type={showNewPassword ? 'text' : 'password'}
+                  {...passwordForm.register('newPassword')}
+                  placeholder="Введите новый пароль"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  tabIndex={-1}
+                >
+                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
               {passwordForm.formState.errors.newPassword && (
                 <p className="text-sm text-destructive">
                   {passwordForm.formState.errors.newPassword.message}
@@ -333,12 +374,23 @@ export default function ProfilePage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Подтвердите новый пароль</Label>
-              <Input
-                id="confirmPassword"
-                type="password"
-                {...passwordForm.register('confirmPassword')}
-                placeholder="Подтвердите новый пароль"
-              />
+              <div className="relative">
+                <Input
+                  id="confirmPassword"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  {...passwordForm.register('confirmPassword')}
+                  placeholder="Подтвердите новый пароль"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  tabIndex={-1}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
               {passwordForm.formState.errors.confirmPassword && (
                 <p className="text-sm text-destructive">
                   {passwordForm.formState.errors.confirmPassword.message}

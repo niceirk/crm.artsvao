@@ -37,7 +37,6 @@ export const useCreateSchedule = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       toast.success('Занятие создано');
     },
     onError: (error: any) => {
@@ -77,16 +76,11 @@ export const useUpdateSchedule = () => {
           queryClient.setQueryData(queryKey, data);
         });
       }
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка обновления занятия',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка обновления занятия');
     },
     onSettled: () => {
       // Always refetch after error or success
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
     },
   });
@@ -100,15 +94,10 @@ export const useDeleteSchedule = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
       toast.success('Занятие удалено');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка удаления занятия',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка удаления занятия');
     },
   });
 };
@@ -121,18 +110,10 @@ export const useCreateRecurringSchedule = () => {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
-      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
-      toast({
-        title: 'Успешно',
-        description: `Создано занятий: ${result.created.count}, пропущено: ${result.skipped.count}`,
-      });
+      toast.success(`Создано занятий: ${result.created.count}, пропущено: ${result.skipped.count}`);
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка создания повторяющихся занятий',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка создания повторяющихся занятий');
     },
   });
 };
@@ -145,17 +126,10 @@ export const useBulkUpdateSchedules = () => {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
-      toast({
-        title: 'Успешно',
-        description: `Обновлено занятий: ${result.updated.count}, ошибок: ${result.failed.count}`,
-      });
+      toast.success(`Обновлено занятий: ${result.updated.count}, ошибок: ${result.failed.count}`);
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка массового обновления',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка массового обновления');
     },
   });
 };
@@ -168,17 +142,10 @@ export const useCopySchedules = () => {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
-      toast({
-        title: 'Успешно',
-        description: `Скопировано занятий: ${result.created.count}, пропущено: ${result.skipped.count}`,
-      });
+      toast.success(`Скопировано занятий: ${result.created.count}, пропущено: ${result.skipped.count}`);
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка копирования занятий',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка копирования занятий');
     },
   });
 };
@@ -197,11 +164,7 @@ export const useBulkCancelSchedules = () => {
       toast.success(message);
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка отмены занятий',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка отмены занятий');
     },
   });
 };
@@ -220,11 +183,7 @@ export const useBulkDeleteSchedules = () => {
       toast.success(message);
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка удаления занятий',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка удаления занятий');
     },
   });
 };

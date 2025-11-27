@@ -375,3 +375,20 @@ export function buildDocumentsMap(documentsData: any[]): Map<string, any[]> {
 
   return documentsMap;
 }
+
+/**
+ * Парсинг документа продажи: "Продажа 14809 от 27.11.2025 11:25"
+ */
+export function parseSaleDocument(doc: string): { number: string; date: Date } | null {
+  if (!doc) return null;
+
+  const match = doc.match(/Продажа\s+(\d+)\s+от\s+(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})/);
+  if (!match) return null;
+
+  const [, number, day, month, year, hours, minutes] = match;
+
+  return {
+    number,
+    date: new Date(+year, +month - 1, +day, +hours, +minutes),
+  };
+}

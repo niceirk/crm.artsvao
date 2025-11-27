@@ -15,7 +15,7 @@ model User {
   role             UserRole
   firstName        String               @map("first_name")
   lastName         String               @map("last_name")
-  status           UserStatus           @default(BLOCKED)
+  status           UserStatus           @default(ACTIVE)
   avatarUrl        String?              @map("avatar_url")
   lastLoginAt      DateTime?            @map("last_login_at")
   createdAt        DateTime             @default(now()) @map("created_at")
@@ -27,6 +27,7 @@ model User {
   invoiceAuditLogs InvoiceAuditLog[]    @relation("InvoiceAudit")
   createdInvoices  Invoice[]            @relation("InvoiceCreator")
   passwordResets   PasswordResetToken[]
+  refreshTokens    RefreshToken[]
   rentals          Rental[]
   systemSettings   SystemSettings[]
   invitations      UserInvitation[]
@@ -63,6 +64,23 @@ model PasswordResetToken {
   @@index([userId])
   @@index([expiresAt])
   @@map("password_reset_tokens")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  userAgent String?   @map("user_agent")
+  ipAddress String?   @map("ip_address")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
 }
 
 model LeadSource {
@@ -172,6 +190,7 @@ model Client {
   telegramAccounts  TelegramAccount[]
   groupMemberships  GroupMember[]
   compensations     Compensation[]
+  archivedSales     ArchivedSale[]
 
   @@index([phone])
   @@index([email])
@@ -185,6 +204,7 @@ model Client {
   @@index([clientType])
   @@index([inn])
   @@index([snils])
+  @@index([lastName, firstName])
   @@map("clients")
 }
 
@@ -201,14 +221,15 @@ model ClientRelation {
 }
 
 model ClientNote {
-  id        String   @id @default(uuid())
-  clientId  String   @map("client_id")
-  content   String
-  createdBy String   @map("created_by")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [createdBy], references: [id])
+  id         String   @id @default(uuid())
+  clientId   String   @map("client_id")
+  content    String
+  createdBy  String?  @map("created_by")
+  authorName String?  @map("author_name")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  author     User?    @relation(fields: [createdBy], references: [id])
 
   @@index([clientId])
   @@index([createdBy])
@@ -832,6 +853,7 @@ enum SubscriptionStatus {
   ACTIVE
   EXPIRED
   FROZEN
+  CANCELLED
 }
 
 enum PaymentMethod {
@@ -1116,4 +1138,61 @@ model Compensation {
   @@index([month])
   @@index([appliedToInvoiceId])
   @@map("compensations")
+}
+
+// ============================================
+// Archived Sales (Import from 1C)
+// ============================================
+
+model ArchivedSale {
+  id             String   @id @default(uuid())
+  clientId       String   @map("client_id")
+  saleNumber     String   @map("sale_number")
+  saleDate       DateTime @map("sale_date")
+  sellerName     String?  @map("seller_name")
+  totalAmount    Decimal  @map("total_amount") @db.Decimal(10, 2)
+  paidAmount     Decimal  @default(0) @map("paid_amount") @db.Decimal(10, 2)
+  sourceDocument String   @map("source_document")
+  importedAt     DateTime @default(now()) @map("imported_at")
+
+  client   Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  items    ArchivedSaleItem[]
+  payments ArchivedPayment[]
+
+  @@unique([saleNumber, saleDate])
+  @@index([clientId])
+  @@index([saleDate])
+  @@index([saleNumber])
+  @@map("archived_sales")
+}
+
+model ArchivedSaleItem {
+  id             String  @id @default(uuid())
+  archivedSaleId String  @map("archived_sale_id")
+  itemName       String  @map("item_name")
+  quantity       Decimal @db.Decimal(10, 2)
+  unitPrice      Decimal @map("unit_price") @db.Decimal(10, 2)
+  totalPrice     Decimal @map("total_price") @db.Decimal(10, 2)
+
+  archivedSale ArchivedSale @relation(fields: [archivedSaleId], references: [id], onDelete: Cascade)
+
+  @@index([archivedSaleId])
+  @@map("archived_sale_items")
+}
+
+model ArchivedPayment {
+  id             String   @id @default(uuid())
+  archivedSaleId String   @map("archived_sale_id")
+  paymentMethod  String   @map("payment_method")
+  amount         Decimal  @db.Decimal(10, 2)
+  paymentDate    DateTime @map("payment_date")
+  sourceDocument String   @map("source_document")
+  importedAt     DateTime @default(now()) @map("imported_at")
+
+  archivedSale ArchivedSale @relation(fields: [archivedSaleId], references: [id], onDelete: Cascade)
+
+  @@index([archivedSaleId])
+  @@index([paymentDate])
+  @@index([archivedSaleId, paymentMethod])
+  @@map("archived_payments")
 }

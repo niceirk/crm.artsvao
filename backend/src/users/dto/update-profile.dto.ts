@@ -1,4 +1,4 @@
-import { IsString, MinLength, MaxLength, IsOptional } from 'class-validator';
+import { IsString, MinLength, MaxLength, IsOptional, IsEmail } from 'class-validator';
 
 export class UpdateProfileDto {
   @IsOptional()
@@ -12,4 +12,8 @@ export class UpdateProfileDto {
   @MinLength(2)
   @MaxLength(50)
   lastName?: string;
+
+  @IsOptional()
+  @IsEmail({}, { message: 'Некорректный email' })
+  email?: string;
 }

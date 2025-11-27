@@ -43,10 +43,10 @@ const roomTypes = [
 const formSchema = z.object({
   name: z.string().min(1, 'Введите название'),
   number: z.string().optional(),
-  capacity: z.coerce.number().min(1, 'Минимум 1 человек'),
+  capacity: z.number().min(1, 'Минимум 1 человек'),
   type: z.enum(['HALL', 'CLASS', 'STUDIO', 'CONFERENCE']),
-  hourlyRate: z.coerce.number().min(0, 'Минимум 0'),
-  dailyRate: z.coerce.number().min(0, 'Минимум 0').optional(),
+  hourlyRate: z.number().min(0, 'Минимум 0'),
+  dailyRate: z.number().min(0, 'Минимум 0').optional(),
   equipment: z.string().optional(),
 });
 
@@ -198,7 +198,11 @@ export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
                       <Input
                         type="number"
                         placeholder="20"
-                        {...field}
+                        value={field.value}
+                        onChange={(e) => field.onChange(e.target.valueAsNumber || 1)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormDescription>Человек</FormDescription>
@@ -219,7 +223,11 @@ export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
                       <Input
                         type="number"
                         placeholder="1000"
-                        {...field}
+                        value={field.value}
+                        onChange={(e) => field.onChange(e.target.valueAsNumber || 0)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormDescription>Рублей в час</FormDescription>
@@ -238,7 +246,11 @@ export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
                       <Input
                         type="number"
                         placeholder="7000"
-                        {...field}
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                        onBlur={field.onBlur}
+                        name={field.name}
+                        ref={field.ref}
                       />
                     </FormControl>
                     <FormDescription>Рублей в день</FormDescription>

@@ -132,7 +132,7 @@ export function ClientEditDialog({ client, open, onOpenChange }: ClientEditDialo
             <Label htmlFor="clientType">Тип клиента</Label>
             <Select
               value={clientTypeValue || 'INDIVIDUAL'}
-              onValueChange={(value) => setValue('clientType', value as any)}
+              onValueChange={(value) => setValue('clientType', value as 'INDIVIDUAL' | 'LEGAL_ENTITY')}
             >
               <SelectTrigger id="clientType">
                 <SelectValue />
@@ -250,7 +250,7 @@ export function ClientEditDialog({ client, open, onOpenChange }: ClientEditDialo
             </div>
             <div>
               <Label htmlFor="status">Статус</Label>
-              <Select value={statusValue} onValueChange={(value) => setValue('status', value as any)}>
+              <Select value={statusValue} onValueChange={(value) => setValue('status', value as 'ACTIVE' | 'VIP' | 'INACTIVE')}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

@@ -19,7 +19,9 @@ export const useReservation = (id: string) => {
 };
 
 export const useCreateReservation = () => {
-  const queryClient = useQueryClient();return useMutation({
+  const queryClient = useQueryClient();
+
+  return useMutation({
     mutationFn: (data: CreateReservationDto) => reservationsApi.createReservation(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reservations'] });
@@ -27,17 +29,15 @@ export const useCreateReservation = () => {
       toast.success('Резерв создан');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка создания резерва',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка создания резерва');
     },
   });
 };
 
 export const useUpdateReservation = () => {
-  const queryClient = useQueryClient();return useMutation({
+  const queryClient = useQueryClient();
+
+  return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateReservationDto }) =>
       reservationsApi.updateReservation(id, data),
     onMutate: async ({ id, data }) => {
@@ -65,11 +65,7 @@ export const useUpdateReservation = () => {
           queryClient.setQueryData(queryKey, data);
         });
       }
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка обновления резерва',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка обновления резерва');
     },
     onSettled: () => {
       // Always refetch after error or success
@@ -80,7 +76,9 @@ export const useUpdateReservation = () => {
 };
 
 export const useDeleteReservation = () => {
-  const queryClient = useQueryClient();return useMutation({
+  const queryClient = useQueryClient();
+
+  return useMutation({
     mutationFn: (id: string) => reservationsApi.deleteReservation(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['reservations'] });
@@ -88,11 +86,7 @@ export const useDeleteReservation = () => {
       toast.success('Резерв удалён');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка удаления резерва',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка удаления резерва');
     },
   });
 };

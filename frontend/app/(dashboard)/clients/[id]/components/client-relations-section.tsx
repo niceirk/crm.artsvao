@@ -30,6 +30,34 @@ const relationTypeLabels: Record<RelationType, string> = {
   SIBLING: 'Брат/Сестра',
 };
 
+function calculateAge(dateOfBirth: string | null | undefined): number | null {
+  if (!dateOfBirth) return null;
+  const today = new Date();
+  const birth = new Date(dateOfBirth);
+  let age = today.getFullYear() - birth.getFullYear();
+  const monthDiff = today.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+    age--;
+  }
+  return age;
+}
+
+function formatAge(age: number): string {
+  const lastDigit = age % 10;
+  const lastTwoDigits = age % 100;
+
+  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
+    return `${age} лет`;
+  }
+  if (lastDigit === 1) {
+    return `${age} год`;
+  }
+  if (lastDigit >= 2 && lastDigit <= 4) {
+    return `${age} года`;
+  }
+  return `${age} лет`;
+}
+
 export function ClientRelationsSection({ client }: ClientRelationsSectionProps) {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [relationToDelete, setRelationToDelete] = useState<ClientRelation | null>(null);
@@ -105,6 +133,14 @@ export function ClientRelationsSection({ client }: ClientRelationsSectionProps) 
                     <div>
                       <p className="text-sm font-medium">
                         {relatedPerson.lastName} {relatedPerson.firstName}
+                        {(() => {
+                          const age = calculateAge(relatedPerson.dateOfBirth);
+                          return age !== null ? (
+                            <span className="text-muted-foreground font-normal ml-1">
+                              ({formatAge(age)})
+                            </span>
+                          ) : null;
+                        })()}
                       </p>
                       <div className="flex items-center gap-1">
                         <Badge variant="secondary" className="text-[10px]">

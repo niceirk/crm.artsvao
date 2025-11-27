@@ -8,7 +8,7 @@ import {
   deleteLeadSource,
 } from '@/lib/api/lead-sources';
 import type { CreateLeadSourceDto, UpdateLeadSourceDto } from '@/lib/types/lead-sources';
-import { toast } from 'sonner';
+import { toast } from '@/lib/utils/toast';
 
 /**
  * Hook для получения всех источников привлечения
@@ -45,21 +45,16 @@ export const useLeadSource = (id: string) => {
  * Hook для создания источника привлечения
  */
 export const useCreateLeadSource = () => {
-  const queryClient = useQueryClient();return useMutation({
+  const queryClient = useQueryClient();
+
+  return useMutation({
     mutationFn: (data: CreateLeadSourceDto) => createLeadSource(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lead-sources'] });
-      toast({
-        title: 'Источник создан',
-        description: 'Новый источник привлечения успешно добавлен',
-      });
+      toast.success('Источник привлечения создан');
     },
     onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Не удалось создать источник',
-      });
+      toast.error(error.response?.data?.message || 'Не удалось создать источник');
     },
   });
 };
@@ -68,23 +63,18 @@ export const useCreateLeadSource = () => {
  * Hook для обновления источника привлечения
  */
 export const useUpdateLeadSource = () => {
-  const queryClient = useQueryClient();return useMutation({
+  const queryClient = useQueryClient();
+
+  return useMutation({
     mutationFn: ({ id, data }: { id: string; data: UpdateLeadSourceDto }) =>
       updateLeadSource(id, data),
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['lead-sources'] });
       queryClient.invalidateQueries({ queryKey: ['lead-sources', variables.id] });
-      toast({
-        title: 'Источник обновлен',
-        description: 'Данные источника успешно обновлены',
-      });
+      toast.success('Источник привлечения обновлён');
     },
     onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Не удалось обновить источник',
-      });
+      toast.error(error.response?.data?.message || 'Не удалось обновить источник');
     },
   });
 };
@@ -93,21 +83,16 @@ export const useUpdateLeadSource = () => {
  * Hook для удаления источника привлечения
  */
 export const useDeleteLeadSource = () => {
-  const queryClient = useQueryClient();return useMutation({
+  const queryClient = useQueryClient();
+
+  return useMutation({
     mutationFn: (id: string) => deleteLeadSource(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lead-sources'] });
-      toast({
-        title: 'Источник удален',
-        description: 'Источник привлечения успешно удален',
-      });
+      toast.success('Источник привлечения удалён');
     },
     onError: (error: any) => {
-      toast({
-        variant: 'destructive',
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Не удалось удалить источник',
-      });
+      toast.error(error.response?.data?.message || 'Не удалось удалить источник');
     },
   });
 };

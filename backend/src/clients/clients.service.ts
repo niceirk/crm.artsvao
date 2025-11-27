@@ -79,13 +79,33 @@ export class ClientsService {
     const where: any = {};
 
     if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { middleName: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search, mode: 'insensitive' } },
-      ];
+      const trimmedSearch = search.trim();
+
+      if (trimmedSearch) {
+        // Разбиваем поисковый запрос на слова для поиска комбинаций ФИО
+        const searchWords = trimmedSearch.split(/\s+/).filter(word => word.length > 0);
+
+        if (searchWords.length === 1) {
+          // Одно слово - ищем по всем полям
+          where.OR = [
+            { firstName: { contains: trimmedSearch, mode: 'insensitive' } },
+            { lastName: { contains: trimmedSearch, mode: 'insensitive' } },
+            { middleName: { contains: trimmedSearch, mode: 'insensitive' } },
+            { email: { contains: trimmedSearch, mode: 'insensitive' } },
+            { phone: { contains: trimmedSearch, mode: 'insensitive' } },
+          ];
+        } else {
+          // Несколько слов - каждое слово должно быть найдено в одном из полей ФИО
+          // Это позволяет искать "Иванов Иван" или "Иван Иванович" и т.д.
+          where.AND = searchWords.map(word => ({
+            OR: [
+              { firstName: { contains: word, mode: 'insensitive' } },
+              { lastName: { contains: word, mode: 'insensitive' } },
+              { middleName: { contains: word, mode: 'insensitive' } },
+            ],
+          }));
+        }
+      }
     }
 
     if (status) {
@@ -380,15 +400,43 @@ export class ClientsService {
   }
 
   async search(query: string) {
+    const trimmedQuery = query.trim();
+
+    if (!trimmedQuery) {
+      return [];
+    }
+
+    const searchWords = trimmedQuery.split(/\s+/).filter(word => word.length > 0);
+
+    let searchCondition: any;
+
+    if (searchWords.length === 1) {
+      // Одно слово - ищем по всем полям
+      searchCondition = {
+        OR: [
+          { firstName: { contains: trimmedQuery, mode: 'insensitive' } },
+          { lastName: { contains: trimmedQuery, mode: 'insensitive' } },
+          { middleName: { contains: trimmedQuery, mode: 'insensitive' } },
+          { email: { contains: trimmedQuery, mode: 'insensitive' } },
+          { phone: { contains: trimmedQuery, mode: 'insensitive' } },
+        ],
+      };
+    } else {
+      // Несколько слов - каждое слово должно быть найдено в одном из полей ФИО
+      searchCondition = {
+        AND: searchWords.map(word => ({
+          OR: [
+            { firstName: { contains: word, mode: 'insensitive' } },
+            { lastName: { contains: word, mode: 'insensitive' } },
+            { middleName: { contains: word, mode: 'insensitive' } },
+          ],
+        })),
+      };
+    }
+
     return this.prisma.client.findMany({
       where: {
-        OR: [
-          { firstName: { contains: query, mode: 'insensitive' } },
-          { lastName: { contains: query, mode: 'insensitive' } },
-          { middleName: { contains: query, mode: 'insensitive' } },
-          { email: { contains: query, mode: 'insensitive' } },
-          { phone: { contains: query, mode: 'insensitive' } },
-        ],
+        ...searchCondition,
         status: { not: ClientStatus.INACTIVE as any },
       },
       take: 20,
