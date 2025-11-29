@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
@@ -6,12 +6,16 @@ import { ClientFilterDto } from './dto/client-filter.dto';
 import { ClientStatus, AuditAction } from '@prisma/client';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { normalizePhone } from '../common/utils/phone.util';
+import { S3StorageService } from '../common/services/s3-storage.service';
 
 @Injectable()
 export class ClientsService {
+  private readonly logger = new Logger(ClientsService.name);
+
   constructor(
     private prisma: PrismaService,
     private auditLog: AuditLogService,
+    private s3Storage: S3StorageService,
   ) {}
 
   async create(createClientDto: CreateClientDto, userId: string) {
@@ -582,5 +586,87 @@ export class ClientsService {
     });
 
     return updatedAccount;
+  }
+
+  /**
+   * Загрузить фото клиента в S3
+   */
+  async uploadPhoto(clientId: string, file: Express.Multer.File, userId: string) {
+    const client = await this.findOne(clientId);
+
+    // Удаляем старое фото из S3, если оно есть
+    if (client.photoUrl && !client.photoUrl.startsWith('/uploads/')) {
+      try {
+        const urlParts = client.photoUrl.split('/');
+        const fileName = `clients/${urlParts[urlParts.length - 1]}`;
+        await this.s3Storage.deleteImage(fileName);
+      } catch (error) {
+        this.logger.warn(`Failed to delete old photo: ${error.message}`);
+      }
+    }
+
+    // Загружаем новое фото в S3
+    const result = await this.s3Storage.uploadImage(file, 'clients', 800, 85);
+
+    const updatedClient = await this.prisma.client.update({
+      where: { id: clientId },
+      data: { photoUrl: result.imageUrl },
+      include: {
+        leadSource: true,
+      },
+    });
+
+    // Логируем действие
+    await this.auditLog.log({
+      userId,
+      action: AuditAction.UPDATE,
+      entityType: 'Client',
+      entityId: clientId,
+      changes: {
+        action: 'upload_photo',
+        photoUrl: result.imageUrl,
+      },
+    });
+
+    return updatedClient;
+  }
+
+  /**
+   * Удалить фото клиента из S3
+   */
+  async deletePhoto(clientId: string, userId: string) {
+    const client = await this.findOne(clientId);
+
+    // Удаляем фото из S3, если оно есть
+    if (client.photoUrl && !client.photoUrl.startsWith('/uploads/')) {
+      try {
+        const urlParts = client.photoUrl.split('/');
+        const fileName = `clients/${urlParts[urlParts.length - 1]}`;
+        await this.s3Storage.deleteImage(fileName);
+      } catch (error) {
+        this.logger.warn(`Failed to delete photo from S3: ${error.message}`);
+      }
+    }
+
+    const updatedClient = await this.prisma.client.update({
+      where: { id: clientId },
+      data: { photoUrl: null },
+      include: {
+        leadSource: true,
+      },
+    });
+
+    // Логируем действие
+    await this.auditLog.log({
+      userId,
+      action: AuditAction.UPDATE,
+      entityType: 'Client',
+      entityId: clientId,
+      changes: {
+        action: 'delete_photo',
+      },
+    });
+
+    return updatedClient;
   }
 }

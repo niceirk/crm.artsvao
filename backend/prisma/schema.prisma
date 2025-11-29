@@ -32,6 +32,9 @@ model User {
   systemSettings   SystemSettings[]
   invitations      UserInvitation[]
   messages         Message[]
+  serviceSales     ServiceSale[]
+  callLogs         CallLog[]
+  createdMedicalCertificates MedicalCertificate[]
 
   @@map("users")
 }
@@ -110,16 +113,63 @@ model BenefitCategory {
 }
 
 model ServiceCategory {
-  id          String    @id @default(uuid())
-  name        String    @unique
-  description String?
-  icon        String?
-  color       String?
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  services    Service[]
+  id                  String               @id @default(uuid())
+  name                String               @unique
+  description         String?
+  icon                String?
+  color               String?
+  defaultVatRate      Decimal              @default(0) @map("default_vat_rate") @db.Decimal(5, 2)
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  services            Service[]
+  groups              Group[]
+  independentServices IndependentService[]
 
   @@map("service_categories")
+}
+
+model IndependentService {
+  id          String           @id @default(uuid())
+  name        String
+  description String?
+  price       Decimal          @db.Decimal(10, 2)
+  vatRate     Decimal          @default(0) @map("vat_rate") @db.Decimal(5, 2)
+  categoryId  String?          @map("category_id")
+  isActive    Boolean          @default(true) @map("is_active")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  category    ServiceCategory? @relation(fields: [categoryId], references: [id])
+  sales       ServiceSale[]
+
+  @@index([categoryId])
+  @@index([isActive])
+  @@map("independent_services")
+}
+
+model ServiceSale {
+  id            String             @id @default(uuid())
+  clientId      String             @map("client_id")
+  serviceId     String             @map("service_id")
+  quantity      Int                @default(1)
+  originalPrice Decimal            @map("original_price") @db.Decimal(10, 2)
+  paidPrice     Decimal            @map("paid_price") @db.Decimal(10, 2)
+  vatRate       Decimal            @default(0) @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount     Decimal            @default(0) @map("vat_amount") @db.Decimal(10, 2)
+  notes         String?
+  purchaseDate  DateTime           @default(now()) @map("purchase_date")
+  managerId     String?            @map("manager_id")
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  client        Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  service       IndependentService @relation(fields: [serviceId], references: [id])
+  manager       User?              @relation(fields: [managerId], references: [id])
+
+  @@index([clientId])
+  @@index([serviceId])
+  @@index([purchaseDate])
+  @@index([managerId])
+  @@map("service_sales")
 }
 
 model Service {
@@ -176,6 +226,13 @@ model Client {
   updatedAt         DateTime          @updatedAt @map("updated_at")
   leadSourceId      String?           @map("lead_source_id")
   benefitCategoryId String?           @map("benefit_category_id")
+
+  // Настройки уведомлений
+  notificationsTelegramEnabled Boolean @default(true) @map("notifications_telegram_enabled")
+  notificationsEmailEnabled    Boolean @default(true) @map("notifications_email_enabled")
+  allowServiceNotifications    Boolean @default(true) @map("allow_service_notifications")
+  allowMarketingNotifications  Boolean @default(false) @map("allow_marketing_notifications")
+
   attendances       Attendance[]
   clientNotes       ClientNote[]
   documents         ClientDocument[]
@@ -191,6 +248,10 @@ model Client {
   groupMemberships  GroupMember[]
   compensations     Compensation[]
   archivedSales     ArchivedSale[]
+  serviceSales      ServiceSale[]
+  callLogs          CallLog[]
+  notifications     Notification[]
+  medicalCertificates MedicalCertificate[]
 
   @@index([phone])
   @@index([email])
@@ -322,31 +383,36 @@ model Studio {
 }
 
 model Group {
-  id                 String             @id @default(uuid())
-  studioId           String             @map("studio_id")
-  name               String
-  teacherId          String             @map("teacher_id")
-  roomId             String?            @map("room_id")
-  maxParticipants    Int                @map("max_participants")
-  singleSessionPrice Decimal            @map("single_session_price") @db.Decimal(10, 2)
-  status             GroupStatus        @default(ACTIVE)
-  createdAt          DateTime           @default(now()) @map("created_at")
-  updatedAt          DateTime           @updatedAt @map("updated_at")
-  ageMin             Int?               @map("age_min")
-  ageMax             Int?               @map("age_max")
-  duration           Int?
-  weeklySchedule     Json?              @map("weekly_schedule")
-  isPaid             Boolean            @default(true) @map("is_paid")
-  room               Room?              @relation(fields: [roomId], references: [id])
-  studio             Studio             @relation(fields: [studioId], references: [id], onDelete: Cascade)
-  teacher            Teacher            @relation(fields: [teacherId], references: [id])
-  schedules          Schedule[]
-  services           Service[]
-  subscriptionTypes  SubscriptionType[]
-  subscriptions      Subscription[]
-  members            GroupMember[]
-  compensations      Compensation[]
+  id                   String             @id @default(uuid())
+  studioId             String             @map("studio_id")
+  name                 String
+  teacherId            String             @map("teacher_id")
+  roomId               String?            @map("room_id")
+  maxParticipants      Int                @map("max_participants")
+  singleSessionPrice   Decimal            @map("single_session_price") @db.Decimal(10, 2)
+  singleSessionVatRate Decimal?           @map("single_session_vat_rate") @db.Decimal(5, 2)
+  serviceCategoryId    String?            @map("service_category_id")
+  status               GroupStatus        @default(ACTIVE)
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+  ageMin               Int?               @map("age_min")
+  ageMax               Int?               @map("age_max")
+  duration             Int?
+  weeklySchedule       Json?              @map("weekly_schedule")
+  isPaid               Boolean            @default(true) @map("is_paid")
+  room                 Room?              @relation(fields: [roomId], references: [id])
+  studio               Studio             @relation(fields: [studioId], references: [id], onDelete: Cascade)
+  teacher              Teacher            @relation(fields: [teacherId], references: [id])
+  serviceCategory      ServiceCategory?   @relation(fields: [serviceCategoryId], references: [id])
+  schedules            Schedule[]
+  services             Service[]
+  subscriptionTypes    SubscriptionType[]
+  subscriptions        Subscription[]
+  members              GroupMember[]
+  compensations        Compensation[]
+  invoiceItems         InvoiceItem[]
 
+  @@index([serviceCategoryId])
   @@map("groups")
 }
 
@@ -393,6 +459,7 @@ model Schedule {
   group          Group?              @relation(fields: [groupId], references: [id])
   room           Room                @relation(fields: [roomId], references: [id])
   teacher        Teacher             @relation(fields: [teacherId], references: [id])
+  medicalCertificateSchedules MedicalCertificateSchedule[]
 
   @@index([date])
   @@index([teacherId])
@@ -419,6 +486,7 @@ model Attendance {
   markedByUser         User?            @relation(fields: [markedBy], references: [id])
   schedule             Schedule         @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   subscription         Subscription?    @relation(fields: [subscriptionId], references: [id])
+  medicalCertificateSchedules MedicalCertificateSchedule[]
 
   @@index([clientId])
   @@index([scheduleId])
@@ -438,6 +506,8 @@ model SubscriptionType {
   groupId       String               @map("group_id")
   type          SubscriptionTypeEnum
   price         Decimal              @db.Decimal(10, 2)
+  vatRate       Decimal?             @map("vat_rate") @db.Decimal(5, 2)
+  vatIncluded   Boolean              @default(true) @map("vat_included")
   isActive      Boolean              @default(true) @map("is_active")
   createdAt     DateTime             @default(now()) @map("created_at")
   updatedAt     DateTime             @updatedAt @map("updated_at")
@@ -461,7 +531,10 @@ model Subscription {
   paidPrice          Decimal            @map("paid_price") @db.Decimal(10, 2)
   pricePerLesson     Decimal?           @map("price_per_lesson") @db.Decimal(10, 2)
   remainingVisits    Int?               @map("remaining_visits")
+  totalVisits        Int?               @map("total_visits")
   purchasedMonths    Int                @default(1) @map("purchased_months")
+  vatRate            Decimal            @default(0) @map("vat_rate") @db.Decimal(5, 2)
+  vatAmount          Decimal            @default(0) @map("vat_amount") @db.Decimal(10, 2)
   status             SubscriptionStatus @default(ACTIVE)
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
@@ -472,6 +545,7 @@ model Subscription {
   client             Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
   group              Group              @relation(fields: [groupId], references: [id])
   subscriptionType   SubscriptionType   @relation(fields: [subscriptionTypeId], references: [id])
+  medicalCertificateSchedules MedicalCertificateSchedule[]
 
   @@index([clientId])
   @@index([groupId])
@@ -699,6 +773,7 @@ model InvoiceItem {
   id                 String         @id @default(uuid())
   invoiceId          String         @map("invoice_id")
   serviceId          String?        @map("service_id")
+  groupId            String?        @map("group_id")
   serviceType        ServiceType    @map("service_type")
   serviceName        String         @map("service_name")
   serviceDescription String?        @map("service_description")
@@ -721,9 +796,11 @@ model InvoiceItem {
   invoice            Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   room               Room?          @relation(fields: [roomId], references: [id])
   service            Service?       @relation(fields: [serviceId], references: [id])
+  group              Group?         @relation(fields: [groupId], references: [id])
 
   @@index([invoiceId])
   @@index([serviceId])
+  @@index([groupId])
   @@index([writeOffStatus])
   @@index([writeOffTiming])
   @@index([remainingQuantity])
@@ -847,6 +924,7 @@ enum AttendanceStatus {
 enum SubscriptionTypeEnum {
   UNLIMITED
   SINGLE_VISIT
+  VISIT_PACK
 }
 
 enum SubscriptionStatus {
@@ -926,6 +1004,14 @@ enum InvoiceAuditAction {
   ITEM_ADDED
   ITEM_REMOVED
   CANCELLED
+}
+
+enum CallStatus {
+  INITIATED
+  SUCCESS
+  FAILED
+  NO_ANSWER
+  BUSY
 }
 
 enum DocumentType {
@@ -1195,4 +1281,184 @@ model ArchivedPayment {
   @@index([paymentDate])
   @@index([archivedSaleId, paymentMethod])
   @@map("archived_payments")
+}
+
+// ============================================
+// Telephony Integration (Novofon)
+// ============================================
+
+model CallLog {
+  id            String     @id @default(uuid())
+  userId        String     @map("user_id")
+  clientId      String?    @map("client_id")
+  fromNumber    String     @map("from_number")
+  toNumber      String     @map("to_number")
+  status        CallStatus @default(INITIATED)
+  novofonCallId String?    @map("novofon_call_id") // ID сессии звонка в Novofon
+  errorMessage  String?    @map("error_message")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id])
+  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([createdAt])
+  @@map("call_logs")
+}
+
+model TelephonySettings {
+  id                   String   @id @default("telephony")
+  provider             String   @default("novofon")
+  accessToken          String   @default("") @map("access_token") // Secret из ЛК Novofon для API 2.0
+  virtualPhoneNumber   String   @default("") @map("virtual_phone_number") // Виртуальный номер (например 74951277155)
+  defaultEmployeeId    Int?     @map("default_employee_id") // ID сотрудника по умолчанию в Novofon
+  isEnabled            Boolean  @default(false) @map("is_enabled")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("telephony_settings")
+}
+
+// ============================================
+// Unified Notifications System
+// ============================================
+
+enum NotificationChannel {
+  TELEGRAM
+  EMAIL
+}
+
+enum NotificationStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELED
+}
+
+enum NotificationEventType {
+  LESSON_CANCELLED
+  LESSON_RESCHEDULED
+  INVOICE_CREATED
+  PAYMENT_SUCCESS
+  MASS_BROADCAST
+  SUBSCRIPTION_PURCHASED
+  SUBSCRIPTION_EXPIRING
+  SCHEDULE_CHANGED
+}
+
+enum NotificationInitiator {
+  SYSTEM
+  MANUAL
+  SCHEDULED
+  MASS_SEND
+}
+
+model NotificationTemplateV2 {
+  id              String              @id @default(uuid())
+  code            String
+  channel         NotificationChannel
+  name            String
+  description     String?
+  subject         String?
+  body            String              @db.Text
+  variablesSchema Json?               @map("variables_schema")
+  isActive        Boolean             @default(true) @map("is_active")
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  notifications   Notification[]
+
+  @@unique([code, channel])
+  @@index([channel])
+  @@index([isActive])
+  @@map("notification_templates_v2")
+}
+
+model Notification {
+  id               String                 @id @default(uuid())
+  recipientId      String?                @map("recipient_id")
+  channel          NotificationChannel
+  recipientAddress String                 @map("recipient_address")
+  eventType        NotificationEventType  @map("event_type")
+  templateId       String?                @map("template_id")
+  payload          Json?                  @map("payload_json")
+  status           NotificationStatus     @default(PENDING)
+  attempts         Int                    @default(0)
+  maxAttempts      Int                    @default(5) @map("max_attempts")
+  lastError        String?                @map("last_error") @db.Text
+  externalId       String?                @map("external_id")
+  initiator        NotificationInitiator  @default(SYSTEM)
+  initiatorId      String?                @map("initiator_id")
+  scheduledFor     DateTime?              @map("scheduled_for")
+  sentAt           DateTime?              @map("sent_at")
+  nextRetryAt      DateTime?              @map("next_retry_at")
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+
+  recipient        Client?                @relation(fields: [recipientId], references: [id], onDelete: SetNull)
+  template         NotificationTemplateV2? @relation(fields: [templateId], references: [id])
+
+  @@index([status])
+  @@index([status, nextRetryAt])
+  @@index([channel])
+  @@index([eventType])
+  @@index([recipientId])
+  @@index([scheduledFor])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ============================================
+// Medical Certificates (Справки)
+// ============================================
+
+model MedicalCertificate {
+  id          String   @id @default(uuid())
+  clientId    String   @map("client_id")
+  fileUrl     String?  @map("file_url")
+  fileName    String?  @map("file_name")
+  startDate   DateTime @map("start_date") @db.Date
+  endDate     DateTime @map("end_date") @db.Date
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdById String   @map("created_by_id")
+
+  client           Client                       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy        User                         @relation(fields: [createdById], references: [id])
+  appliedSchedules MedicalCertificateSchedule[]
+
+  @@index([clientId])
+  @@index([startDate, endDate])
+  @@index([createdAt])
+  @@map("medical_certificates")
+}
+
+model MedicalCertificateSchedule {
+  id                   String            @id @default(uuid())
+  medicalCertificateId String            @map("medical_certificate_id")
+  scheduleId           String            @map("schedule_id")
+  attendanceId         String?           @map("attendance_id")
+  previousStatus       AttendanceStatus? @map("previous_status")
+  appliedAt            DateTime          @default(now()) @map("applied_at")
+
+  // Поля для компенсации
+  subscriptionId       String?           @map("subscription_id")
+  compensationAmount   Decimal?          @map("compensation_amount") @db.Decimal(10, 2)
+  compensationMonth    String?           @map("compensation_month") // Формат: YYYY-MM
+
+  medicalCertificate MedicalCertificate @relation(fields: [medicalCertificateId], references: [id], onDelete: Cascade)
+  schedule           Schedule           @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  attendance         Attendance?        @relation(fields: [attendanceId], references: [id])
+  subscription       Subscription?      @relation(fields: [subscriptionId], references: [id])
+
+  @@unique([medicalCertificateId, scheduleId])
+  @@index([medicalCertificateId])
+  @@index([scheduleId])
+  @@index([subscriptionId])
+  @@index([compensationMonth])
+  @@map("medical_certificate_schedules")
 }

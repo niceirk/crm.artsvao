@@ -10,7 +10,14 @@ import {
   UseGuards,
   ValidationPipe,
   Request,
+  UseInterceptors,
+  UploadedFile,
+  ParseFilePipe,
+  MaxFileSizeValidator,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { UpdateClientDto } from './dto/update-client.dto';
@@ -80,6 +87,38 @@ export class ClientsController {
     @Request() req,
   ) {
     return this.clientsService.toggleNotifications(id, accountId, dto.enabled, req.user.id);
+  }
+
+  /**
+   * POST /clients/:id/photo - загрузить фото клиента
+   */
+  @Post(':id/photo')
+  @UseInterceptors(FileInterceptor('photo', { storage: memoryStorage() }))
+  uploadPhoto(
+    @Param('id') id: string,
+    @UploadedFile(
+      new ParseFilePipe({
+        validators: [
+          new MaxFileSizeValidator({ maxSize: 5 * 1024 * 1024 }), // 5MB
+        ],
+      }),
+    )
+    file: Express.Multer.File,
+    @Request() req,
+  ) {
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException('Недопустимый тип файла. Разрешены: JPEG, PNG, GIF, WEBP');
+    }
+    return this.clientsService.uploadPhoto(id, file, req.user.id);
+  }
+
+  /**
+   * DELETE /clients/:id/photo - удалить фото клиента
+   */
+  @Delete(':id/photo')
+  deletePhoto(@Param('id') id: string, @Request() req) {
+    return this.clientsService.deletePhoto(id, req.user.id);
   }
 
   @Delete(':id')

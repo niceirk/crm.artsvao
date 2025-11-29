@@ -1,5 +1,4 @@
 import {
-  LayoutDashboard,
   Users,
   Calendar,
   Building2,
@@ -11,13 +10,12 @@ import {
   Receipt,
   FileText,
   CalendarClock,
-  Palette,
   Percent,
-  ClipboardList,
   FileStack,
   CreditCard,
-  Download,
   MessageCircle,
+  Package,
+  FileHeart,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -90,6 +88,12 @@ export const navigationConfig: NavGroup[] = [
         icon: CalendarClock,
         description: 'Табели посещаемости и компенсации',
       },
+      {
+        title: 'Справки',
+        href: '/medical-certificates',
+        icon: FileHeart,
+        description: 'Медицинские справки клиентов',
+      },
     ],
   },
   {
@@ -131,11 +135,11 @@ export const navigationConfig: NavGroup[] = [
         requiresAdmin: true,
       },
       {
-        title: 'Номенклатура услуг',
-        href: '/admin/services',
-        icon: ClipboardList,
-        description: 'Справочник услуг с НДС',
-        requiresAdmin: true,
+        title: 'Номенклатура',
+        href: '/nomenclature',
+        icon: Package,
+        description: 'Единый реестр услуг с НДС',
+        requiresAdmin: false,
       },
       {
         title: 'Типы абонементов',
@@ -181,13 +185,6 @@ export const navigationConfig: NavGroup[] = [
         requiresAdmin: true, // Только для админа
       },
       {
-        title: 'Design System',
-        href: '/design-system',
-        icon: Palette,
-        description: 'Библиотека компонентов и элементов дизайна',
-        requiresAdmin: false, // Доступно всем
-      },
-      {
         title: 'Отчеты',
         href: '/reports',
         icon: FileText,
@@ -198,7 +195,7 @@ export const navigationConfig: NavGroup[] = [
         title: 'Настройки системы',
         href: '/settings',
         icon: Settings,
-        description: 'Конфигурация системы',
+        description: 'Телефония, уведомления и другие настройки',
         requiresAdmin: true, // Только для админа
       },
     ],

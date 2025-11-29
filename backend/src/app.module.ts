@@ -35,12 +35,16 @@ import { PaymentsModule } from './payments/payments.module';
 import { CalendarModule } from './calendar/calendar.module';
 import { HealthModule } from './health/health.module';
 import { PyrusModule } from './integrations/pyrus/pyrus.module';
+import { NovofonModule } from './integrations/novofon/novofon.module';
 import { EmailModule } from './email/email.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { MessagesModule } from './messages/messages.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { UnifiedNotificationsModule } from './unified-notifications/unified-notifications.module';
 import { TimesheetsModule } from './timesheets/timesheets.module';
 import { ArchivedSalesModule } from './archived-sales/archived-sales.module';
+import { NomenclatureModule } from './nomenclature/nomenclature.module';
+import { MedicalCertificatesModule } from './medical-certificates/medical-certificates.module';
 
 @Module({
   imports: [
@@ -61,6 +65,7 @@ import { ArchivedSalesModule } from './archived-sales/archived-sales.module';
     TelegramModule,
     MessagesModule,
     NotificationsModule,
+    UnifiedNotificationsModule,
     UsersModule,
     AuthModule,
     ClientsModule,
@@ -89,8 +94,11 @@ import { ArchivedSalesModule } from './archived-sales/archived-sales.module';
     CalendarModule,
     HealthModule,
     PyrusModule,
+    NovofonModule,
     TimesheetsModule,
     ArchivedSalesModule,
+    NomenclatureModule,
+    MedicalCertificatesModule,
   ],
   controllers: [AppController],
   providers: [
