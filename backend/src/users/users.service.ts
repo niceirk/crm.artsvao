@@ -4,6 +4,7 @@ import {
   BadRequestException,
   UnauthorizedException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -18,7 +19,7 @@ import {
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { EmailService } from '../email/email.service';
-import { Logger } from '@nestjs/common';
+import { S3StorageService } from '../common/services/s3-storage.service';
 
 @Injectable()
 export class UsersService {
@@ -27,6 +28,7 @@ export class UsersService {
   constructor(
     private prisma: PrismaService,
     private emailService: EmailService,
+    private s3Storage: S3StorageService,
   ) {}
 
   /**
@@ -154,17 +156,36 @@ export class UsersService {
   }
 
   /**
-   * Загрузить аватар пользователя
+   * Загрузить аватар пользователя в S3
    */
   async uploadAvatar(
     userId: string,
-    filename: string,
+    file: Express.Multer.File,
   ): Promise<UserResponseDto> {
-    const avatarUrl = `/uploads/avatars/${filename}`;
+    // Получаем текущего пользователя для удаления старого аватара
+    const currentUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarUrl: true },
+    });
+
+    // Удаляем старый аватар из S3, если он есть и это S3 URL
+    if (currentUser?.avatarUrl && !currentUser.avatarUrl.startsWith('/uploads/')) {
+      try {
+        // Извлекаем имя файла из URL
+        const urlParts = currentUser.avatarUrl.split('/');
+        const fileName = `avatars/${urlParts[urlParts.length - 1]}`;
+        await this.s3Storage.deleteImage(fileName);
+      } catch (error) {
+        this.logger.warn(`Failed to delete old avatar: ${error.message}`);
+      }
+    }
+
+    // Загружаем новый аватар в S3
+    const result = await this.s3Storage.uploadImage(file, 'avatars', 512, 85);
 
     const updatedUser = await this.prisma.user.update({
       where: { id: userId },
-      data: { avatarUrl },
+      data: { avatarUrl: result.imageUrl },
       select: {
         id: true,
         email: true,
@@ -183,9 +204,26 @@ export class UsersService {
   }
 
   /**
-   * Удалить аватар пользователя
+   * Удалить аватар пользователя из S3
    */
   async deleteAvatar(userId: string): Promise<UserResponseDto> {
+    // Получаем текущего пользователя для удаления аватара из S3
+    const currentUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarUrl: true },
+    });
+
+    // Удаляем аватар из S3, если он есть и это S3 URL
+    if (currentUser?.avatarUrl && !currentUser.avatarUrl.startsWith('/uploads/')) {
+      try {
+        const urlParts = currentUser.avatarUrl.split('/');
+        const fileName = `avatars/${urlParts[urlParts.length - 1]}`;
+        await this.s3Storage.deleteImage(fileName);
+      } catch (error) {
+        this.logger.warn(`Failed to delete avatar from S3: ${error.message}`);
+      }
+    }
+
     const updatedUser = await this.prisma.user.update({
       where: { id: userId },
       data: { avatarUrl: null },

@@ -537,7 +537,7 @@ export class AttendanceService {
         where,
         skip,
         take: limit,
-        orderBy: [{ createdAt: 'desc' }],
+        orderBy: [{ schedule: { date: 'desc' } }, { createdAt: 'desc' }],
         include: {
           client: {
             select: {

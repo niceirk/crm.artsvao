@@ -1,12 +1,20 @@
 'use client';
 
+import { useState } from 'react';
 import { ComponentDemo } from '../component-demo';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Button } from '@/components/ui/button';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
+import { Toggle } from '@/components/ui/toggle';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { UsageItem } from '../usage-info';
 
-export function TabsDemo() {
+interface DemoProps {
+  usages?: UsageItem[];
+}
+
+export function TabsDemo({ usages }: DemoProps) {
   const code = `<Tabs defaultValue="tab1">
   <TabsList>
     <TabsTrigger value="tab1">Вкладка 1</TabsTrigger>
@@ -28,6 +36,7 @@ export function TabsDemo() {
     <ComponentDemo
       title="Tabs"
       description="Вкладки для переключения контента"
+      usages={usages}
       preview={
         <Tabs defaultValue="tab1" className="w-full max-w-md">
           <TabsList className="grid w-full grid-cols-3">
@@ -51,7 +60,7 @@ export function TabsDemo() {
   );
 }
 
-export function CollapsibleDemo() {
+export function CollapsibleDemo({ usages }: DemoProps) {
   const code = `<Collapsible>
   <CollapsibleTrigger asChild>
     <Button variant="ghost">
@@ -68,6 +77,7 @@ export function CollapsibleDemo() {
     <ComponentDemo
       title="Collapsible"
       description="Раскрывающийся блок контента"
+      usages={usages}
       preview={
         <Collapsible className="w-full max-w-md">
           <CollapsibleTrigger asChild>
@@ -83,6 +93,74 @@ export function CollapsibleDemo() {
             </p>
           </CollapsibleContent>
         </Collapsible>
+      }
+      code={code}
+    />
+  );
+}
+
+export function ToggleDemo({ usages }: DemoProps) {
+  const [pressed, setPressed] = useState(false);
+
+  const code = `<Toggle pressed={${pressed}} onPressedChange={setPressed}>
+  <Bold className="h-4 w-4" />
+</Toggle>`;
+
+  return (
+    <ComponentDemo
+      title="Toggle"
+      description="Переключатель с двумя состояниями"
+      usages={usages}
+      preview={
+        <div className="flex gap-2">
+          <Toggle pressed={pressed} onPressedChange={setPressed} aria-label="Toggle bold">
+            <Bold className="h-4 w-4" />
+          </Toggle>
+          <Toggle aria-label="Toggle italic">
+            <Italic className="h-4 w-4" />
+          </Toggle>
+          <Toggle aria-label="Toggle underline">
+            <Underline className="h-4 w-4" />
+          </Toggle>
+        </div>
+      }
+      code={code}
+    />
+  );
+}
+
+export function ToggleGroupDemo({ usages }: DemoProps) {
+  const [value, setValue] = useState('left');
+
+  const code = `<ToggleGroup type="single" value="${value}" onValueChange={setValue}>
+  <ToggleGroupItem value="left" aria-label="Align left">
+    <AlignLeft className="h-4 w-4" />
+  </ToggleGroupItem>
+  <ToggleGroupItem value="center" aria-label="Align center">
+    <AlignCenter className="h-4 w-4" />
+  </ToggleGroupItem>
+  <ToggleGroupItem value="right" aria-label="Align right">
+    <AlignRight className="h-4 w-4" />
+  </ToggleGroupItem>
+</ToggleGroup>`;
+
+  return (
+    <ComponentDemo
+      title="ToggleGroup"
+      description="Группа переключателей для выбора одного варианта"
+      usages={usages}
+      preview={
+        <ToggleGroup type="single" value={value} onValueChange={(v) => v && setValue(v)}>
+          <ToggleGroupItem value="left" aria-label="Align left">
+            <AlignLeft className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="center" aria-label="Align center">
+            <AlignCenter className="h-4 w-4" />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="right" aria-label="Align right">
+            <AlignRight className="h-4 w-4" />
+          </ToggleGroupItem>
+        </ToggleGroup>
       }
       code={code}
     />

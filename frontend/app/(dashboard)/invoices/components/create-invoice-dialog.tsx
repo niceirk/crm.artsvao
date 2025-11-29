@@ -43,10 +43,10 @@ import {
 } from '@/components/ui/table';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
 import { ClientCombobox } from '@/components/client-combobox';
-import { useServices } from '@/hooks/use-services';
+import { useNomenclature, useIndependentServices } from '@/hooks/use-nomenclature';
 import { useCreateInvoice } from '@/hooks/use-invoices';
 import type { CreateInvoiceDto, CreateInvoiceItemDto } from '@/lib/types/invoices';
-import type { ServiceType, WriteOffTiming } from '@/lib/types/services';
+import type { NomenclatureItem } from '@/lib/types/nomenclature';
 
 interface CreateInvoiceDialogProps {
   open: boolean;
@@ -55,6 +55,7 @@ interface CreateInvoiceDialogProps {
 
 const invoiceItemSchema = z.object({
   serviceId: z.string().optional(),
+  groupId: z.string().optional(),
   serviceType: z.enum(['SUBSCRIPTION', 'RENTAL', 'SINGLE_SESSION', 'INDIVIDUAL_LESSON', 'OTHER']),
   serviceName: z.string().min(1, 'Укажите название услуги'),
   serviceDescription: z.string().optional(),
@@ -76,10 +77,26 @@ const createInvoiceSchema = z.object({
 type CreateInvoiceFormValues = z.infer<typeof createInvoiceSchema>;
 
 export function CreateInvoiceDialog({ open, onOpenChange }: CreateInvoiceDialogProps) {
-  const { data: servicesResponse } = useServices();
+  const { data: nomenclatureItems } = useNomenclature({ isActive: true });
+  const { data: independentServices } = useIndependentServices();
   const createInvoice = useCreateInvoice();
 
-  const services = servicesResponse?.data || [];
+  // Объединяем номенклатуру в единый список для выбора
+  const allItems = [
+    ...(nomenclatureItems || []),
+    ...(independentServices?.filter(s => s.isActive) || []).map(s => ({
+      id: s.id,
+      type: 'INDEPENDENT_SERVICE' as const,
+      name: s.name,
+      description: s.description,
+      price: s.price,
+      vatRate: s.vatRate,
+      isActive: s.isActive,
+      category: s.category,
+      createdAt: '',
+      updatedAt: '',
+    })),
+  ];
 
   const form = useForm<CreateInvoiceFormValues>({
     resolver: zodResolver(createInvoiceSchema),
@@ -106,15 +123,31 @@ export function CreateInvoiceDialog({ open, onOpenChange }: CreateInvoiceDialogP
     name: 'items',
   });
 
-  const handleServiceSelect = (index: number, serviceId: string) => {
-    const service = services?.find((s) => s.id === serviceId);
-    if (service) {
-      form.setValue(`items.${index}.serviceId`, service.id);
-      form.setValue(`items.${index}.serviceName`, service.name);
-      form.setValue(`items.${index}.serviceType`, service.serviceType);
-      form.setValue(`items.${index}.basePrice`, Number(service.basePrice));
-      form.setValue(`items.${index}.vatRate`, Number(service.vatRate));
-      form.setValue(`items.${index}.writeOffTiming`, service.writeOffTiming);
+  const handleServiceSelect = (index: number, itemId: string) => {
+    const item = allItems?.find((s) => s.id === itemId);
+    if (item) {
+      // Маппинг типов номенклатуры на ServiceType для счёта
+      const serviceTypeMap: Record<string, 'SUBSCRIPTION' | 'SINGLE_SESSION' | 'OTHER'> = {
+        'SUBSCRIPTION': 'SUBSCRIPTION',
+        'SINGLE_SESSION': 'SINGLE_SESSION',
+        'VISIT_PACK': 'SINGLE_SESSION',
+        'INDEPENDENT_SERVICE': 'OTHER',
+      };
+
+      form.setValue(`items.${index}.serviceId`, item.id);
+      form.setValue(`items.${index}.serviceName`, item.name);
+      form.setValue(`items.${index}.serviceType`, serviceTypeMap[item.type] || 'OTHER');
+      form.setValue(`items.${index}.basePrice`, Number(item.price));
+      form.setValue(`items.${index}.vatRate`, Number(item.vatRate));
+      form.setValue(`items.${index}.writeOffTiming`, item.type === 'SUBSCRIPTION' ? 'ON_USE' : 'ON_SALE');
+
+      // Извлекаем groupId из номенклатуры (для разовых посещений и абонементов)
+      if (item.group?.id) {
+        form.setValue(`items.${index}.groupId`, item.group.id);
+      } else if (item.id.startsWith('single-')) {
+        // Для разовых посещений ID имеет формат single-{groupId}
+        form.setValue(`items.${index}.groupId`, item.id.replace('single-', ''));
+      }
     }
   };
 
@@ -142,6 +175,7 @@ export function CreateInvoiceDialog({ open, onOpenChange }: CreateInvoiceDialogP
         clientId: values.clientId,
         items: values.items.map((item) => ({
           serviceId: item.serviceId,
+          groupId: item.groupId,
           serviceType: item.serviceType,
           serviceName: item.serviceName,
           serviceDescription: item.serviceDescription,
@@ -302,9 +336,15 @@ export function CreateInvoiceDialog({ open, onOpenChange }: CreateInvoiceDialogP
                               <SelectValue placeholder="Выбрать" />
                             </SelectTrigger>
                             <SelectContent>
-                              {services?.map((service) => (
-                                <SelectItem key={service.id} value={service.id}>
-                                  {service.name}
+                              {allItems.length === 0 && (
+                                <SelectItem value="empty" disabled>
+                                  Нет доступных услуг
+                                </SelectItem>
+                              )}
+                              {allItems?.map((item) => (
+                                <SelectItem key={item.id} value={item.id}>
+                                  {item.name} ({item.price} руб.)
+                                  {item.group && ` - ${item.group.name}`}
                                 </SelectItem>
                               ))}
                             </SelectContent>

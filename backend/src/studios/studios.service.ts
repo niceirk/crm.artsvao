@@ -1,11 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateStudioDto } from './dto/create-studio.dto';
 import { UpdateStudioDto } from './dto/update-studio.dto';
+import { S3StorageService } from '../common/services/s3-storage.service';
 
 @Injectable()
 export class StudiosService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(StudiosService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private s3Storage: S3StorageService,
+  ) {}
 
   async create(createStudioDto: CreateStudioDto) {
     return this.prisma.studio.create({
@@ -170,5 +176,54 @@ export class StudiosService {
       activeSubscriptionsCount,
       participantsCount: participants.length,
     };
+  }
+
+  /**
+   * Загрузить фото студии в S3
+   */
+  async uploadPhoto(studioId: string, file: Express.Multer.File) {
+    const studio = await this.findOne(studioId);
+
+    // Удаляем старое фото из S3, если оно есть
+    if (studio.photoUrl && !studio.photoUrl.startsWith('/uploads/')) {
+      try {
+        const urlParts = studio.photoUrl.split('/');
+        const fileName = `studios/${urlParts[urlParts.length - 1]}`;
+        await this.s3Storage.deleteImage(fileName);
+      } catch (error) {
+        this.logger.warn(`Failed to delete old photo: ${error.message}`);
+      }
+    }
+
+    // Загружаем новое фото в S3
+    const result = await this.s3Storage.uploadImage(file, 'studios', 1200, 85);
+
+    return this.prisma.studio.update({
+      where: { id: studioId },
+      data: { photoUrl: result.imageUrl },
+    });
+  }
+
+  /**
+   * Удалить фото студии из S3
+   */
+  async deletePhoto(studioId: string) {
+    const studio = await this.findOne(studioId);
+
+    // Удаляем фото из S3, если оно есть
+    if (studio.photoUrl && !studio.photoUrl.startsWith('/uploads/')) {
+      try {
+        const urlParts = studio.photoUrl.split('/');
+        const fileName = `studios/${urlParts[urlParts.length - 1]}`;
+        await this.s3Storage.deleteImage(fileName);
+      } catch (error) {
+        this.logger.warn(`Failed to delete photo from S3: ${error.message}`);
+      }
+    }
+
+    return this.prisma.studio.update({
+      where: { id: studioId },
+      data: { photoUrl: null },
+    });
   }
 }

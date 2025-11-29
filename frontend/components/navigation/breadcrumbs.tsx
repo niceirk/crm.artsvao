@@ -24,7 +24,7 @@ export function Breadcrumbs() {
   return (
     <nav aria-label="Breadcrumb" className="flex items-center space-x-1 text-sm">
       <Link
-        href="/schedule"
+        href="/room-planner"
         className="flex items-center text-muted-foreground transition-colors hover:text-foreground"
       >
         <Home className="h-4 w-4" />
@@ -57,9 +57,43 @@ export function Breadcrumbs() {
 function generateBreadcrumbs(pathname: string, customTitle: string | null = null): BreadcrumbItem[] {
   const breadcrumbs: BreadcrumbItem[] = [];
 
-  // Исключаем главную страницу (расписание - это новая "домашняя" страница)
-  if (pathname === '/schedule' || pathname === '/dashboard' || pathname === '/') {
+  // Исключаем главную страницу (room-planner - это новая "домашняя" страница)
+  if (pathname === '/room-planner' || pathname === '/schedule' || pathname === '/dashboard' || pathname === '/') {
     return breadcrumbs;
+  }
+
+  // Страницы, которые принадлежат разделу "Настройки системы"
+  const settingsChildPages: Record<string, string> = {
+    '/admin/telephony': 'Телефония',
+    '/admin/notifications': 'Уведомления',
+    '/design-system': 'Дизайн-система',
+  };
+
+  // Если это страница из раздела "Настройки системы", добавляем родительскую крошку
+  if (settingsChildPages[pathname]) {
+    breadcrumbs.push({
+      label: 'Настройки системы',
+      href: '/settings',
+    });
+    breadcrumbs.push({
+      label: settingsChildPages[pathname],
+      href: pathname,
+    });
+    return breadcrumbs;
+  }
+
+  // Специальные пути с кастомной иерархией хлебных крошек
+  const specialPaths: Record<string, BreadcrumbItem[]> = {
+    '/integrations/pyrus': [
+      { label: 'Настройки', href: '/admin' },
+      { label: 'Мероприятия', href: '/admin/events' },
+      { label: 'Импорт из Pyrus', href: '/integrations/pyrus' },
+    ],
+  };
+
+  // Если это специальный путь, возвращаем его крошки
+  if (specialPaths[pathname]) {
+    return specialPaths[pathname];
   }
 
   const segments = pathname.split('/').filter(Boolean);
@@ -78,6 +112,20 @@ function generateBreadcrumbs(pathname: string, customTitle: string | null = null
       return; // Пропускаем этот сегмент
     }
 
+    // Специальная обработка для сегмента "new" (создание нового элемента)
+    if (segment === 'new') {
+      const newLabels: Record<string, string> = {
+        '/clients/new': 'Новый клиент',
+        '/medical-certificates/new': 'Новая справка',
+      };
+      const label = newLabels[currentPath] || 'Новый';
+      breadcrumbs.push({
+        label,
+        href: currentPath,
+      });
+      return;
+    }
+
     // Ищем название в конфигурации навигации
     const navItem = findNavItemByPath(currentPath);
 
@@ -93,6 +141,9 @@ function generateBreadcrumbs(pathname: string, customTitle: string | null = null
         '/studios': 'Студии',
         '/clients': 'Клиенты',
         '/admin': 'Настройки',
+        '/settings': 'Настройки системы',
+        '/profile': 'Профиль',
+        '/integrations': 'Интеграции',
       };
 
       const label = knownPaths[currentPath] || formatSegment(segment);
@@ -136,8 +187,39 @@ function findNavItemByPath(path: string) {
 }
 
 function formatSegment(segment: string): string {
-  // Преобразуем сегмент из kebab-case в нормальный вид
-  // Например: "event-types" -> "Event Types"
+  // Словарь переводов для известных сегментов
+  const segmentTranslations: Record<string, string> = {
+    'medical-certificates': 'Справки',
+    'subscription-types': 'Типы абонементов',
+    'event-types': 'Типы мероприятий',
+    'benefit-categories': 'Льготные категории',
+    'room-planner': 'Планировщик помещений',
+    'schedule-planner': 'Расписание',
+    'profile': 'Профиль',
+    'new': 'Новый',
+    'integrations': 'Интеграции',
+    'pyrus': 'Pyrus',
+    'events': 'Мероприятия',
+    'rooms': 'Помещения',
+    'teachers': 'Преподаватели',
+    'studios': 'Студии',
+    'groups': 'Группы',
+    'users': 'Пользователи',
+    'reports': 'Отчеты',
+    'settings': 'Настройки',
+    'payments': 'Платежи',
+    'invoices': 'Счета',
+    'subscriptions': 'Абонементы',
+    'timesheets': 'Табели',
+    'messages': 'Сообщения',
+    'nomenclature': 'Номенклатура',
+  };
+
+  if (segmentTranslations[segment]) {
+    return segmentTranslations[segment];
+  }
+
+  // Фоллбэк: преобразуем сегмент из kebab-case в нормальный вид
   return segment
     .split('-')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))

@@ -136,7 +136,7 @@ export default function InvoicesPage() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => router.push(`/invoices/${invoice.id}`)}
                   >
-                    <TableCell className="font-mono font-medium">
+                    <TableCell className="font-medium">
                       {invoice.invoiceNumber}
                     </TableCell>
                     <TableCell>

@@ -10,19 +10,55 @@ import { useTheme } from 'next-themes';
 import { ColorsDemo, TypographyDemo, SpacingDemo, BorderRadiusDemo } from '@/components/design-system/demos/foundation-demos';
 
 // Forms demos
-import { ButtonDemo, InputDemo, TextareaDemo, CheckboxDemo, SelectDemo } from '@/components/design-system/demos/forms-demos';
+import {
+  ButtonDemo,
+  InputDemo,
+  TextareaDemo,
+  CheckboxDemo,
+  SelectDemo,
+  CalendarDemo,
+  DatePickerDemo,
+  RadioGroupDemo,
+  SwitchDemo,
+  FormDemo,
+} from '@/components/design-system/demos/forms-demos';
 
 // Data Display demos
-import { CardDemo, BadgeDemo, AvatarDemo, TableDemo } from '@/components/design-system/demos/data-display-demos';
+import {
+  CardDemo,
+  BadgeDemo,
+  AvatarDemo,
+  TableDemo,
+  SeparatorDemo,
+  ProgressDemo,
+  ScrollAreaDemo,
+} from '@/components/design-system/demos/data-display-demos';
 
 // Feedback demos
 import { AlertDemo, ToastDemo, SkeletonDemo } from '@/components/design-system/demos/feedback-demos';
 
 // Overlay demos
-import { DialogDemo, SheetDemo, PopoverDemo, TooltipDemo, DropdownMenuDemo } from '@/components/design-system/demos/overlay-demos';
+import {
+  DialogDemo,
+  SheetDemo,
+  PopoverDemo,
+  TooltipDemo,
+  DropdownMenuDemo,
+  AlertDialogDemo,
+  CommandDemo,
+  ContextMenuDemo,
+} from '@/components/design-system/demos/overlay-demos';
 
 // Navigation demos
-import { TabsDemo, CollapsibleDemo } from '@/components/design-system/demos/navigation-demos';
+import {
+  TabsDemo,
+  CollapsibleDemo,
+  ToggleDemo,
+  ToggleGroupDemo,
+} from '@/components/design-system/demos/navigation-demos';
+
+// Usage data
+import { componentUsageData } from '@/components/design-system/component-usage-data';
 
 export default function DesignSystemPage() {
   const { theme, setTheme } = useTheme();
@@ -108,17 +144,22 @@ export default function DesignSystemPage() {
                 Form Components
               </CardTitle>
               <CardDescription>
-                Компоненты форм: кнопки, поля ввода, селекты и чекбоксы
+                Компоненты форм: кнопки, поля ввода, селекты, чекбоксы, календари и формы
               </CardDescription>
             </CardHeader>
           </Card>
 
           <div className="grid gap-6">
-            <ButtonDemo />
-            <InputDemo />
-            <TextareaDemo />
-            <SelectDemo />
-            <CheckboxDemo />
+            <ButtonDemo usages={componentUsageData.Button} />
+            <InputDemo usages={componentUsageData.Input} />
+            <TextareaDemo usages={componentUsageData.Textarea} />
+            <SelectDemo usages={componentUsageData.Select} />
+            <CheckboxDemo usages={componentUsageData.Checkbox} />
+            <CalendarDemo usages={componentUsageData.Calendar} />
+            <DatePickerDemo usages={componentUsageData.DatePicker} />
+            <RadioGroupDemo usages={componentUsageData.RadioGroup} />
+            <SwitchDemo usages={componentUsageData.Switch} />
+            <FormDemo usages={componentUsageData.Form} />
           </div>
         </TabsContent>
 
@@ -131,16 +172,19 @@ export default function DesignSystemPage() {
                 Data Display
               </CardTitle>
               <CardDescription>
-                Компоненты для отображения данных: карточки, таблицы, значки
+                Компоненты для отображения данных: карточки, таблицы, значки, разделители
               </CardDescription>
             </CardHeader>
           </Card>
 
           <div className="grid gap-6">
-            <CardDemo />
-            <BadgeDemo />
-            <TableDemo />
-            <AvatarDemo />
+            <CardDemo usages={componentUsageData.Card} />
+            <BadgeDemo usages={componentUsageData.Badge} />
+            <TableDemo usages={componentUsageData.Table} />
+            <AvatarDemo usages={componentUsageData.Avatar} />
+            <SeparatorDemo usages={componentUsageData.Separator} />
+            <ProgressDemo usages={componentUsageData.Progress} />
+            <ScrollAreaDemo usages={componentUsageData.ScrollArea} />
           </div>
         </TabsContent>
 
@@ -159,9 +203,9 @@ export default function DesignSystemPage() {
           </Card>
 
           <div className="grid gap-6">
-            <AlertDemo />
-            <ToastDemo />
-            <SkeletonDemo />
+            <AlertDemo usages={componentUsageData.Alert} />
+            <ToastDemo usages={componentUsageData.Toast} />
+            <SkeletonDemo usages={componentUsageData.Skeleton} />
           </div>
         </TabsContent>
 
@@ -174,17 +218,20 @@ export default function DesignSystemPage() {
                 Overlay Components
               </CardTitle>
               <CardDescription>
-                Оверлей компоненты: диалоги, модальные окна, всплывающие меню
+                Оверлей компоненты: диалоги, модальные окна, всплывающие меню, командная палитра
               </CardDescription>
             </CardHeader>
           </Card>
 
           <div className="grid gap-6">
-            <DialogDemo />
-            <SheetDemo />
-            <PopoverDemo />
-            <TooltipDemo />
-            <DropdownMenuDemo />
+            <DialogDemo usages={componentUsageData.Dialog} />
+            <AlertDialogDemo usages={componentUsageData.AlertDialog} />
+            <SheetDemo usages={componentUsageData.Sheet} />
+            <PopoverDemo usages={componentUsageData.Popover} />
+            <TooltipDemo usages={componentUsageData.Tooltip} />
+            <DropdownMenuDemo usages={componentUsageData.DropdownMenu} />
+            <CommandDemo usages={componentUsageData.Command} />
+            <ContextMenuDemo usages={componentUsageData.ContextMenu} />
           </div>
         </TabsContent>
 
@@ -197,14 +244,16 @@ export default function DesignSystemPage() {
                 Navigation
               </CardTitle>
               <CardDescription>
-                Навигационные компоненты: вкладки, раскрывающиеся блоки
+                Навигационные компоненты: вкладки, раскрывающиеся блоки, переключатели
               </CardDescription>
             </CardHeader>
           </Card>
 
           <div className="grid gap-6">
-            <TabsDemo />
-            <CollapsibleDemo />
+            <TabsDemo usages={componentUsageData.Tabs} />
+            <CollapsibleDemo usages={componentUsageData.Collapsible} />
+            <ToggleDemo usages={componentUsageData.Toggle} />
+            <ToggleGroupDemo usages={componentUsageData.ToggleGroup} />
           </div>
         </TabsContent>
       </Tabs>

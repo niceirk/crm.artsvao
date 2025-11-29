@@ -95,8 +95,59 @@
     -ms-overflow-style: none;  /* IE and Edge */
     scrollbar-width: none;  /* Firefox */
   }
-  
+
   .scrollbar-hide::-webkit-scrollbar {
     display: none;  /* Chrome, Safari and Opera */
   }
+}
+
+/* Toast styles (Sonner) */
+[data-sonner-toast] {
+  --normal-bg: rgba(239, 246, 255, 0.9);
+  --normal-border: rgba(191, 219, 254, 0.5);
+  --normal-text: #111827;
+  color: #111827 !important;
+  font-weight: 400 !important;
+}
+
+[data-sonner-toast] [data-title] {
+  font-weight: 400 !important;
+}
+
+[data-sonner-toast][data-type="success"] {
+  --success-bg: rgba(240, 253, 244, 0.9);
+  --success-border: rgba(187, 247, 208, 0.5);
+  background: rgba(240, 253, 244, 0.9) !important;
+  border-color: rgba(187, 247, 208, 0.5) !important;
+  color: #111827 !important;
+}
+
+[data-sonner-toast][data-type="success"] [data-icon] svg {
+  color: #22c55e !important;
+}
+
+[data-sonner-toast][data-type="error"] {
+  background: rgba(254, 242, 242, 0.9) !important;
+  border-color: rgba(254, 202, 202, 0.5) !important;
+  color: #111827 !important;
+}
+
+[data-sonner-toast][data-type="error"] [data-icon] svg {
+  color: #ef4444 !important;
+}
+
+[data-sonner-toast][data-type="info"] {
+  background: rgba(239, 246, 255, 0.9) !important;
+  border-color: rgba(191, 219, 254, 0.5) !important;
+  color: #111827 !important;
+}
+
+[data-sonner-toast][data-type="info"] [data-icon] svg {
+  color: #3b82f6 !important;
+}
+
+[data-sonner-toast][data-type="warning"] {
+  background: rgba(255, 251, 235, 0.9) !important;
+  border-color: rgba(253, 230, 138, 0.5) !important;
+  color: #111827 !important;
 }

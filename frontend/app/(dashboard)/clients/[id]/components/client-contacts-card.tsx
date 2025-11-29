@@ -7,6 +7,7 @@ import type { Client } from '@/lib/types/clients';
 import { EditableField } from '@/components/editable-field';
 import { useUpdateClient } from '@/hooks/useClients';
 import { formatPhoneNumber } from '@/lib/utils/phone';
+import { CallButton } from '@/components/click-to-call/call-button';
 
 interface ClientContactsCardProps {
   client: Client;
@@ -54,13 +55,7 @@ export function ClientContactsCard({ client }: ClientContactsCardProps) {
               onSave={(value) => handleUpdate('phone', value)}
             />
           </div>
-          {client.phone && (
-            <Button variant="outline" size="sm" asChild className="shrink-0 mt-6">
-              <a href={`tel:${client.phone}`}>
-                Позвонить
-              </a>
-            </Button>
-          )}
+          {client.phone && <CallButton phoneNumber={client.phone} clientId={client.id} className="mt-6" />}
         </div>
 
         <div className="flex items-start gap-3">

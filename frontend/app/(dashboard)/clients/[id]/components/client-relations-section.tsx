@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,8 +13,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Users, Plus, AlertCircle, Trash2, Loader2 } from 'lucide-react';
-import { useClientRelations, useDeleteClientRelation } from '@/hooks/useClients';
+import { useClientRelations, useDeleteClientRelation, useUpdateClientRelation } from '@/hooks/useClients';
 import { AddRelationDialog } from './add-relation-dialog';
 import type { Client, ClientRelation, RelationType } from '@/lib/types/clients';
 
@@ -64,6 +70,15 @@ export function ClientRelationsSection({ client }: ClientRelationsSectionProps) 
 
   const { data: relationsData, isLoading } = useClientRelations(client.id);
   const deleteRelation = useDeleteClientRelation();
+  const updateRelation = useUpdateClientRelation();
+
+  const handleUpdateRelationType = (relationId: string, newType: RelationType) => {
+    updateRelation.mutate({
+      clientId: client.id,
+      relationId,
+      relationType: newType,
+    });
+  };
 
   const handleDelete = async () => {
     if (!relationToDelete) return;
@@ -114,7 +129,7 @@ export function ClientRelationsSection({ client }: ClientRelationsSectionProps) 
             <p className="text-sm text-muted-foreground">Нет родственных связей</p>
           </div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {allRelations.map((relation) => {
               const isOutgoing = relation.clientId === client.id;
               const relatedPerson = isOutgoing ? relation.relatedClient : relation.client;
@@ -124,14 +139,14 @@ export function ClientRelationsSection({ client }: ClientRelationsSectionProps) 
               return (
                 <div
                   key={relation.id}
-                  className="flex items-center justify-between p-2 rounded border bg-muted/30"
+                  className="flex items-center justify-between"
                 >
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center justify-center h-8 w-8 rounded-full bg-primary/10">
-                      <Users className="h-4 w-4 text-primary" />
-                    </div>
+                  <div className="flex items-center gap-3">
                     <div>
-                      <p className="text-sm font-medium">
+                      <Link
+                        href={`/clients/${relatedPerson.id}`}
+                        className="text-sm font-medium hover:underline"
+                      >
                         {relatedPerson.lastName} {relatedPerson.firstName}
                         {(() => {
                           const age = calculateAge(relatedPerson.dateOfBirth);
@@ -141,34 +156,37 @@ export function ClientRelationsSection({ client }: ClientRelationsSectionProps) 
                             </span>
                           ) : null;
                         })()}
-                      </p>
-                      <div className="flex items-center gap-1">
-                        <Badge variant="secondary" className="text-[10px]">
-                          {relationTypeLabels[relation.relationType]}
-                        </Badge>
-                        {!isOutgoing && (
-                          <span className="text-[10px] text-muted-foreground">(обратная)</span>
-                        )}
+                      </Link>
+                      <div className="flex items-center gap-1 mt-0.5">
+                        <Select
+                          value={relation.relationType}
+                          onValueChange={(value) =>
+                            handleUpdateRelationType(relation.id, value as RelationType)
+                          }
+                          disabled={updateRelation.isPending}
+                        >
+                          <SelectTrigger className="h-5 w-auto text-xs border-none bg-transparent p-0 pr-6 text-muted-foreground hover:text-foreground focus:ring-0">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(relationTypeLabels).map(([value, label]) => (
+                              <SelectItem key={value} value={value} className="text-xs">
+                                {label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <Link href={`/clients/${relatedPerson.id}`}>
-                      <Button variant="ghost" size="sm" className="h-7 text-xs">
-                        Открыть
-                      </Button>
-                    </Link>
-                    {isOutgoing && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 w-7 p-0"
-                        onClick={() => setRelationToDelete(relation)}
-                      >
-                        <Trash2 className="h-3 w-3 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 opacity-50 hover:opacity-100"
+                    onClick={() => setRelationToDelete(relation)}
+                  >
+                    <Trash2 className="h-3 w-3 text-destructive" />
+                  </Button>
                 </div>
               );
             })}
@@ -188,12 +206,12 @@ export function ClientRelationsSection({ client }: ClientRelationsSectionProps) 
             <AlertDialogTitle>Удалить родственную связь?</AlertDialogTitle>
             <AlertDialogDescription>
               Вы уверены, что хотите удалить связь с{' '}
-              {relationToDelete?.relatedClient && (
-                <>
-                  {relationToDelete.relatedClient.lastName}{' '}
-                  {relationToDelete.relatedClient.firstName}
-                </>
-              )}
+              {(() => {
+                const person = relationToDelete?.clientId === client.id
+                  ? relationToDelete?.relatedClient
+                  : relationToDelete?.client;
+                return person ? `${person.lastName} ${person.firstName}` : '';
+              })()}
               ?
             </AlertDialogDescription>
           </AlertDialogHeader>

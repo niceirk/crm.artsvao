@@ -64,3 +64,34 @@ export const useDeleteTeacher = () => {
     },
   });
 };
+
+export const useUploadTeacherPhoto = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) =>
+      teachersApi.uploadPhoto(id, file),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['teachers'] });
+      queryClient.invalidateQueries({ queryKey: ['teachers', variables.id] });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Ошибка загрузки фото');
+    },
+  });
+};
+
+export const useDeleteTeacherPhoto = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => teachersApi.deletePhoto(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['teachers'] });
+      queryClient.invalidateQueries({ queryKey: ['teachers', id] });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Ошибка удаления фото');
+    },
+  });
+};

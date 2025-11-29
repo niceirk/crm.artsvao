@@ -57,4 +57,18 @@ export const teachersApi = {
   deleteTeacher: async (id: string): Promise<void> => {
     await apiClient.delete(`/teachers/${id}`);
   },
+
+  uploadPhoto: async (id: string, file: File): Promise<Teacher> => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    const { data } = await apiClient.post(`/teachers/${id}/photo`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
+
+  deletePhoto: async (id: string): Promise<Teacher> => {
+    const { data } = await apiClient.delete(`/teachers/${id}/photo`);
+    return data;
+  },
 };

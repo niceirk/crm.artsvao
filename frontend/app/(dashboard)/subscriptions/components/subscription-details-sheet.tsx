@@ -274,6 +274,14 @@ export function SubscriptionDetailsSheet({
                   {formatCurrency(subscription.paidPrice)}
                 </span>
               </div>
+              {subscription.pricePerLesson && (
+                <div className="flex justify-between pt-2 mt-2 border-t border-dashed">
+                  <span className="text-sm text-muted-foreground">Цена за занятие:</span>
+                  <span className="text-sm font-medium text-primary">
+                    {formatCurrency(subscription.pricePerLesson)}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 

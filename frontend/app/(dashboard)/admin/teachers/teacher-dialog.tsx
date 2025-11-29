@@ -30,7 +30,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { useCreateTeacher, useUpdateTeacher } from '@/hooks/use-teachers';
+import { PhotoUpload } from '@/components/photo-upload';
+import { useCreateTeacher, useUpdateTeacher, useUploadTeacherPhoto, useDeleteTeacherPhoto } from '@/hooks/use-teachers';
 import { Teacher } from '@/lib/api/teachers';
 
 const statusOptions = [
@@ -47,7 +48,6 @@ const formSchema = z.object({
   email: z.string().email('Введите корректный email').optional().or(z.literal('')),
   specialization: z.string().optional(),
   salaryPercentage: z.coerce.number().min(0, 'Минимум 0').max(100, 'Максимум 100'),
-  photoUrl: z.string().url('Введите корректный URL').optional().or(z.literal('')),
   status: z.enum(['ACTIVE', 'ON_LEAVE', 'RETIRED']).optional(),
 });
 
@@ -62,6 +62,20 @@ interface TeacherDialogProps {
 export function TeacherDialog({ open, onOpenChange, teacher }: TeacherDialogProps) {
   const createTeacher = useCreateTeacher();
   const updateTeacher = useUpdateTeacher();
+  const uploadPhoto = useUploadTeacherPhoto();
+  const deletePhoto = useDeleteTeacherPhoto();
+
+  const handlePhotoUpload = async (file: File) => {
+    if (teacher) {
+      await uploadPhoto.mutateAsync({ id: teacher.id, file });
+    }
+  };
+
+  const handlePhotoDelete = async () => {
+    if (teacher) {
+      await deletePhoto.mutateAsync(teacher.id);
+    }
+  };
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -73,7 +87,6 @@ export function TeacherDialog({ open, onOpenChange, teacher }: TeacherDialogProp
       email: '',
       specialization: '',
       salaryPercentage: 50,
-      photoUrl: '',
       status: 'ACTIVE',
     },
   });
@@ -88,7 +101,6 @@ export function TeacherDialog({ open, onOpenChange, teacher }: TeacherDialogProp
         email: teacher.email || '',
         specialization: teacher.specialization || '',
         salaryPercentage: teacher.salaryPercentage || 50,
-        photoUrl: teacher.photoUrl || '',
         status: teacher.status,
       });
     } else {
@@ -100,7 +112,6 @@ export function TeacherDialog({ open, onOpenChange, teacher }: TeacherDialogProp
         email: '',
         specialization: '',
         salaryPercentage: 50,
-        photoUrl: '',
         status: 'ACTIVE',
       });
     }
@@ -114,7 +125,6 @@ export function TeacherDialog({ open, onOpenChange, teacher }: TeacherDialogProp
         middleName: values.middleName || undefined,
         email: values.email || undefined,
         specialization: values.specialization || undefined,
-        photoUrl: values.photoUrl || undefined,
       };
 
       if (teacher) {
@@ -289,22 +299,24 @@ export function TeacherDialog({ open, onOpenChange, teacher }: TeacherDialogProp
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="photoUrl"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>URL фотографии</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="https://example.com/photo.jpg"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Фото - только для редактирования */}
+            {teacher && (
+              <div className="space-y-2">
+                <FormLabel>Фото преподавателя</FormLabel>
+                <div className="flex items-center gap-4">
+                  <PhotoUpload
+                    photoUrl={teacher.photoUrl}
+                    fallback={`${teacher.firstName} ${teacher.lastName}`}
+                    onUpload={handlePhotoUpload}
+                    onDelete={handlePhotoDelete}
+                    size="lg"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Наведите на фото для загрузки или удаления
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="flex justify-end gap-2">
               <Button

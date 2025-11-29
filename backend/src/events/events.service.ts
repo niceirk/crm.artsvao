@@ -6,6 +6,7 @@ import { SyncResult } from './dto/sync-events.dto';
 import { ConflictCheckerService } from '../shared/conflict-checker.service';
 import { EmailService } from '../email/email.service';
 import { PyrusService } from '../integrations/pyrus/pyrus.service';
+import { S3StorageService } from '../common/services/s3-storage.service';
 
 @Injectable()
 export class EventsService {
@@ -17,6 +18,7 @@ export class EventsService {
     private emailService: EmailService,
     @Inject(forwardRef(() => PyrusService))
     private pyrusService: PyrusService,
+    private s3Storage: S3StorageService,
   ) {}
 
   async create(createEventDto: CreateEventDto) {
@@ -542,5 +544,84 @@ export class EventsService {
 
     this.logger.log(`Sync completed: success=${result.success}, failed=${result.failed}`);
     return result;
+  }
+
+  /**
+   * Загрузить фото события в S3
+   */
+  async uploadPhoto(eventId: string, file: Express.Multer.File) {
+    const event = await this.findOne(eventId);
+
+    // Удаляем старое фото из S3, если оно есть
+    if (event.photoUrl && !event.photoUrl.startsWith('/uploads/')) {
+      try {
+        const urlParts = event.photoUrl.split('/');
+        const fileName = `events/${urlParts[urlParts.length - 1]}`;
+        await this.s3Storage.deleteImage(fileName);
+      } catch (error) {
+        this.logger.warn(`Failed to delete old photo: ${error.message}`);
+      }
+    }
+
+    // Загружаем новое фото в S3
+    const result = await this.s3Storage.uploadImage(file, 'events', 1200, 85);
+
+    return this.prisma.event.update({
+      where: { id: eventId },
+      data: { photoUrl: result.imageUrl },
+      include: {
+        eventType: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        responsibleUser: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Удалить фото события из S3
+   */
+  async deletePhoto(eventId: string) {
+    const event = await this.findOne(eventId);
+
+    // Удаляем фото из S3, если оно есть
+    if (event.photoUrl && !event.photoUrl.startsWith('/uploads/')) {
+      try {
+        const urlParts = event.photoUrl.split('/');
+        const fileName = `events/${urlParts[urlParts.length - 1]}`;
+        await this.s3Storage.deleteImage(fileName);
+      } catch (error) {
+        this.logger.warn(`Failed to delete photo from S3: ${error.message}`);
+      }
+    }
+
+    return this.prisma.event.update({
+      where: { id: eventId },
+      data: { photoUrl: null },
+      include: {
+        eventType: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        responsibleUser: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
+      },
+    });
   }
 }

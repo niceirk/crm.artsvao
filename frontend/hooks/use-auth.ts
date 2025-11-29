@@ -14,7 +14,7 @@ export function useAuth() {
     onSuccess: (data) => {
       setAuth(data.user, data.accessToken, data.refreshToken);
       queryClient.invalidateQueries({ queryKey: ['user'] });
-      router.push('/schedule');
+      router.push('/room-planner');
     },
   });
 

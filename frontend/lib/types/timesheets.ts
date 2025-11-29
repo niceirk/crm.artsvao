@@ -29,6 +29,8 @@ export interface TimesheetCompensation {
   id?: string;
   excusedCount: number;
   calculatedAmount: number;
+  baseCalculatedAmount?: number; // Компенсация за текущий месяц (excused * pricePerLesson)
+  medCertCompensation?: number; // Компенсация из мед. справок (перенесённая с других месяцев)
   adjustedAmount: number | null;
   pricePerLesson: number;
   notes?: string;
@@ -38,7 +40,7 @@ export interface TimesheetCompensation {
 export interface TimesheetSubscription {
   id: string;
   name: string;
-  type: 'UNLIMITED' | 'SINGLE_VISIT';
+  type: 'UNLIMITED' | 'SINGLE_VISIT' | 'VISIT_PACK';
   price: number;
 }
 

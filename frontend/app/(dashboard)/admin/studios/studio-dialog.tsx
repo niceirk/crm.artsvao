@@ -30,7 +30,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { useCreateStudio, useUpdateStudio } from '@/hooks/use-studios';
+import { PhotoUpload } from '@/components/photo-upload';
+import { useCreateStudio, useUpdateStudio, useUploadStudioPhoto, useDeleteStudioPhoto } from '@/hooks/use-studios';
 import { Studio } from '@/lib/api/studios';
 
 const statusOptions = [
@@ -49,7 +50,6 @@ const formSchema = z.object({
   description: z.string().optional(),
   type: z.enum(['GROUP', 'INDIVIDUAL', 'BOTH']),
   category: z.string().optional(),
-  photoUrl: z.string().url('Введите корректный URL').optional().or(z.literal('')),
   status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
 });
 
@@ -64,6 +64,20 @@ interface StudioDialogProps {
 export function StudioDialog({ open, onOpenChange, studio }: StudioDialogProps) {
   const createStudio = useCreateStudio();
   const updateStudio = useUpdateStudio();
+  const uploadPhoto = useUploadStudioPhoto();
+  const deletePhoto = useDeleteStudioPhoto();
+
+  const handlePhotoUpload = async (file: File) => {
+    if (studio) {
+      await uploadPhoto.mutateAsync({ id: studio.id, file });
+    }
+  };
+
+  const handlePhotoDelete = async () => {
+    if (studio) {
+      await deletePhoto.mutateAsync(studio.id);
+    }
+  };
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -72,7 +86,6 @@ export function StudioDialog({ open, onOpenChange, studio }: StudioDialogProps) 
       description: '',
       type: 'GROUP',
       category: '',
-      photoUrl: '',
       status: 'ACTIVE',
     },
   });
@@ -84,7 +97,6 @@ export function StudioDialog({ open, onOpenChange, studio }: StudioDialogProps) 
         description: studio.description || '',
         type: studio.type,
         category: studio.category || '',
-        photoUrl: studio.photoUrl || '',
         status: studio.status,
       });
     } else {
@@ -93,7 +105,6 @@ export function StudioDialog({ open, onOpenChange, studio }: StudioDialogProps) 
         description: '',
         type: 'GROUP',
         category: '',
-        photoUrl: '',
         status: 'ACTIVE',
       });
     }
@@ -205,19 +216,24 @@ export function StudioDialog({ open, onOpenChange, studio }: StudioDialogProps) 
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="photoUrl"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>URL фотографии</FormLabel>
-                  <FormControl>
-                    <Input placeholder="https://example.com/photo.jpg" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Фото - только для редактирования */}
+            {studio && (
+              <div className="space-y-2">
+                <FormLabel>Фото студии</FormLabel>
+                <div className="flex items-center gap-4">
+                  <PhotoUpload
+                    photoUrl={studio.photoUrl}
+                    fallback={studio.name}
+                    onUpload={handlePhotoUpload}
+                    onDelete={handlePhotoDelete}
+                    size="lg"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Наведите на фото для загрузки или удаления
+                  </p>
+                </div>
+              </div>
+            )}
 
             <FormField
               control={form.control}

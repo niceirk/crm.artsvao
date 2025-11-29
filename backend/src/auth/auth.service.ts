@@ -100,6 +100,7 @@ export class AuthService {
         lastName: user.lastName,
         role: user.role,
         status: user.status,
+        avatarUrl: user.avatarUrl,
       },
     };
   }
@@ -190,6 +191,7 @@ export class AuthService {
           lastName: user.lastName,
           role: user.role,
           status: user.status,
+          avatarUrl: user.avatarUrl,
         },
       };
     } catch (error) {
@@ -210,6 +212,7 @@ export class AuthService {
         lastName: true,
         role: true,
         status: true,
+        avatarUrl: true,
         lastLoginAt: true,
         createdAt: true,
       },

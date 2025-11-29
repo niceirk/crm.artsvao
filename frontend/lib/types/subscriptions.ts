@@ -1,6 +1,6 @@
 import type { AttendanceStatus } from './attendance';
 
-export type SubscriptionTypeEnum = 'UNLIMITED' | 'SINGLE_VISIT';
+export type SubscriptionTypeEnum = 'UNLIMITED' | 'SINGLE_VISIT' | 'VISIT_PACK';
 
 export type SubscriptionStatus = 'ACTIVE' | 'EXPIRED' | 'FROZEN' | 'CANCELLED';
 
@@ -74,6 +74,7 @@ export interface Subscription {
   originalPrice: number;
   discountAmount: number;
   paidPrice: number;
+  pricePerLesson?: number | null; // Цена за занятие (для расчёта компенсации)
   remainingVisits?: number;
   purchasedMonths: number;
   status: SubscriptionStatus;
@@ -180,5 +181,48 @@ export interface PaginatedResponse<T> {
     limit: number;
     total: number;
     totalPages: number;
+  };
+}
+
+// DTO для продажи независимых услуг
+export interface SellIndependentServiceDto {
+  clientId: string;
+  serviceId: string;
+  quantity?: number;
+  notes?: string;
+}
+
+// Результат продажи услуги
+export interface ServiceSale {
+  id: string;
+  clientId: string;
+  serviceId: string;
+  quantity: number;
+  originalPrice: number;
+  paidPrice: number;
+  vatRate: number;
+  vatAmount: number;
+  notes?: string;
+  purchaseDate: string;
+  managerId?: string;
+  createdAt: string;
+  client: {
+    id: string;
+    firstName: string;
+    lastName: string;
+  };
+  service: {
+    id: string;
+    name: string;
+    price: number;
+    category?: {
+      id: string;
+      name: string;
+    };
+  };
+  manager?: {
+    id: string;
+    firstName: string;
+    lastName: string;
   };
 }

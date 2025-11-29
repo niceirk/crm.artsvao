@@ -6,6 +6,7 @@ import { GroupsService } from '../groups/groups.service';
 import { SellSubscriptionDto } from './dto/sell-subscription.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { SubscriptionFilterDto } from './dto/subscription-filter.dto';
+import { VatHelper } from './vat.helper';
 import {
   Prisma,
   SubscriptionStatus,
@@ -29,10 +30,16 @@ export class SubscriptionsService {
    * Использует транзакцию для обеспечения целостности данных
    */
   async sellSubscription(sellDto: SellSubscriptionDto, managerId?: string) {
-    // 1. Получить тип абонемента (вне транзакции - только чтение)
+    // 1. Получить тип абонемента с группой и категорией для НДС (вне транзакции - только чтение)
     const subscriptionType = await this.prisma.subscriptionType.findUnique({
       where: { id: sellDto.subscriptionTypeId },
-      include: { group: true },
+      include: {
+        group: {
+          include: {
+            serviceCategory: true,
+          },
+        },
+      },
     });
 
     if (!subscriptionType) {
@@ -79,6 +86,19 @@ export class SubscriptionsService {
         lessonStats,
       });
 
+    // 3.5. Рассчитать НДС
+    const categoryVatRate = subscriptionType.group.serviceCategory?.defaultVatRate ?? 0;
+    const overrideVatRate = subscriptionType.vatRate;
+    const vatData = VatHelper.calculateForSale({
+      clientBirthDate: client.dateOfBirth,
+      totalPrice: finalPrice,
+      categoryVatRate: Number(categoryVatRate),
+      overrideVatRate: overrideVatRate !== null ? Number(overrideVatRate) : undefined,
+      vatIncluded: subscriptionType.vatIncluded ?? true,
+    });
+
+    console.log(`💰 НДС расчёт: ставка ${vatData.effectiveVatRate}%, сумма ${vatData.vatAmount} ₽${vatData.isChildDiscount ? ' (детская скидка)' : ''}`);
+
     // 4. Проверить минимальный порог (для первого месяца)
     if (sellDto.purchasedMonths === 1) {
       this.validateMinimumThreshold(lessonStats.remainingPlanned);
@@ -86,7 +106,7 @@ export class SubscriptionsService {
 
     // 5. Выполнить все критические операции в транзакции
     const subscription = await this.prisma.$transaction(async (tx) => {
-      // 5.1. Создать абонемент
+      // 5.1. Создать абонемент с НДС
       const newSubscription = await tx.subscription.create({
         data: {
           clientId: sellDto.clientId,
@@ -100,6 +120,8 @@ export class SubscriptionsService {
           discountAmount: discountAmount,
           paidPrice: finalPrice,
           pricePerLesson: pricePerLessonWithDiscount,
+          vatRate: vatData.effectiveVatRate,
+          vatAmount: vatData.vatAmount,
           remainingVisits:
             subscriptionType.type === 'SINGLE_VISIT'
               ? this.calculateRemainingVisits(purchaseDate, endDate)
@@ -173,8 +195,8 @@ export class SubscriptionsService {
               quantity: lessonStats.remainingPlanned,
               basePrice: Number(pricePerLesson),
               unitPrice: Number(pricePerLesson),
-              vatRate: 0,
-              vatAmount: 0,
+              vatRate: vatData.effectiveVatRate,
+              vatAmount: vatData.vatAmount,
               discountPercent:
                 applyBenefit && client.benefitCategory?.isActive
                   ? Number(client.benefitCategory.discountPercent)
@@ -709,11 +731,12 @@ export class SubscriptionsService {
     },
     managerId?: string,
   ) {
-    // 1. Получить группу с ценой разового посещения (вне транзакции - только чтение)
+    // 1. Получить группу с ценой разового посещения и категорией для НДС (вне транзакции - только чтение)
     const group = await this.prisma.group.findUnique({
       where: { id: dto.groupId },
       include: {
         studio: { select: { id: true, name: true } },
+        serviceCategory: true,
       },
     });
 
@@ -741,6 +764,19 @@ export class SubscriptionsService {
     const dateObj = dto.date ? new Date(dto.date) : today;
     const validMonth = this.formatValidMonth(dateObj);
 
+    // 3.5. Рассчитать НДС для разового занятия
+    const categoryVatRate = group.serviceCategory?.defaultVatRate ?? 0;
+    const overrideVatRate = group.singleSessionVatRate;
+    const vatData = VatHelper.calculateForSale({
+      clientBirthDate: client.dateOfBirth,
+      totalPrice: singleSessionPrice,
+      categoryVatRate: Number(categoryVatRate),
+      overrideVatRate: overrideVatRate !== null ? Number(overrideVatRate) : undefined,
+      vatIncluded: true,
+    });
+
+    console.log(`💰 НДС разовое: ставка ${vatData.effectiveVatRate}%, сумма ${vatData.vatAmount} ₽${vatData.isChildDiscount ? ' (детская скидка)' : ''}`);
+
     // 4. Выполнить все критические операции в транзакции
     const subscription = await this.prisma.$transaction(async (tx) => {
       // 4.1. Найти или создать тип подписки SINGLE_VISIT для группы
@@ -764,7 +800,7 @@ export class SubscriptionsService {
         });
       }
 
-      // 4.2. Создать подписку
+      // 4.2. Создать подписку с НДС
       const newSubscription = await tx.subscription.create({
         data: {
           clientId: dto.clientId,
@@ -778,7 +814,10 @@ export class SubscriptionsService {
           discountAmount: 0,
           paidPrice: singleSessionPrice,
           pricePerLesson: singleSessionPrice,
+          vatRate: vatData.effectiveVatRate,
+          vatAmount: vatData.vatAmount,
           remainingVisits: 1,
+          totalVisits: 1,
           purchasedMonths: 1,
           status: 'ACTIVE',
         },
@@ -806,8 +845,8 @@ export class SubscriptionsService {
               quantity: 1,
               basePrice: singleSessionPrice,
               unitPrice: singleSessionPrice,
-              vatRate: 0,
-              vatAmount: 0,
+              vatRate: vatData.effectiveVatRate,
+              vatAmount: vatData.vatAmount,
               discountPercent: 0,
               totalPrice: singleSessionPrice,
               writeOffTiming: WriteOffTiming.ON_SALE,
@@ -844,5 +883,325 @@ export class SubscriptionsService {
     });
 
     return subscription;
+  }
+
+  /**
+   * Продажа пакета разовых занятий
+   * Создаёт подписку с remainingVisits = quantity (бессрочная)
+   */
+  async sellSingleSessionPack(
+    dto: {
+      clientId: string;
+      groupId: string;
+      quantity: number;
+      notes?: string;
+      applyBenefit?: boolean;
+    },
+    managerId?: string,
+  ) {
+    // 1. Получить группу с категорией для НДС
+    const group = await this.prisma.group.findUnique({
+      where: { id: dto.groupId },
+      include: {
+        studio: { select: { id: true, name: true } },
+        serviceCategory: true,
+      },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Группа не найдена');
+    }
+
+    const singleSessionPrice = Number(group.singleSessionPrice);
+    if (singleSessionPrice <= 0) {
+      throw new BadRequestException('Цена разового посещения не установлена для данной группы');
+    }
+
+    // 2. Получить клиента с льготной категорией
+    const client = await this.prisma.client.findUnique({
+      where: { id: dto.clientId },
+      include: { benefitCategory: true },
+    });
+
+    if (!client) {
+      throw new NotFoundException('Клиент не найден');
+    }
+
+    // 3. Рассчитать цену пакета
+    const quantity = dto.quantity;
+    const totalPrice = singleSessionPrice * quantity;
+    const applyBenefit = dto.applyBenefit ?? true;
+
+    let discountAmount = 0;
+    let discountPercent = 0;
+    if (applyBenefit && client.benefitCategory?.isActive) {
+      discountPercent = Number(client.benefitCategory.discountPercent);
+      discountAmount = (totalPrice * discountPercent) / 100;
+    }
+    const finalPrice = this.toMoney(totalPrice - discountAmount);
+
+    // 4. Рассчитать НДС
+    const categoryVatRate = group.serviceCategory?.defaultVatRate ?? 0;
+    const overrideVatRate = group.singleSessionVatRate;
+    const vatData = VatHelper.calculateForSale({
+      clientBirthDate: client.dateOfBirth,
+      totalPrice: finalPrice,
+      categoryVatRate: Number(categoryVatRate),
+      overrideVatRate: overrideVatRate !== null ? Number(overrideVatRate) : undefined,
+      vatIncluded: true,
+    });
+
+    console.log(`💰 НДС пакет ${quantity} шт: ставка ${vatData.effectiveVatRate}%, сумма ${vatData.vatAmount} ₽${vatData.isChildDiscount ? ' (детская скидка)' : ''}`);
+
+    // 5. Даты
+    const today = this.startOfDay(new Date());
+    const validMonth = this.formatValidMonth(today);
+    // Бессрочный пакет - endDate через 10 лет
+    const endDate = new Date(today);
+    endDate.setFullYear(endDate.getFullYear() + 10);
+
+    // 6. Выполнить все операции в транзакции
+    const subscription = await this.prisma.$transaction(async (tx) => {
+      // 6.1. Найти или создать тип подписки VISIT_PACK для группы
+      let subscriptionType = await tx.subscriptionType.findFirst({
+        where: {
+          groupId: dto.groupId,
+          type: 'VISIT_PACK',
+          isActive: true,
+        },
+      });
+
+      if (!subscriptionType) {
+        subscriptionType = await tx.subscriptionType.create({
+          data: {
+            name: `Пакет разовых - ${group.name}`,
+            type: 'VISIT_PACK',
+            price: singleSessionPrice,
+            groupId: dto.groupId,
+            isActive: true,
+          },
+        });
+      }
+
+      // 6.2. Создать подписку (бессрочную)
+      const newSubscription = await tx.subscription.create({
+        data: {
+          clientId: dto.clientId,
+          subscriptionTypeId: subscriptionType.id,
+          groupId: dto.groupId,
+          validMonth,
+          purchaseDate: today,
+          startDate: today,
+          endDate: this.endOfDay(endDate),
+          originalPrice: totalPrice,
+          discountAmount: this.toMoney(discountAmount),
+          paidPrice: finalPrice,
+          pricePerLesson: singleSessionPrice,
+          vatRate: vatData.effectiveVatRate,
+          vatAmount: vatData.vatAmount,
+          remainingVisits: quantity,
+          totalVisits: quantity,
+          purchasedMonths: 1,
+          status: 'ACTIVE',
+        },
+      });
+
+      // 6.3. Создать Invoice
+      const invoiceNumber = `INV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+      await tx.invoice.create({
+        data: {
+          invoiceNumber,
+          clientId: dto.clientId,
+          subscriptionId: newSubscription.id,
+          subtotal: totalPrice,
+          discountAmount: this.toMoney(discountAmount),
+          totalAmount: finalPrice,
+          status: 'PENDING',
+          notes: dto.notes || `Пакет ${quantity} разовых занятий "${group.name}"`,
+          issuedAt: new Date(),
+          createdBy: managerId,
+          items: {
+            create: {
+              serviceType: ServiceType.SINGLE_SESSION,
+              serviceName: `Пакет разовых занятий - ${group.name}`,
+              serviceDescription: `${quantity} занятий, бессрочный`,
+              quantity,
+              basePrice: singleSessionPrice,
+              unitPrice: singleSessionPrice,
+              vatRate: vatData.effectiveVatRate,
+              vatAmount: vatData.vatAmount,
+              discountPercent,
+              discountAmount: this.toMoney(discountAmount),
+              totalPrice: finalPrice,
+              writeOffTiming: WriteOffTiming.ON_USE,
+              remainingQuantity: quantity,
+            },
+          },
+        },
+      });
+
+      console.log(`✅ Sold pack of ${quantity} sessions for client ${dto.clientId} in group ${dto.groupId}`);
+
+      // Вернуть подписку с нужными связями
+      return tx.subscription.findUnique({
+        where: { id: newSubscription.id },
+        include: {
+          client: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              benefitCategory: true,
+            },
+          },
+          group: {
+            select: {
+              id: true,
+              name: true,
+              studio: { select: { id: true, name: true } },
+            },
+          },
+          subscriptionType: true,
+        },
+      });
+    });
+
+    return subscription;
+  }
+
+  /**
+   * Продажа независимой услуги (копирование, печать и т.д.)
+   * Создаёт ServiceSale и Invoice
+   */
+  async sellIndependentService(
+    dto: {
+      clientId: string;
+      serviceId: string;
+      quantity?: number;
+      notes?: string;
+    },
+    managerId?: string,
+  ) {
+    // 1. Получить услугу
+    const service = await this.prisma.independentService.findUnique({
+      where: { id: dto.serviceId },
+      include: { category: true },
+    });
+
+    if (!service) {
+      throw new NotFoundException('Услуга не найдена');
+    }
+
+    if (!service.isActive) {
+      throw new BadRequestException('Услуга неактивна');
+    }
+
+    // 2. Получить клиента
+    const client = await this.prisma.client.findUnique({
+      where: { id: dto.clientId },
+    });
+
+    if (!client) {
+      throw new NotFoundException('Клиент не найден');
+    }
+
+    // 3. Рассчитать цену
+    const quantity = dto.quantity || 1;
+    const unitPrice = Number(service.price);
+    const totalPrice = this.toMoney(unitPrice * quantity);
+
+    // 4. Рассчитать НДС
+    const vatRate = Number(service.vatRate);
+    const vatAmount = vatRate > 0 ? this.toMoney(totalPrice * vatRate / (100 + vatRate)) : 0;
+
+    console.log(`💰 Продажа услуги: ${service.name}, кол-во: ${quantity}, сумма: ${totalPrice} ₽, НДС ${vatRate}%: ${vatAmount} ₽`);
+
+    // 5. Выполнить операции в транзакции
+    const result = await this.prisma.$transaction(async (tx) => {
+      // 5.1. Создать запись о продаже услуги
+      const serviceSale = await tx.serviceSale.create({
+        data: {
+          clientId: dto.clientId,
+          serviceId: dto.serviceId,
+          quantity,
+          originalPrice: totalPrice,
+          paidPrice: totalPrice,
+          vatRate,
+          vatAmount,
+          notes: dto.notes,
+          purchaseDate: new Date(),
+          managerId,
+        },
+      });
+
+      // 5.2. Создать Invoice
+      const invoiceNumber = `INV-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+      const invoice = await tx.invoice.create({
+        data: {
+          invoiceNumber,
+          clientId: dto.clientId,
+          subtotal: totalPrice,
+          discountAmount: 0,
+          totalAmount: totalPrice,
+          status: 'PENDING',
+          notes: dto.notes || `Услуга: ${service.name}`,
+          issuedAt: new Date(),
+          createdBy: managerId,
+          items: {
+            create: {
+              serviceType: ServiceType.OTHER,
+              serviceName: service.name,
+              serviceDescription: service.description || '',
+              quantity,
+              basePrice: unitPrice,
+              unitPrice: unitPrice,
+              vatRate,
+              vatAmount,
+              discountPercent: 0,
+              totalPrice,
+              writeOffTiming: WriteOffTiming.ON_SALE,
+            },
+          },
+        },
+      });
+
+      console.log(`✅ Продана услуга ${service.name} клиенту ${dto.clientId}, invoice ${invoice.id}`);
+
+      // Вернуть запись продажи с нужными связями
+      return tx.serviceSale.findUnique({
+        where: { id: serviceSale.id },
+        include: {
+          client: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+          service: {
+            select: {
+              id: true,
+              name: true,
+              price: true,
+              category: {
+                select: {
+                  id: true,
+                  name: true,
+                },
+              },
+            },
+          },
+          manager: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
+      });
+    });
+
+    return result;
   }
 }

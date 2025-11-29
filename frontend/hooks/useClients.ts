@@ -11,12 +11,16 @@ import {
   getClientRelations,
   createClientRelation,
   deleteClientRelation,
+  updateClientRelation,
+  uploadClientPhoto,
+  deleteClientPhoto,
 } from '@/lib/api/clients';
 import type {
   ClientFilterParams,
   CreateClientDto,
   UpdateClientDto,
   CreateRelationDto,
+  RelationType,
 } from '@/lib/types/clients';
 import { toast } from '@/lib/utils/toast';
 
@@ -216,6 +220,78 @@ export const useDeleteClientRelation = () => {
     onError: (error: any) => {
       toast.error('Ошибка', {
         description: error.response?.data?.message || 'Не удалось удалить связь',
+      });
+    },
+  });
+};
+
+/**
+ * Hook для обновления типа родственной связи
+ */
+export const useUpdateClientRelation = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      clientId,
+      relationId,
+      relationType,
+    }: {
+      clientId: string;
+      relationId: string;
+      relationType: RelationType;
+    }) => updateClientRelation(clientId, relationId, { relationType }),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['clients', variables.clientId, 'relations'] });
+      queryClient.invalidateQueries({ queryKey: ['clients', variables.clientId] });
+      toast.success('Связь обновлена', {
+        description: 'Тип родственной связи успешно изменён',
+      });
+    },
+    onError: (error: any) => {
+      toast.error('Ошибка', {
+        description: error.response?.data?.message || 'Не удалось обновить связь',
+      });
+    },
+  });
+};
+
+/**
+ * Hook для загрузки фото клиента
+ */
+export const useUploadClientPhoto = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ clientId, file }: { clientId: string; file: File }) =>
+      uploadClientPhoto(clientId, file),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['clients', variables.clientId] });
+    },
+    onError: (error: any) => {
+      toast.error('Ошибка', {
+        description: error.response?.data?.message || 'Не удалось загрузить фото',
+      });
+    },
+  });
+};
+
+/**
+ * Hook для удаления фото клиента
+ */
+export const useDeleteClientPhoto = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (clientId: string) => deleteClientPhoto(clientId),
+    onSuccess: (_, clientId) => {
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      queryClient.invalidateQueries({ queryKey: ['clients', clientId] });
+    },
+    onError: (error: any) => {
+      toast.error('Ошибка', {
+        description: error.response?.data?.message || 'Не удалось удалить фото',
       });
     },
   });

@@ -16,17 +16,17 @@ export class InvoicesService {
 
   /**
    * Генерация уникального номера счета
-   * Формат: INV-YYYYMMDD-XXXX
+   * Формат: МР-ГГ-NNNNNN (МР-год-порядковый номер)
    */
   private async generateInvoiceNumber(): Promise<string> {
-    const now = new Date();
-    const datePrefix = now.toISOString().split('T')[0].replace(/-/g, ''); // YYYYMMDD
+    const year = new Date().getFullYear().toString().slice(-2); // "25"
+    const prefix = `МР-${year}`;
 
-    // Находим последний счет за сегодня
+    // Находим последний счёт за этот год
     const lastInvoice = await this.prisma.invoice.findFirst({
       where: {
         invoiceNumber: {
-          startsWith: `INV-${datePrefix}`,
+          startsWith: prefix,
         },
       },
       orderBy: {
@@ -40,7 +40,7 @@ export class InvoicesService {
       sequence = lastSequence + 1;
     }
 
-    return `INV-${datePrefix}-${sequence.toString().padStart(4, '0')}`;
+    return `${prefix}-${sequence.toString().padStart(6, '0')}`;
   }
 
   /**
@@ -96,6 +96,20 @@ export class InvoicesService {
       dto.discountAmount || 0,
     );
 
+    // Проверяем какие serviceId существуют в таблице Service
+    const serviceIds = processedItems
+      .map((item) => item.serviceId)
+      .filter((id): id is string => !!id && !id.startsWith('single-'));
+
+    const existingServices = serviceIds.length > 0
+      ? await this.prisma.service.findMany({
+          where: { id: { in: serviceIds } },
+          select: { id: true },
+        })
+      : [];
+
+    const validServiceIds = new Set(existingServices.map((s) => s.id));
+
     // Создание счета с позициями
     const invoice = await this.prisma.invoice.create({
       data: {
@@ -112,7 +126,10 @@ export class InvoicesService {
         status: InvoiceStatus.PENDING,
         items: {
           create: processedItems.map((item) => ({
-            serviceId: item.serviceId,
+            // serviceId только если он существует в таблице Service
+            serviceId: item.serviceId && validServiceIds.has(item.serviceId) ? item.serviceId : null,
+            // groupId извлекаем из serviceId для разовых посещений (формат: single-{groupId})
+            groupId: item.groupId || (item.serviceId?.startsWith('single-') ? item.serviceId.replace('single-', '') : null),
             serviceType: item.serviceType,
             serviceName: item.serviceName,
             serviceDescription: item.serviceDescription,
@@ -292,6 +309,9 @@ export class InvoicesService {
   async update(id: string, dto: UpdateInvoiceDto, userId: string) {
     const invoice = await this.findOne(id);
 
+    // Проверяем переход статуса на PAID
+    const isBecomingPaid = dto.status === InvoiceStatus.PAID && invoice.status !== InvoiceStatus.PAID;
+
     // Создание audit log для каждого изменения
     const auditLogs: Prisma.InvoiceAuditLogCreateManyInvoiceInput[] = [];
 
@@ -309,6 +329,7 @@ export class InvoicesService {
       where: { id },
       data: {
         ...dto,
+        paidAt: isBecomingPaid ? new Date() : dto.paidAt,
         auditLogs: auditLogs.length > 0 ? {
           createMany: {
             data: auditLogs,
@@ -316,13 +337,90 @@ export class InvoicesService {
         } : undefined,
       },
       include: {
-        items: true,
+        items: {
+          include: {
+            group: true,
+          },
+        },
         client: true,
         creator: true,
       },
     });
 
+    // При оплате счёта создаём подписки для позиций с groupId
+    if (isBecomingPaid) {
+      await this.createSubscriptionsFromInvoice(updated);
+    }
+
     return updated;
+  }
+
+  /**
+   * Создание подписок из оплаченного счёта
+   */
+  private async createSubscriptionsFromInvoice(invoice: any) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const validMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
+
+    for (const item of invoice.items) {
+      // Только для позиций с groupId и типом SINGLE_SESSION или SUBSCRIPTION
+      if (!item.groupId) continue;
+      if (item.serviceType !== 'SINGLE_SESSION' && item.serviceType !== 'SUBSCRIPTION') continue;
+
+      const group = item.group || await this.prisma.group.findUnique({ where: { id: item.groupId } });
+      if (!group) continue;
+
+      // Находим или создаём тип подписки
+      let subscriptionType = await this.prisma.subscriptionType.findFirst({
+        where: {
+          groupId: item.groupId,
+          type: item.serviceType === 'SINGLE_SESSION' ? 'SINGLE_VISIT' : 'UNLIMITED',
+          isActive: true,
+        },
+      });
+
+      if (!subscriptionType) {
+        subscriptionType = await this.prisma.subscriptionType.create({
+          data: {
+            name: item.serviceName,
+            type: item.serviceType === 'SINGLE_SESSION' ? 'SINGLE_VISIT' : 'UNLIMITED',
+            price: Number(item.totalPrice),
+            groupId: item.groupId,
+            isActive: true,
+          },
+        });
+      }
+
+      // Создаём подписку для каждой единицы quantity
+      const quantity = Number(item.quantity);
+      for (let i = 0; i < quantity; i++) {
+        await this.prisma.subscription.create({
+          data: {
+            clientId: invoice.clientId,
+            subscriptionTypeId: subscriptionType.id,
+            groupId: item.groupId,
+            validMonth,
+            purchaseDate: today,
+            startDate: today,
+            endDate: item.serviceType === 'SINGLE_SESSION' ? endOfMonth : endOfMonth,
+            originalPrice: Number(item.basePrice),
+            discountAmount: Number(item.discountAmount) / quantity,
+            paidPrice: Number(item.totalPrice) / quantity,
+            vatRate: Number(item.vatRate),
+            vatAmount: Number(item.vatAmount) / quantity,
+            remainingVisits: item.serviceType === 'SINGLE_SESSION' ? 1 : null,
+            totalVisits: item.serviceType === 'SINGLE_SESSION' ? 1 : null,
+            purchasedMonths: 1,
+            status: 'ACTIVE',
+          },
+        });
+      }
+
+      console.log(`✅ Создана подписка для клиента ${invoice.clientId} из счёта ${invoice.invoiceNumber}: ${item.serviceName}`);
+    }
   }
 
   async delete(id: string) {

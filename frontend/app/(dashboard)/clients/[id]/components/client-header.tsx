@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { useDeleteClient } from '@/hooks/useClients';
+import { useDeleteClient, useUploadClientPhoto, useDeleteClientPhoto } from '@/hooks/useClients';
+import { PhotoUpload } from '@/components/photo-upload';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,6 +43,8 @@ const statusVariants: Record<Client['status'], 'default' | 'secondary' | 'destru
 export function ClientHeader({ client, isEditing, onEdit, onCancelEdit, onSave }: ClientHeaderProps) {
   const router = useRouter();
   const deleteClient = useDeleteClient();
+  const uploadPhoto = useUploadClientPhoto();
+  const deletePhoto = useDeleteClientPhoto();
 
   const handleDelete = async () => {
     try {
@@ -50,6 +53,14 @@ export function ClientHeader({ client, isEditing, onEdit, onCancelEdit, onSave }
     } catch (error) {
       // Ошибка уже обработана в хуке
     }
+  };
+
+  const handlePhotoUpload = async (file: File) => {
+    await uploadPhoto.mutateAsync({ clientId: client.id, file });
+  };
+
+  const handlePhotoDelete = async () => {
+    await deletePhoto.mutateAsync(client.id);
   };
 
   const fullName = [client.lastName, client.firstName, client.middleName]
@@ -79,9 +90,17 @@ export function ClientHeader({ client, isEditing, onEdit, onCancelEdit, onSave }
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
+        <PhotoUpload
+          photoUrl={client.photoUrl}
+          fallback={fullName}
+          onUpload={handlePhotoUpload}
+          onDelete={handlePhotoDelete}
+          size="lg"
+          disabled={isEditing}
+        />
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold">
+            <h1 className="text-xl font-bold">
               {fullName}
               {age !== null && (
                 <span className="text-muted-foreground ml-2">

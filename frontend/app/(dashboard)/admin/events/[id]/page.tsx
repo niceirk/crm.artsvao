@@ -1,7 +1,9 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useEvent } from '@/hooks/use-events';
+import { useBreadcrumbs } from '@/lib/contexts/breadcrumbs-context';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
@@ -15,8 +17,17 @@ export default function EventDetailPage() {
   const params = useParams();
   const router = useRouter();
   const eventId = params.id as string;
+  const { setCustomTitle } = useBreadcrumbs();
 
   const { data: event, isLoading, error } = useEvent(eventId);
+
+  // Устанавливаем название мероприятия в хлебные крошки
+  useEffect(() => {
+    if (event?.name) {
+      setCustomTitle(event.name);
+    }
+    return () => setCustomTitle(null);
+  }, [event?.name, setCustomTitle]);
 
   // Loading state
   if (isLoading) {

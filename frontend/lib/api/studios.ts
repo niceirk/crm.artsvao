@@ -72,4 +72,18 @@ export const studiosApi = {
     const { data } = await apiClient.get(`/studios/${studioId}/stats`);
     return data;
   },
+
+  uploadPhoto: async (id: string, file: File): Promise<Studio> => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    const { data } = await apiClient.post(`/studios/${id}/photo`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
+
+  deletePhoto: async (id: string): Promise<Studio> => {
+    const { data } = await apiClient.delete(`/studios/${id}/photo`);
+    return data;
+  },
 };

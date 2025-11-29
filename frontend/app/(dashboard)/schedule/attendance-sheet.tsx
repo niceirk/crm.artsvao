@@ -709,16 +709,27 @@ function AttendanceRow({
                   className="text-[10px] text-muted-foreground underline decoration-dotted hover:text-primary cursor-pointer ml-1"
                   disabled={isLoading}
                 >
-                  {selectedBase?.subscriptionType.type === 'SINGLE_VISIT' ? 'Разовое' : 'Абонемент'}
+                  {selectedBase?.subscriptionType.type === 'SINGLE_VISIT'
+                    ? 'Разовое'
+                    : selectedBase?.subscriptionType.type === 'VISIT_PACK'
+                      ? `Пакет (${selectedBase?.remainingVisits ?? 0})`
+                      : 'Абонемент'}
                 </button>
               </PopoverTrigger>
-              <PopoverContent className="w-56 p-2" align="start">
+              <PopoverContent className="w-64 p-2" align="start">
                 <div className="space-y-1">
                   {availableBases.map((base) => {
                     const saleDate = base.startDate
                       ? format(new Date(base.startDate), 'dd.MM.yyyy')
                       : 'дата не указана';
                     const isSelected = selectedBasisId === base.id;
+                    const typeLabel = base.subscriptionType.type === 'SINGLE_VISIT'
+                      ? 'Разовое'
+                      : base.subscriptionType.type === 'VISIT_PACK'
+                        ? `Пакет разовых`
+                        : base.subscriptionType.type === 'UNLIMITED'
+                          ? 'Безлимитный'
+                          : 'Абонемент';
                     return (
                       <button
                         key={base.id}
@@ -728,9 +739,17 @@ function AttendanceRow({
                           isSelected && 'bg-muted font-medium'
                         )}
                       >
-                        <div>{base.subscriptionType.name}</div>
-                        <div className="text-[10px] text-muted-foreground">
-                          Продано: {saleDate}
+                        <div className="flex justify-between items-center">
+                          <span>{base.subscriptionType.name}</span>
+                          {base.remainingVisits !== null && base.remainingVisits !== undefined && (
+                            <Badge variant="outline" className="ml-1 text-[10px] px-1.5 py-0">
+                              {base.remainingVisits} визитов
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground flex justify-between">
+                          <span>{typeLabel}</span>
+                          <span>от {saleDate}</span>
                         </div>
                       </button>
                     );

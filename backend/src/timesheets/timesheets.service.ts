@@ -158,6 +158,41 @@ export class TimesheetsService {
       },
     });
 
+    // 6.1. Получить компенсации из медицинских справок, применённые к этому месяцу
+    // (для случаев, когда справка подана позже и компенсация перенесена на другой месяц)
+    const medCertCompensations = await this.prisma.medicalCertificateSchedule.findMany({
+      where: {
+        compensationMonth: currentMonth,
+        medicalCertificate: {
+          clientId: { in: clientIds },
+        },
+        compensationAmount: { not: null },
+      },
+      select: {
+        attendanceId: true,
+        compensationAmount: true,
+        medicalCertificate: {
+          select: {
+            clientId: true,
+          },
+        },
+      },
+    });
+
+    // Группируем компенсации из справок по клиенту
+    const medCertCompByClient = new Map<string, number>();
+    // Собираем attendanceId, которые были помечены как excused из справок
+    // (чтобы не учитывать их повторно в baseCalculatedAmount)
+    const medCertAttendanceIds = new Set<string>();
+    for (const mc of medCertCompensations) {
+      const clientId = mc.medicalCertificate.clientId;
+      const amount = Number(mc.compensationAmount) || 0;
+      medCertCompByClient.set(clientId, (medCertCompByClient.get(clientId) || 0) + amount);
+      if (mc.attendanceId) {
+        medCertAttendanceIds.add(mc.attendanceId);
+      }
+    }
+
     // 7. Создаём Map для быстрого поиска O(1)
     const attendancesByClient = new Map<string, typeof attendances>();
     const subscriptionsByClient = new Map<string, typeof subscriptions[0]>();
@@ -209,7 +244,13 @@ export class TimesheetsService {
       // Подсчет статистики
       const present = clientAttendances.filter(a => a.status === AttendanceStatus.PRESENT).length;
       const absent = clientAttendances.filter(a => a.status === AttendanceStatus.ABSENT).length;
-      const excused = clientAttendances.filter(a => a.status === AttendanceStatus.EXCUSED).length;
+      // Общее количество excused (для отображения в UI)
+      const excusedTotal = clientAttendances.filter(a => a.status === AttendanceStatus.EXCUSED).length;
+      // Только "обычные" excused без справок (для расчёта baseCalculatedAmount, чтобы избежать двойного учёта)
+      const excusedWithoutMedCert = clientAttendances.filter(a =>
+        a.status === AttendanceStatus.EXCUSED &&
+        !medCertAttendanceIds.has(a.id)
+      ).length;
 
       // Рассчитать компенсацию
       let pricePerLesson = 0;
@@ -219,13 +260,18 @@ export class TimesheetsService {
         const paidPrice = Number(clientSubscription.paidPrice);
         pricePerLesson = Math.round(paidPrice / schedules.length);
       }
-      const calculatedAmount = excused * pricePerLesson;
+      // Базовая компенсация за пропуски по уважительной причине (без справок)
+      const baseCalculatedAmount = excusedWithoutMedCert * pricePerLesson;
+      // Дополнительная компенсация из медицинских справок (перенесённая на этот месяц)
+      const medCertCompensation = medCertCompByClient.get(member.clientId) || 0;
+      // Общая рассчитанная компенсация
+      const calculatedAmount = baseCalculatedAmount + medCertCompensation;
 
       // Запомнить для batch upsert
-      if (excused > 0 || existingCompensation) {
+      if (excusedTotal > 0 || existingCompensation) {
         compensationsToUpsert.push({
           clientId: member.clientId,
-          excusedCount: excused,
+          excusedCount: excusedTotal,
           calculatedAmount,
         });
       }
@@ -260,13 +306,15 @@ export class TimesheetsService {
           total: schedules.length,
           present,
           absent,
-          excused,
-          notMarked: schedules.length - present - absent - excused,
+          excused: excusedTotal,
+          notMarked: schedules.length - present - absent - excusedTotal,
         },
         compensation: {
           id: existingCompensation?.id,
-          excusedCount: excused,
+          excusedCount: excusedTotal,
           calculatedAmount,
+          baseCalculatedAmount, // Компенсация за текущий месяц (excused без справок * pricePerLesson)
+          medCertCompensation, // Компенсация из мед. справок (перенесённая с других месяцев)
           adjustedAmount: existingCompensation?.adjustedAmount ? Number(existingCompensation.adjustedAmount) : null,
           pricePerLesson,
           notes: existingCompensation?.notes,

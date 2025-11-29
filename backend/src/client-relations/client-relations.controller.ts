@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Param,
   Body,
@@ -10,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ClientRelationsService } from './client-relations.service';
 import { CreateRelationDto } from './dto/create-relation.dto';
+import { UpdateRelationDto } from './dto/update-relation.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller()
@@ -41,6 +43,19 @@ export class ClientRelationsController {
   @Get('clients/:clientId/relations')
   findAll(@Param('clientId') clientId: string) {
     return this.clientRelationsService.getClientRelations(clientId);
+  }
+
+  /**
+   * PATCH /api/clients/:clientId/relations/:relationId
+   * Обновить тип родственной связи
+   */
+  @Patch('clients/:clientId/relations/:relationId')
+  update(
+    @Param('clientId') clientId: string,
+    @Param('relationId') relationId: string,
+    @Body(ValidationPipe) updateRelationDto: UpdateRelationDto,
+  ) {
+    return this.clientRelationsService.updateRelation(clientId, relationId, updateRelationDto);
   }
 
   /**

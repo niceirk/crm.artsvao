@@ -15,6 +15,8 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 import { SubscriptionsService } from './subscriptions.service';
 import { SellSubscriptionDto } from './dto/sell-subscription.dto';
 import { SellSingleSessionDto } from './dto/sell-single-session.dto';
+import { SellSingleSessionPackDto } from './dto/sell-single-session-pack.dto';
+import { SellIndependentServiceDto } from './dto/sell-independent-service.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { SubscriptionFilterDto } from './dto/subscription-filter.dto';
 
@@ -39,6 +41,24 @@ export class SubscriptionsController {
   ) {
     const managerId = req.user?.sub;
     return this.subscriptionsService.sellSingleSession(dto, managerId);
+  }
+
+  @Post('sell-pack')
+  async sellSingleSessionPack(
+    @Body() dto: SellSingleSessionPackDto,
+    @Req() req: any,
+  ) {
+    const managerId = req.user?.sub;
+    return this.subscriptionsService.sellSingleSessionPack(dto, managerId);
+  }
+
+  @Post('sell-service')
+  async sellIndependentService(
+    @Body() dto: SellIndependentServiceDto,
+    @Req() req: any,
+  ) {
+    const managerId = req.user?.sub;
+    return this.subscriptionsService.sellIndependentService(dto, managerId);
   }
 
   @Get()

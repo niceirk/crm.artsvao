@@ -25,6 +25,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Calendar, User, Phone, Mail, FileText, Send, Unlink } from 'lucide-react';
+import { CallButton } from '@/components/click-to-call/call-button';
 import type { Client, TelegramAccount } from '@/lib/types/clients';
 import { useUpdateClient } from '@/hooks/useClients';
 import { useActiveLeadSources } from '@/hooks/useLeadSources';
@@ -592,13 +593,11 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
               </div>
               <div className="flex-1">
                 <Label className="text-muted-foreground">Телефон</Label>
-                <p className="text-sm font-medium">{client.phone || '—'}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">{client.phone || '—'}</p>
+                  {client.phone && <CallButton phoneNumber={client.phone} clientId={client.id} />}
+                </div>
               </div>
-              {client.phone && (
-                <Button variant="outline" size="sm" asChild className="shrink-0">
-                  <a href={`tel:${client.phone}`}>Позвонить</a>
-                </Button>
-              )}
             </div>
 
             {client.phoneAdditional && (
@@ -608,7 +607,10 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
                 </div>
                 <div className="flex-1">
                   <Label className="text-muted-foreground">Дополнительный телефон</Label>
-                  <p className="text-sm font-medium">{client.phoneAdditional}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">{client.phoneAdditional}</p>
+                    <CallButton phoneNumber={client.phoneAdditional} clientId={client.id} />
+                  </div>
                 </div>
               </div>
             )}

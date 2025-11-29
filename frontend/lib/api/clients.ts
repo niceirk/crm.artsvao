@@ -125,6 +125,21 @@ export const deleteClientRelation = async (
   return response.data;
 };
 
+/**
+ * Обновить тип родственной связи
+ */
+export const updateClientRelation = async (
+  clientId: string,
+  relationId: string,
+  data: { relationType: RelationType }
+): Promise<ClientRelation> => {
+  const response = await apiClient.patch<ClientRelation>(
+    `/clients/${clientId}/relations/${relationId}`,
+    data
+  );
+  return response.data;
+};
+
 // ============================================
 // API для работы с документами клиентов
 // ============================================
@@ -247,5 +262,38 @@ export const toggleTelegramNotifications = async (
     `/clients/${clientId}/telegram-accounts/${accountId}/notifications`,
     { enabled }
   );
+  return response.data;
+};
+
+// ============================================
+// API для работы с фото клиентов
+// ============================================
+
+/**
+ * Загрузить фото клиента
+ */
+export const uploadClientPhoto = async (
+  clientId: string,
+  file: File
+): Promise<Client> => {
+  const formData = new FormData();
+  formData.append('photo', file);
+  const response = await apiClient.post<Client>(
+    `/clients/${clientId}/photo`,
+    formData,
+    {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }
+  );
+  return response.data;
+};
+
+/**
+ * Удалить фото клиента
+ */
+export const deleteClientPhoto = async (clientId: string): Promise<Client> => {
+  const response = await apiClient.delete<Client>(`/clients/${clientId}/photo`);
   return response.data;
 };

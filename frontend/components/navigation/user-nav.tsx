@@ -33,7 +33,7 @@ export function UserNav() {
           <Avatar className="h-9 w-9">
             {user.avatarUrl && (
               <AvatarImage
-                src={`${SERVER_URL}${user.avatarUrl}`}
+                src={user.avatarUrl.startsWith('http') ? user.avatarUrl : `${SERVER_URL}${user.avatarUrl}`}
                 alt={`${user.firstName} ${user.lastName}`}
               />
             )}

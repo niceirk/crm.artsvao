@@ -1,7 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { subscriptionsApi } from '@/lib/api/subscriptions';
+import { subscriptionsApi, SellSingleSessionPackDto } from '@/lib/api/subscriptions';
 import type {
   SellSubscriptionDto,
+  SellIndependentServiceDto,
   UpdateSubscriptionDto,
   SubscriptionFilterDto,
 } from '@/lib/types/subscriptions';
@@ -45,6 +46,44 @@ export const useSellSubscription = () => {
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.message || 'Ошибка продажи абонемента');
+    },
+  });
+};
+
+export const useSellSingleSessionPack = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: SellSingleSessionPackDto) => subscriptionsApi.sellPack(data),
+    onSuccess: (subscription) => {
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      queryClient.invalidateQueries({
+        queryKey: ['subscriptions', 'client', subscription.clientId]
+      });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success('Пакет разовых успешно продан');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Ошибка продажи пакета');
+    },
+  });
+};
+
+export const useSellService = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: SellIndependentServiceDto) => subscriptionsApi.sellService(data),
+    onSuccess: (sale) => {
+      queryClient.invalidateQueries({ queryKey: ['service-sales'] });
+      queryClient.invalidateQueries({
+        queryKey: ['service-sales', 'client', sale.clientId]
+      });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success('Услуга успешно продана');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Ошибка продажи услуги');
     },
   });
 };

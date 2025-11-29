@@ -25,6 +25,7 @@ import { useDeleteClient } from '@/hooks/useClients';
 import { ClientEditDialog } from './client-edit-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { formatPhoneNumber } from '@/lib/utils/phone';
+import { CallButton } from '@/components/click-to-call/call-button';
 
 interface ClientsTableProps {
   clients: Client[];
@@ -180,7 +181,12 @@ export function ClientsTable({
                     <TableCell>
                       {age !== null ? `${age} лет` : '—'}
                     </TableCell>
-                    <TableCell>{formatPhoneNumber(client.phone)}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <CallButton phoneNumber={client.phone} clientId={client.id} />
+                        {formatPhoneNumber(client.phone)}
+                      </div>
+                    </TableCell>
                     <TableCell>{client.email || '—'}</TableCell>
                     <TableCell>{formatDate(client.createdAt)}</TableCell>
                     <TableCell className="text-right">

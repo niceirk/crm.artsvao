@@ -6,6 +6,8 @@ import type {
   UpdateSubscriptionTypeDto,
   SubscriptionTypeFilterDto,
   SellSubscriptionDto,
+  SellIndependentServiceDto,
+  ServiceSale,
   UpdateSubscriptionDto,
   SubscriptionFilterDto,
   ValidateSubscriptionResponse,
@@ -82,6 +84,14 @@ export interface SellSingleSessionDto {
   notes?: string;
 }
 
+export interface SellSingleSessionPackDto {
+  clientId: string;
+  groupId: string;
+  quantity: number;
+  notes?: string;
+  applyBenefit?: boolean;
+}
+
 // Subscriptions API
 export const subscriptionsApi = {
   sell: async (data: SellSubscriptionDto): Promise<Subscription> => {
@@ -95,6 +105,22 @@ export const subscriptionsApi = {
   sellSingleSession: async (data: SellSingleSessionDto): Promise<Subscription> => {
     const response = await apiClient.post<Subscription>(
       '/subscriptions/sell-single-session',
+      data,
+    );
+    return response.data;
+  },
+
+  sellPack: async (data: SellSingleSessionPackDto): Promise<Subscription> => {
+    const response = await apiClient.post<Subscription>(
+      '/subscriptions/sell-pack',
+      data,
+    );
+    return response.data;
+  },
+
+  sellService: async (data: SellIndependentServiceDto): Promise<ServiceSale> => {
+    const response = await apiClient.post<ServiceSale>(
+      '/subscriptions/sell-service',
       data,
     );
     return response.data;

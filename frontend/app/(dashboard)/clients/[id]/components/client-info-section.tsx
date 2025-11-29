@@ -24,6 +24,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { User, Phone, Mail, Send, Unlink } from 'lucide-react';
+import { CallButton } from '@/components/click-to-call/call-button';
 import type { Client, TelegramAccount } from '@/lib/types/clients';
 import { useUpdateClient } from '@/hooks/useClients';
 import { useActiveLeadSources } from '@/hooks/useLeadSources';
@@ -588,19 +589,20 @@ export function ClientInfoSection({ client, isEditing, onRefresh, onSaveSuccess,
           <div className="flex items-center justify-between">
             <div>
               <Label className="text-xs text-muted-foreground">Телефон</Label>
-              <p className="text-sm font-medium">{client.phone || '—'}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium">{client.phone || '—'}</p>
+                {client.phone && <CallButton phoneNumber={client.phone} clientId={client.id} />}
+              </div>
             </div>
-            {client.phone && (
-              <Button variant="outline" size="sm" asChild>
-                <a href={`tel:${client.phone}`}>Позвонить</a>
-              </Button>
-            )}
           </div>
 
           {client.phoneAdditional && (
             <div>
               <Label className="text-xs text-muted-foreground">Дополнительный телефон</Label>
-              <p className="text-sm font-medium">{client.phoneAdditional}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-medium">{client.phoneAdditional}</p>
+                <CallButton phoneNumber={client.phoneAdditional} clientId={client.id} />
+              </div>
             </div>
           )}
 

@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Plus } from 'lucide-react';
+import { Plus, Package, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -33,6 +33,8 @@ import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
 import { useSubscriptions } from '@/hooks/use-subscriptions';
 import { useGroups } from '@/hooks/use-groups';
 import { SellSubscriptionDialog } from './components/sell-subscription-dialog';
+import { SellPackDialog } from './components/sell-pack-dialog';
+import { SellServiceDialog } from './components/sell-service-dialog';
 import { SubscriptionDetailsSheet } from './components/subscription-details-sheet';
 import { searchClients } from '@/lib/api/clients';
 import type {
@@ -60,6 +62,8 @@ export default function SubscriptionsPage() {
   const [isClientLoading, setIsClientLoading] = useState(false);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
+  const [isPackDialogOpen, setIsPackDialogOpen] = useState(false);
+  const [isServiceDialogOpen, setIsServiceDialogOpen] = useState(false);
   const [selectedSubscription, setSelectedSubscription] = useState<Subscription | null>(
     null,
   );
@@ -181,10 +185,20 @@ export default function SubscriptionsPage() {
             Управление абонементами клиентов
           </p>
         </div>
-        <Button onClick={() => setIsSellDialogOpen(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Продать абонемент
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setIsServiceDialogOpen(true)}>
+            <ShoppingCart className="h-4 w-4 mr-2" />
+            Продать услугу
+          </Button>
+          <Button variant="outline" onClick={() => setIsPackDialogOpen(true)}>
+            <Package className="h-4 w-4 mr-2" />
+            Продать пакет
+          </Button>
+          <Button onClick={() => setIsSellDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Продать абонемент
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -269,6 +283,7 @@ export default function SubscriptionsPage() {
                   <TableHead>Группа</TableHead>
                   <TableHead>Период</TableHead>
                   <TableHead className="text-right">Цена</TableHead>
+                  <TableHead className="text-right">Цена 1 занятия</TableHead>
                   <TableHead className="text-center">Посещений</TableHead>
                 </TableRow>
               </TableHeader>
@@ -339,6 +354,15 @@ export default function SubscriptionsPage() {
                         )}
                       </div>
                     </TableCell>
+                    <TableCell className="text-right">
+                      {subscription.pricePerLesson ? (
+                        <span className="text-sm font-medium text-primary">
+                          {formatCurrency(subscription.pricePerLesson)}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-center">
                       {subscription.remainingVisits !== null &&
                       subscription.remainingVisits !== undefined ? (
@@ -358,6 +382,16 @@ export default function SubscriptionsPage() {
       <SellSubscriptionDialog
         open={isSellDialogOpen}
         onOpenChange={setIsSellDialogOpen}
+      />
+
+      <SellPackDialog
+        open={isPackDialogOpen}
+        onOpenChange={setIsPackDialogOpen}
+      />
+
+      <SellServiceDialog
+        open={isServiceDialogOpen}
+        onOpenChange={setIsServiceDialogOpen}
       />
 
       {selectedSubscription && (

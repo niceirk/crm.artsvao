@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useProfile } from '@/hooks/use-profile';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,9 +13,24 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { SERVER_URL } from '@/lib/api/client';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Upload, Trash2, Loader2, User as UserIcon, Eye, EyeOff } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+import {
+  Upload,
+  Trash2,
+  Loader2,
+  Eye,
+  EyeOff,
+  Pencil,
+  X,
+  Check,
+  KeyRound,
+  Mail,
+  Calendar,
+  Clock
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 // Схемы валидации
 const profileSchema = z.object({
@@ -51,6 +66,8 @@ export default function ProfilePage() {
   } = useProfile();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isChangingPass, setIsChangingPass] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -71,16 +88,31 @@ export default function ProfilePage() {
   });
 
   // Обработчики
-  const handleProfileSubmit = (data: ProfileFormData) => {
-    updateProfile(data);
+  const handleProfileSubmit = async (data: ProfileFormData) => {
+    await updateProfile(data);
+    setIsEditing(false);
   };
 
-  const handlePasswordSubmit = (data: PasswordFormData) => {
-    changePassword({
+  const handlePasswordSubmit = async (data: PasswordFormData) => {
+    await changePassword({
       currentPassword: data.currentPassword,
       newPassword: data.newPassword,
     });
     passwordForm.reset();
+    setIsChangingPass(false);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    profileForm.reset();
+  };
+
+  const handleCancelPassword = () => {
+    setIsChangingPass(false);
+    passwordForm.reset();
+    setShowCurrentPassword(false);
+    setShowNewPassword(false);
+    setShowConfirmPassword(false);
   };
 
   const handleAvatarClick = () => {
@@ -95,7 +127,7 @@ export default function ProfilePage() {
   };
 
   const handleDeleteAvatar = () => {
-    if (confirm('Вы уверены, что хотите удалить аватар?')) {
+    if (confirm('Удалить фото профиля?')) {
       deleteAvatar();
     }
   };
@@ -111,299 +143,326 @@ export default function ProfilePage() {
     return role === 'ADMIN' ? 'Администратор' : 'Менеджер';
   };
 
-  // Получаем статус на русском
-  const getStatusLabel = (status: string) => {
-    return status === 'ACTIVE' ? 'Активен' : 'Заблокирован';
-  };
-
   if (isLoading) {
     return (
-      <div className="container max-w-4xl py-8 space-y-6">
-        <Skeleton className="h-8 w-48" />
-        <div className="grid gap-6 md:grid-cols-2">
-          <Skeleton className="h-64" />
-          <Skeleton className="h-64" />
+      <div className="flex-1 space-y-6">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-20 w-20 rounded-full" />
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-32" />
+          </div>
         </div>
+        <Skeleton className="h-64 w-full max-w-2xl" />
       </div>
     );
   }
 
   if (!profile) {
     return (
-      <div className="container max-w-4xl py-8">
-        <p className="text-center text-muted-foreground">Не удалось загрузить профиль</p>
+      <div className="flex-1">
+        <p className="text-center text-muted-foreground py-12">
+          Не удалось загрузить профиль
+        </p>
       </div>
     );
   }
 
-  return (
-    <div className="container max-w-4xl py-8 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Мой профиль</h1>
-        <p className="text-muted-foreground">
-          Управляйте своим профилем и настройками безопасности
-        </p>
-      </div>
+  const fullName = `${profile.lastName} ${profile.firstName}`;
 
-      {/* Секция с аватаром и основной информацией */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Информация о пользователе</CardTitle>
-          <CardDescription>
-            Основная информация вашего аккаунта
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {/* Аватар */}
-          <div className="flex items-center gap-4">
-            <Avatar className="h-24 w-24">
+  return (
+    <div className="flex-1 space-y-6">
+      {/* Шапка профиля */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className="relative group">
+            <Avatar className="h-20 w-20">
               <AvatarImage
-                src={profile.avatarUrl ? `${SERVER_URL}${profile.avatarUrl}` : undefined}
-                alt={`${profile.firstName} ${profile.lastName}`}
+                src={profile.avatarUrl
+                  ? (profile.avatarUrl.startsWith('http') ? profile.avatarUrl : `${SERVER_URL}${profile.avatarUrl}`)
+                  : undefined}
+                alt={fullName}
               />
-              <AvatarFallback className="text-2xl">
+              <AvatarFallback className="text-2xl bg-primary/10">
                 {getInitials()}
               </AvatarFallback>
             </Avatar>
-            <div className="flex-1 space-y-2">
-              <div>
-                <p className="text-sm text-muted-foreground">Фото профиля</p>
-                <p className="text-xs text-muted-foreground">
-                  JPG, PNG или GIF. Максимум 5MB
-                </p>
-              </div>
-              <div className="flex gap-2">
+            <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="flex gap-1">
                 <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 text-white hover:bg-white/20"
                   onClick={handleAvatarClick}
                   disabled={isUploadingAvatar}
-                  size="sm"
-                  variant="outline"
                 >
                   {isUploadingAvatar ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
-                    <Upload className="mr-2 h-4 w-4" />
+                    <Upload className="h-4 w-4" />
                   )}
-                  Загрузить
                 </Button>
                 {profile.avatarUrl && (
                   <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 text-white hover:bg-white/20"
                     onClick={handleDeleteAvatar}
                     disabled={isDeletingAvatar}
-                    size="sm"
-                    variant="outline"
                   >
                     {isDeletingAvatar ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <Trash2 className="mr-2 h-4 w-4" />
+                      <Trash2 className="h-4 w-4" />
                     )}
-                    Удалить
                   </Button>
                 )}
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
-                onChange={handleFileChange}
-                className="hidden"
-              />
             </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+              onChange={handleFileChange}
+              className="hidden"
+            />
           </div>
-
-          {/* Информация */}
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <Label className="text-sm text-muted-foreground">Email</Label>
-              <p className="text-sm font-medium">{profile.email}</p>
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold">{fullName}</h1>
+              <Badge variant="secondary">{getRoleLabel(profile.role)}</Badge>
+              <Badge variant={profile.status === 'ACTIVE' ? 'default' : 'destructive'}>
+                {profile.status === 'ACTIVE' ? 'Активен' : 'Заблокирован'}
+              </Badge>
             </div>
-            <div>
-              <Label className="text-sm text-muted-foreground">Роль</Label>
-              <div>
-                <Badge variant="secondary">{getRoleLabel(profile.role)}</Badge>
-              </div>
-            </div>
-            <div>
-              <Label className="text-sm text-muted-foreground">Статус</Label>
-              <div>
-                <Badge
-                  variant={profile.status === 'ACTIVE' ? 'default' : 'destructive'}
-                >
-                  {getStatusLabel(profile.status)}
-                </Badge>
-              </div>
-            </div>
-            <div>
-              <Label className="text-sm text-muted-foreground">Последний вход</Label>
-              <p className="text-sm font-medium">
-                {profile.lastLoginAt
-                  ? format(new Date(profile.lastLoginAt), 'dd MMMM yyyy, HH:mm', { locale: ru })
-                  : 'Не известно'}
-              </p>
-            </div>
-            <div>
-              <Label className="text-sm text-muted-foreground">Дата регистрации</Label>
-              <p className="text-sm font-medium">
-                {format(new Date(profile.createdAt), 'dd MMMM yyyy', { locale: ru })}
-              </p>
-            </div>
+            <p className="text-sm text-muted-foreground mt-1">{profile.email}</p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Форма редактирования профиля */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Редактировать профиль</CardTitle>
-          <CardDescription>
-            Обновите свои личные данные
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={profileForm.handleSubmit(handleProfileSubmit)} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="firstName">Имя</Label>
-                <Input
-                  id="firstName"
-                  {...profileForm.register('firstName')}
-                  placeholder="Введите имя"
-                />
-                {profileForm.formState.errors.firstName && (
-                  <p className="text-sm text-destructive">
-                    {profileForm.formState.errors.firstName.message}
-                  </p>
-                )}
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="lastName">Фамилия</Label>
-                <Input
-                  id="lastName"
-                  {...profileForm.register('lastName')}
-                  placeholder="Введите фамилию"
-                />
-                {profileForm.formState.errors.lastName && (
-                  <p className="text-sm text-destructive">
-                    {profileForm.formState.errors.lastName.message}
-                  </p>
-                )}
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                {...profileForm.register('email')}
-                placeholder="Введите email"
-              />
-              {profileForm.formState.errors.email && (
-                <p className="text-sm text-destructive">
-                  {profileForm.formState.errors.email.message}
-                </p>
-              )}
-            </div>
-            <Button type="submit" disabled={isUpdatingProfile}>
-              {isUpdatingProfile && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Сохранить изменения
+        {!isEditing && !isChangingPass && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsEditing(true)}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Редактировать
             </Button>
-          </form>
-        </CardContent>
-      </Card>
+            <Button variant="outline" onClick={() => setIsChangingPass(true)}>
+              <KeyRound className="h-4 w-4 mr-2" />
+              Сменить пароль
+            </Button>
+          </div>
+        )}
+      </div>
 
-      {/* Форма смены пароля */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Изменить пароль</CardTitle>
-          <CardDescription>
-            Убедитесь, что ваш пароль надежный и уникальный
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={passwordForm.handleSubmit(handlePasswordSubmit)} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="currentPassword">Текущий пароль</Label>
-              <div className="relative">
-                <Input
-                  id="currentPassword"
-                  type={showCurrentPassword ? 'text' : 'password'}
-                  {...passwordForm.register('currentPassword')}
-                  placeholder="Введите текущий пароль"
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  tabIndex={-1}
-                >
-                  {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+      {/* Основная информация и редактирование */}
+      <div className="max-w-2xl">
+        <Card>
+          <CardContent className="p-6">
+            {!isEditing && !isChangingPass ? (
+              /* Режим просмотра */
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wide">Имя</Label>
+                    <p className="font-medium">{profile.firstName}</p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wide">Фамилия</Label>
+                    <p className="font-medium">{profile.lastName}</p>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex items-start gap-3">
+                    <Mail className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    <div>
+                      <Label className="text-xs text-muted-foreground uppercase tracking-wide">Email</Label>
+                      <p className="font-medium">{profile.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Clock className="h-4 w-4 text-muted-foreground mt-0.5" />
+                    <div>
+                      <Label className="text-xs text-muted-foreground uppercase tracking-wide">Последний вход</Label>
+                      <p className="font-medium">
+                        {profile.lastLoginAt
+                          ? format(new Date(profile.lastLoginAt), 'dd MMM yyyy, HH:mm', { locale: ru })
+                          : '—'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <Calendar className="h-4 w-4 text-muted-foreground mt-0.5" />
+                  <div>
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wide">Дата регистрации</Label>
+                    <p className="font-medium">
+                      {format(new Date(profile.createdAt), 'dd MMMM yyyy', { locale: ru })}
+                    </p>
+                  </div>
+                </div>
               </div>
-              {passwordForm.formState.errors.currentPassword && (
-                <p className="text-sm text-destructive">
-                  {passwordForm.formState.errors.currentPassword.message}
-                </p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="newPassword">Новый пароль</Label>
-              <div className="relative">
-                <Input
-                  id="newPassword"
-                  type={showNewPassword ? 'text' : 'password'}
-                  {...passwordForm.register('newPassword')}
-                  placeholder="Введите новый пароль"
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowNewPassword(!showNewPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  tabIndex={-1}
-                >
-                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              {passwordForm.formState.errors.newPassword && (
-                <p className="text-sm text-destructive">
-                  {passwordForm.formState.errors.newPassword.message}
-                </p>
-              )}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Подтвердите новый пароль</Label>
-              <div className="relative">
-                <Input
-                  id="confirmPassword"
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  {...passwordForm.register('confirmPassword')}
-                  placeholder="Подтвердите новый пароль"
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  tabIndex={-1}
-                >
-                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              {passwordForm.formState.errors.confirmPassword && (
-                <p className="text-sm text-destructive">
-                  {passwordForm.formState.errors.confirmPassword.message}
-                </p>
-              )}
-            </div>
-            <Button type="submit" disabled={isChangingPassword}>
-              {isChangingPassword && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Изменить пароль
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+            ) : isEditing ? (
+              /* Режим редактирования профиля */
+              <form onSubmit={profileForm.handleSubmit(handleProfileSubmit)} className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName">Имя</Label>
+                    <Input
+                      id="firstName"
+                      {...profileForm.register('firstName')}
+                      placeholder="Введите имя"
+                    />
+                    {profileForm.formState.errors.firstName && (
+                      <p className="text-xs text-destructive">
+                        {profileForm.formState.errors.firstName.message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName">Фамилия</Label>
+                    <Input
+                      id="lastName"
+                      {...profileForm.register('lastName')}
+                      placeholder="Введите фамилию"
+                    />
+                    {profileForm.formState.errors.lastName && (
+                      <p className="text-xs text-destructive">
+                        {profileForm.formState.errors.lastName.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    {...profileForm.register('email')}
+                    placeholder="Введите email"
+                  />
+                  {profileForm.formState.errors.email && (
+                    <p className="text-xs text-destructive">
+                      {profileForm.formState.errors.email.message}
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button type="submit" disabled={isUpdatingProfile}>
+                    {isUpdatingProfile ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4 mr-2" />
+                    )}
+                    Сохранить
+                  </Button>
+                  <Button type="button" variant="outline" onClick={handleCancelEdit}>
+                    <X className="h-4 w-4 mr-2" />
+                    Отмена
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              /* Режим смены пароля */
+              <form onSubmit={passwordForm.handleSubmit(handlePasswordSubmit)} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="currentPassword">Текущий пароль</Label>
+                  <div className="relative">
+                    <Input
+                      id="currentPassword"
+                      type={showCurrentPassword ? 'text' : 'password'}
+                      {...passwordForm.register('currentPassword')}
+                      placeholder="Введите текущий пароль"
+                      className="pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                      tabIndex={-1}
+                    >
+                      {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  {passwordForm.formState.errors.currentPassword && (
+                    <p className="text-xs text-destructive">
+                      {passwordForm.formState.errors.currentPassword.message}
+                    </p>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="newPassword">Новый пароль</Label>
+                    <div className="relative">
+                      <Input
+                        id="newPassword"
+                        type={showNewPassword ? 'text' : 'password'}
+                        {...passwordForm.register('newPassword')}
+                        placeholder="Новый пароль"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        tabIndex={-1}
+                      >
+                        {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    {passwordForm.formState.errors.newPassword && (
+                      <p className="text-xs text-destructive">
+                        {passwordForm.formState.errors.newPassword.message}
+                      </p>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">Подтвердите пароль</Label>
+                    <div className="relative">
+                      <Input
+                        id="confirmPassword"
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        {...passwordForm.register('confirmPassword')}
+                        placeholder="Повторите пароль"
+                        className="pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        tabIndex={-1}
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    {passwordForm.formState.errors.confirmPassword && (
+                      <p className="text-xs text-destructive">
+                        {passwordForm.formState.errors.confirmPassword.message}
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button type="submit" disabled={isChangingPassword}>
+                    {isChangingPassword ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Check className="h-4 w-4 mr-2" />
+                    )}
+                    Сменить пароль
+                  </Button>
+                  <Button type="button" variant="outline" onClick={handleCancelPassword}>
+                    <X className="h-4 w-4 mr-2" />
+                    Отмена
+                  </Button>
+                </div>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

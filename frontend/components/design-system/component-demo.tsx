@@ -4,6 +4,7 @@ import { ReactNode, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CodePreview } from './code-preview';
+import { UsageInfo, UsageItem } from './usage-info';
 
 export interface ComponentDemoProps {
   title: string;
@@ -12,6 +13,7 @@ export interface ComponentDemoProps {
   code: string;
   controls?: ReactNode;
   className?: string;
+  usages?: UsageItem[];
 }
 
 export function ComponentDemo({
@@ -21,14 +23,20 @@ export function ComponentDemo({
   code,
   controls,
   className = '',
+  usages,
 }: ComponentDemoProps) {
   const [activeTab, setActiveTab] = useState('preview');
 
   return (
     <Card className={className}>
       <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        {description && <CardDescription>{description}</CardDescription>}
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1.5">
+            <CardTitle>{title}</CardTitle>
+            {description && <CardDescription>{description}</CardDescription>}
+          </div>
+          {usages && <UsageInfo usages={usages} />}
+        </div>
       </CardHeader>
       <CardContent>
         <Tabs value={activeTab} onValueChange={setActiveTab}>

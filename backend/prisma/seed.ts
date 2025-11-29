@@ -210,46 +210,50 @@ async function main() {
 
   console.log(`✅ Created ${benefitCategories.length} benefit categories`);
 
-  // Создать категории услуг
+  // Создать категории услуг с НДС
   const serviceCategories = await Promise.all([
     prisma.serviceCategory.upsert({
-      where: { name: 'Абонементы' },
-      update: {},
+      where: { name: 'Образовательные услуги' },
+      update: { defaultVatRate: 0 },
       create: {
-        name: 'Абонементы',
-        description: 'Абонементы на групповые занятия',
-        icon: 'ticket',
-        color: '#3b82f6',
+        name: 'Образовательные услуги',
+        description: 'Занятия для несовершеннолетних (без НДС)',
+        icon: 'book',
+        color: '#4CAF50',
+        defaultVatRate: 0,
+      },
+    }),
+    prisma.serviceCategory.upsert({
+      where: { name: 'Услуги для взрослых' },
+      update: { defaultVatRate: 20 },
+      create: {
+        name: 'Услуги для взрослых',
+        description: 'Занятия для совершеннолетних (НДС 20% включен в цену)',
+        icon: 'user',
+        color: '#2196F3',
+        defaultVatRate: 20,
       },
     }),
     prisma.serviceCategory.upsert({
       where: { name: 'Аренда помещений' },
-      update: {},
+      update: { defaultVatRate: 20 },
       create: {
         name: 'Аренда помещений',
-        description: 'Аренда залов и студий',
+        description: 'Почасовая аренда залов (НДС 20% включен)',
         icon: 'building',
-        color: '#10b981',
+        color: '#FF9800',
+        defaultVatRate: 20,
       },
     }),
     prisma.serviceCategory.upsert({
-      where: { name: 'Разовые занятия' },
-      update: {},
+      where: { name: 'Прочие услуги' },
+      update: { defaultVatRate: 0 },
       create: {
-        name: 'Разовые занятия',
-        description: 'Одноразовые посещения групп',
-        icon: 'calendar',
-        color: '#f59e0b',
-      },
-    }),
-    prisma.serviceCategory.upsert({
-      where: { name: 'Индивидуальные уроки' },
-      update: {},
-      create: {
-        name: 'Индивидуальные уроки',
-        description: 'Занятия один-на-один с преподавателем',
-        icon: 'user',
-        color: '#8b5cf6',
+        name: 'Прочие услуги',
+        description: 'Печать, копирование и другие услуги (без НДС)',
+        icon: 'settings',
+        color: '#9E9E9E',
+        defaultVatRate: 0,
       },
     }),
   ]);

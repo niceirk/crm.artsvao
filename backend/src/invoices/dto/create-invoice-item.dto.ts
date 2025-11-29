@@ -6,6 +6,10 @@ export class CreateInvoiceItemDto {
   @IsOptional()
   serviceId?: string;
 
+  @IsString()
+  @IsOptional()
+  groupId?: string;
+
   @IsEnum(ServiceType)
   @IsNotEmpty()
   serviceType: ServiceType;

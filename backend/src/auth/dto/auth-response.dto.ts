@@ -8,5 +8,6 @@ export class AuthResponseDto {
     lastName: string;
     role: string;
     status: string;
+    avatarUrl: string | null;
   };
 }

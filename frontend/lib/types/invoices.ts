@@ -131,6 +131,7 @@ export interface Invoice {
 
 export interface CreateInvoiceItemDto {
   serviceId?: string;
+  groupId?: string;
   serviceType: ServiceType;
   serviceName: string;
   serviceDescription?: string;

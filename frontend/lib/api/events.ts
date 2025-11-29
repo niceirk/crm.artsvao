@@ -119,6 +119,20 @@ export const eventsApi = {
     const { data } = await apiClient.post('/events/sync', { eventIds });
     return data;
   },
+
+  uploadPhoto: async (id: string, file: File): Promise<Event> => {
+    const formData = new FormData();
+    formData.append('photo', file);
+    const { data } = await apiClient.post(`/events/${id}/photo`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return data;
+  },
+
+  deletePhoto: async (id: string): Promise<Event> => {
+    const { data } = await apiClient.delete(`/events/${id}/photo`);
+    return data;
+  },
 };
 
 export interface SyncEventsResult {

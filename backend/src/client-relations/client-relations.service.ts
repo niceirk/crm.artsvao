@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRelationDto } from './dto/create-relation.dto';
+import { UpdateRelationDto } from './dto/update-relation.dto';
 
 @Injectable()
 export class ClientRelationsService {
@@ -143,8 +144,8 @@ export class ClientRelationsService {
       throw new NotFoundException(`Relation with ID ${relationId} not found`);
     }
 
-    // Проверка что связь принадлежит указанному клиенту
-    if (relation.clientId !== clientId) {
+    // Проверка что клиент участвует в связи (как источник или цель)
+    if (relation.clientId !== clientId && relation.relatedClientId !== clientId) {
       throw new BadRequestException(
         'This relation does not belong to the specified client',
       );
@@ -153,6 +154,54 @@ export class ClientRelationsService {
     // Удаление связи
     return this.prisma.clientRelation.delete({
       where: { id: relationId },
+    });
+  }
+
+  /**
+   * Обновить тип родственной связи
+   */
+  async updateRelation(clientId: string, relationId: string, updateRelationDto: UpdateRelationDto) {
+    // Проверка существования связи
+    const relation = await this.prisma.clientRelation.findUnique({
+      where: { id: relationId },
+    });
+
+    if (!relation) {
+      throw new NotFoundException(`Relation with ID ${relationId} not found`);
+    }
+
+    // Проверка что клиент участвует в связи (как источник или цель)
+    if (relation.clientId !== clientId && relation.relatedClientId !== clientId) {
+      throw new BadRequestException(
+        'This relation does not belong to the specified client',
+      );
+    }
+
+    // Обновление типа связи
+    return this.prisma.clientRelation.update({
+      where: { id: relationId },
+      data: {
+        relationType: updateRelationDto.relationType,
+      },
+      include: {
+        client: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            middleName: true,
+          },
+        },
+        relatedClient: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            middleName: true,
+            dateOfBirth: true,
+          },
+        },
+      },
     });
   }
 }

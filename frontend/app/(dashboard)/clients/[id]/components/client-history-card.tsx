@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { format } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isSameMonth } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -69,20 +69,40 @@ const attendanceStatusVariants: Record<AttendanceStatus, 'default' | 'secondary'
 
 export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
   const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<Date | null>(null);
 
   // Получаем счета и абонементы клиента
   const { data: invoices, isLoading: isLoadingInvoices } = useClientInvoices(client.id);
   const { data: subscriptionsResponse, isLoading: isLoadingSubscriptions } = useClientSubscriptions(client.id);
   const { data: attendanceResponse, isLoading: isLoadingAttendance } = useAttendances({
     clientId: client.id,
-    limit: 6,
+    limit: 20,
     page: 1,
   });
 
   const subscriptions = subscriptionsResponse?.data || [];
 
   const attendanceRecords = attendanceResponse?.data || [];
-  const attendanceStats = attendanceRecords.reduce(
+
+  // Получаем уникальные месяцы из посещений
+  const availableMonths = attendanceRecords.reduce((months: Date[], record) => {
+    const recordDate = new Date(record.schedule.date);
+    const monthStart = startOfMonth(recordDate);
+    if (!months.some(m => isSameMonth(m, monthStart))) {
+      months.push(monthStart);
+    }
+    return months;
+  }, []).sort((a, b) => b.getTime() - a.getTime());
+
+  // Фильтруем посещения по выбранному месяцу
+  const filteredAttendanceRecords = selectedMonth
+    ? attendanceRecords.filter(record =>
+        isSameMonth(new Date(record.schedule.date), selectedMonth)
+      )
+    : attendanceRecords;
+
+  // Статистика по отфильтрованным записям
+  const attendanceStats = filteredAttendanceRecords.reduce(
     (acc, attendance) => {
       acc.total += 1;
       acc[attendance.status.toLowerCase() as keyof typeof acc] += 1;
@@ -171,7 +191,7 @@ export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
                             <FileStack className="h-5 w-5 text-primary" />
                           </div>
                           <div>
-                            <p className="font-mono font-medium">{invoice.invoiceNumber}</p>
+                            <p className="font-medium">{invoice.invoiceNumber}</p>
                             <p className="text-sm text-muted-foreground">
                               {new Date(invoice.issuedAt).toLocaleDateString('ru-RU')}
                             </p>
@@ -289,6 +309,36 @@ export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
               <EmptyState message="Посещений пока нет" />
             ) : (
               <>
+                {/* Фильтр по месяцам */}
+                {availableMonths.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                    <span className="text-muted-foreground">Месяц:</span>
+                    <button
+                      onClick={() => setSelectedMonth(null)}
+                      className={`border-b border-dashed transition-colors ${
+                        selectedMonth === null
+                          ? 'text-foreground border-foreground font-medium'
+                          : 'text-muted-foreground border-muted-foreground/50 hover:text-foreground hover:border-foreground'
+                      }`}
+                    >
+                      Все
+                    </button>
+                    {availableMonths.map((month) => (
+                      <button
+                        key={month.toISOString()}
+                        onClick={() => setSelectedMonth(month)}
+                        className={`border-b border-dashed transition-colors ${
+                          selectedMonth && isSameMonth(selectedMonth, month)
+                            ? 'text-foreground border-foreground font-medium'
+                            : 'text-muted-foreground border-muted-foreground/50 hover:text-foreground hover:border-foreground'
+                        }`}
+                      >
+                        {format(month, 'LLLL yyyy', { locale: ru })}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <div className="grid grid-cols-4 gap-2">
                   <div className="rounded-lg border p-3 text-center">
                     <div className="text-2xl font-bold text-green-600">{attendanceStats.present}</div>
@@ -308,10 +358,8 @@ export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  {attendanceRecords.map((record: Attendance) => {
-                    const dateTime = record.markedAt
-                      ? new Date(record.markedAt)
-                      : new Date(record.schedule.date);
+                  {filteredAttendanceRecords.map((record: Attendance) => {
+                    const scheduleDate = new Date(record.schedule.date);
                     const timeString = record.schedule.startTime
                       ? new Date(record.schedule.startTime).toLocaleTimeString('ru-RU', {
                           hour: '2-digit',
@@ -330,7 +378,7 @@ export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
                       >
                         <div className="space-y-1">
                           <p className="text-sm font-medium">
-                            {format(dateTime, 'dd MMM yyyy', { locale: ru })}
+                            {format(scheduleDate, 'dd MMM yyyy', { locale: ru })}
                             {timeString && ` • ${timeString}`}
                           </p>
                           <p className="text-xs text-muted-foreground">

@@ -63,3 +63,34 @@ export const useDeleteStudio = () => {
     },
   });
 };
+
+export const useUploadStudioPhoto = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, file }: { id: string; file: File }) =>
+      studiosApi.uploadPhoto(id, file),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['studios'] });
+      queryClient.invalidateQueries({ queryKey: ['studios', variables.id] });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Ошибка загрузки фото');
+    },
+  });
+};
+
+export const useDeleteStudioPhoto = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => studiosApi.deletePhoto(id),
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['studios'] });
+      queryClient.invalidateQueries({ queryKey: ['studios', id] });
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Ошибка удаления фото');
+    },
+  });
+};

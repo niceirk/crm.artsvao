@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { format } from 'date-fns';
+import { format, startOfMonth, isSameMonth } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -60,6 +60,7 @@ import { ClientRelationsSection } from './client-relations-section';
 import { ClientNotesSection } from './client-notes-section';
 import { ClientDocumentsSection } from './client-documents-section';
 import { ClientArchivedSalesSection } from './client-archived-sales-section';
+import { ClientMedicalCertificatesSection } from './client-medical-certificates-section';
 import type { Client } from '@/lib/types/clients';
 import type { InvoiceStatus } from '@/lib/types/invoices';
 import type { SubscriptionStatus } from '@/lib/types/subscriptions';
@@ -147,6 +148,7 @@ export function ClientMainPanel({
   const [attendanceSearch, setAttendanceSearch] = useState('');
   const [attendanceSort, setAttendanceSort] = useState<{ field: string; order: 'asc' | 'desc' }>({ field: 'date', order: 'desc' });
   const [attendanceStatusFilter, setAttendanceStatusFilter] = useState<string>('all');
+  const [attendanceMonthFilter, setAttendanceMonthFilter] = useState<Date | null>(null);
 
   // Получаем данные
   const { data: invoices, isLoading: isLoadingInvoices } = useClientInvoices(client.id);
@@ -267,9 +269,29 @@ export function ClientMainPanel({
     return result;
   }, [subscriptions, subscriptionSearch, subscriptionSort, subscriptionStatusFilter]);
 
+  // Доступные месяцы из посещений
+  const availableAttendanceMonths = useMemo(() => {
+    const months: Date[] = [];
+    attendanceRecords.forEach(record => {
+      const recordDate = new Date(record.schedule.date);
+      const monthStart = startOfMonth(recordDate);
+      if (!months.some(m => isSameMonth(m, monthStart))) {
+        months.push(monthStart);
+      }
+    });
+    return months.sort((a, b) => b.getTime() - a.getTime());
+  }, [attendanceRecords]);
+
   // Фильтрация и сортировка посещений
   const filteredAttendance = useMemo(() => {
     let result = [...attendanceRecords];
+
+    // Фильтр по месяцу
+    if (attendanceMonthFilter) {
+      result = result.filter(att =>
+        isSameMonth(new Date(att.schedule.date), attendanceMonthFilter)
+      );
+    }
 
     // Фильтр по статусу
     if (attendanceStatusFilter !== 'all') {
@@ -290,8 +312,8 @@ export function ClientMainPanel({
       let aVal: any, bVal: any;
       switch (attendanceSort.field) {
         case 'date':
-          aVal = new Date(a.markedAt || a.createdAt).getTime();
-          bVal = new Date(b.markedAt || b.createdAt).getTime();
+          aVal = new Date(a.schedule.date).getTime();
+          bVal = new Date(b.schedule.date).getTime();
           break;
         default:
           return 0;
@@ -303,7 +325,7 @@ export function ClientMainPanel({
     });
 
     return result;
-  }, [attendanceRecords, attendanceSearch, attendanceSort, attendanceStatusFilter]);
+  }, [attendanceRecords, attendanceSearch, attendanceSort, attendanceStatusFilter, attendanceMonthFilter]);
 
   const toggleSort = (currentSort: { field: string; order: 'asc' | 'desc' }, field: string) => {
     if (currentSort.field === field) {
@@ -381,6 +403,7 @@ export function ClientMainPanel({
                 <ClientRelationsSection client={client} />
                 <ClientNotesSection clientId={client.id} />
                 <ClientDocumentsSection client={client} onRefresh={onRefresh} />
+                <ClientMedicalCertificatesSection clientId={client.id} onRefresh={onRefresh} />
               </div>
             </div>
           </TabsContent>
@@ -474,7 +497,7 @@ export function ClientMainPanel({
                         <TableCell className="text-sm">
                           {format(new Date(invoice.issuedAt), 'dd.MM.yyyy', { locale: ru })}
                         </TableCell>
-                        <TableCell className="font-mono text-sm">
+                        <TableCell className="font-medium text-sm">
                           {invoice.invoiceNumber}
                         </TableCell>
                         <TableCell className="font-medium">
@@ -650,6 +673,36 @@ export function ClientMainPanel({
               </div>
             )}
 
+            {/* Фильтр по месяцам */}
+            {availableAttendanceMonths.length > 0 && (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm mb-4">
+                <span className="text-muted-foreground">Месяц:</span>
+                <button
+                  onClick={() => setAttendanceMonthFilter(null)}
+                  className={`border-b border-dashed transition-colors ${
+                    attendanceMonthFilter === null
+                      ? 'text-foreground border-foreground font-medium'
+                      : 'text-muted-foreground border-muted-foreground/50 hover:text-foreground hover:border-foreground'
+                  }`}
+                >
+                  Все
+                </button>
+                {availableAttendanceMonths.map((month) => (
+                  <button
+                    key={month.toISOString()}
+                    onClick={() => setAttendanceMonthFilter(month)}
+                    className={`border-b border-dashed transition-colors ${
+                      attendanceMonthFilter && isSameMonth(attendanceMonthFilter, month)
+                        ? 'text-foreground border-foreground font-medium'
+                        : 'text-muted-foreground border-muted-foreground/50 hover:text-foreground hover:border-foreground'
+                    }`}
+                  >
+                    {format(month, 'LLLL yyyy', { locale: ru })}
+                  </button>
+                ))}
+              </div>
+            )}
+
             {/* Панель поиска и фильтров */}
             <div className="flex flex-wrap gap-3 mb-4">
               <div className="relative flex-1 min-w-[200px]">
@@ -693,7 +746,7 @@ export function ClientMainPanel({
                           className="h-8 p-0 font-medium hover:bg-transparent"
                           onClick={() => setAttendanceSort(toggleSort(attendanceSort, 'date'))}
                         >
-                          Дата
+                          Дата занятия
                           <SortIcon field="date" currentSort={attendanceSort} />
                         </Button>
                       </TableHead>
@@ -706,9 +759,7 @@ export function ClientMainPanel({
                   </TableHeader>
                   <TableBody>
                     {filteredAttendance.map((record: Attendance) => {
-                      const dateTime = record.markedAt
-                        ? new Date(record.markedAt)
-                        : new Date(record.createdAt);
+                      const scheduleDate = new Date(record.schedule.date);
                       const timeString = record.schedule.startTime
                         ? new Date(record.schedule.startTime).toLocaleTimeString('ru-RU', {
                             hour: '2-digit',
@@ -726,7 +777,7 @@ export function ClientMainPanel({
                           onClick={() => setSelectedAttendance(record)}
                         >
                           <TableCell className="text-sm">
-                            {format(dateTime, 'dd.MM.yyyy', { locale: ru })}
+                            {format(scheduleDate, 'dd.MM.yyyy', { locale: ru })}
                           </TableCell>
                           <TableCell className="text-sm">
                             {timeString}

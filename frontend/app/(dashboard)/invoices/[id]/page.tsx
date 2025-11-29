@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { formatDistance } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -45,6 +45,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useInvoice, useUpdateInvoice } from '@/hooks/use-invoices';
 import { useAuth } from '@/hooks/use-auth';
+import { useBreadcrumbs } from '@/lib/contexts/breadcrumbs-context';
 import type { InvoiceStatus } from '@/lib/types/invoices';
 import { InvoicePaymentsSection } from './components/invoice-payments-section';
 import { InvoiceQRSection } from './components/invoice-qr-section';
@@ -72,11 +73,20 @@ export default function InvoiceDetailsPage() {
   const router = useRouter();
   const { user } = useAuth();
   const invoiceId = params.id as string;
+  const { setCustomTitle } = useBreadcrumbs();
 
   const { data: invoice, isLoading } = useInvoice(invoiceId);
   const updateInvoice = useUpdateInvoice();
 
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  // Устанавливаем номер счета в хлебные крошки
+  useEffect(() => {
+    if (invoice?.invoiceNumber) {
+      setCustomTitle(invoice.invoiceNumber);
+    }
+    return () => setCustomTitle(null);
+  }, [invoice?.invoiceNumber, setCustomTitle]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ru-RU', {

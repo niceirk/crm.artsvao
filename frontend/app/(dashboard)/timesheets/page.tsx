@@ -610,7 +610,7 @@ export default function TimesheetsPage() {
                             {client.summary.excused}
                           </TableCell>
                           <TableCell className="text-center">
-                            {client.compensation.excusedCount > 0 ? (
+                            {(client.compensation.excusedCount > 0 || (client.compensation.medCertCompensation ?? 0) > 0) ? (
                               <div>
                                 <div
                                   className={cn(
@@ -625,6 +625,14 @@ export default function TimesheetsPage() {
                                       client.compensation.calculatedAmount
                                   )}
                                 </div>
+                                {/* Показываем разбивку если есть перенесённая компенсация из справок */}
+                                {(client.compensation.medCertCompensation ?? 0) > 0 && (
+                                  <div className="text-[10px] text-muted-foreground">
+                                    <span title="Текущий месяц">{formatMoney(client.compensation.baseCalculatedAmount ?? 0)}</span>
+                                    {' + '}
+                                    <span className="text-purple-600" title="Перенесено из справок">{formatMoney(client.compensation.medCertCompensation ?? 0)}</span>
+                                  </div>
+                                )}
                                 {client.compensation.adjustedAmount !== null && (
                                   <div className="text-xs text-muted-foreground line-through">
                                     {formatMoney(

@@ -16,8 +16,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { memoryStorage } from 'multer';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -74,19 +73,7 @@ export class UsersController {
    * POST /users/me/avatar - загрузить аватар
    */
   @Post('me/avatar')
-  @UseInterceptors(
-    FileInterceptor('avatar', {
-      storage: diskStorage({
-        destination: './uploads/avatars',
-        filename: (req, file, callback) => {
-          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          const ext = extname(file.originalname);
-          const filename = `avatar-${uniqueSuffix}${ext}`;
-          callback(null, filename);
-        },
-      }),
-    }),
-  )
+  @UseInterceptors(FileInterceptor('avatar', { storage: memoryStorage() }))
   async uploadAvatar(
     @Req() req: any,
     @UploadedFile(
@@ -105,7 +92,7 @@ export class UsersController {
     }
 
     const userId = req.user.sub;
-    return this.usersService.uploadAvatar(userId, file.filename);
+    return this.usersService.uploadAvatar(userId, file);
   }
 
   /**

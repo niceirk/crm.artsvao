@@ -9,8 +9,13 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { UsageItem } from '../usage-info';
 
-export function AlertDemo() {
+interface DemoProps {
+  usages?: UsageItem[];
+}
+
+export function AlertDemo({ usages }: DemoProps) {
   const [variant, setVariant] = useState<'default' | 'destructive'>('default');
 
   const code = `<Alert variant="${variant}">
@@ -25,6 +30,7 @@ export function AlertDemo() {
     <ComponentDemo
       title="Alert"
       description="Уведомления и предупреждения"
+      usages={usages}
       preview={
         <Alert variant={variant} className="w-full max-w-md">
           {variant === 'destructive' ? (
@@ -57,11 +63,11 @@ export function AlertDemo() {
   );
 }
 
-export function ToastDemo() {
+export function ToastDemo({ usages }: DemoProps) {
   const code = `import { toast } from 'sonner';
 
-// Обычное уведомление
-toast('Операция выполнена успешно');
+// Обычное уведомление (info)
+toast.info('Операция выполнена успешно');
 
 // Успешное уведомление
 toast.success('Данные сохранены!');
@@ -78,9 +84,10 @@ toast('Событие создано', {
     <ComponentDemo
       title="Toast"
       description="Всплывающие уведомления (Sonner)"
+      usages={usages}
       preview={
         <div className="flex flex-wrap gap-2">
-          <Button onClick={() => toast('Операция выполнена успешно')}>
+          <Button onClick={() => toast.info('Операция выполнена успешно')}>
             Обычный Toast
           </Button>
           <Button onClick={() => toast.success('Данные сохранены!')} variant="outline">
@@ -106,7 +113,7 @@ toast('Событие создано', {
   );
 }
 
-export function SkeletonDemo() {
+export function SkeletonDemo({ usages }: DemoProps) {
   const code = `<div className="flex items-center space-x-4">
   <Skeleton className="h-12 w-12 rounded-full" />
   <div className="space-y-2">
@@ -119,6 +126,7 @@ export function SkeletonDemo() {
     <ComponentDemo
       title="Skeleton"
       description="Скелетон для состояния загрузки"
+      usages={usages}
       preview={
         <div className="flex items-center space-x-4">
           <Skeleton className="h-12 w-12 rounded-full" />
