@@ -123,7 +123,9 @@ export function formatTimeLabel(time: string): string {
 // ==================== Утилиты для недельного режима ====================
 
 const DAY_NAMES = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
+const DAY_NAMES_FULL = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 const MONTH_NAMES = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+const MONTH_NAMES_FULL = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 
 /**
  * Форматирование даты в YYYY-MM-DD без проблем с временными зонами
@@ -180,7 +182,18 @@ export function getDayNumber(date: string): number {
 }
 
 /**
- * Форматирование диапазона недели "25 ноя - 1 дек"
+ * Форматирование даты "Суббота, 30 ноября"
+ */
+export function formatDateFull(date: string): string {
+  const d = new Date(date + 'T00:00:00');
+  const dayName = DAY_NAMES_FULL[d.getDay()];
+  const day = d.getDate();
+  const month = MONTH_NAMES_FULL[d.getMonth()];
+  return `${dayName}, ${day} ${month}`;
+}
+
+/**
+ * Форматирование диапазона недели "25 - 1 декабря" или "25 ноября - 1 декабря"
  */
 export function formatWeekRange(startDate: string): string {
   const dates = getWeekDates(startDate);
@@ -188,9 +201,9 @@ export function formatWeekRange(startDate: string): string {
   const end = new Date(dates[6] + 'T00:00:00');
 
   const startDay = start.getDate();
-  const startMonth = MONTH_NAMES[start.getMonth()];
+  const startMonth = MONTH_NAMES_FULL[start.getMonth()];
   const endDay = end.getDate();
-  const endMonth = MONTH_NAMES[end.getMonth()];
+  const endMonth = MONTH_NAMES_FULL[end.getMonth()];
 
   if (start.getMonth() === end.getMonth()) {
     return `${startDay} - ${endDay} ${endMonth}`;

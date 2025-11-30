@@ -229,6 +229,12 @@ export function AttendanceSheet({
 
     if (!member) return;
 
+    // Если повторное нажатие на тот же статус - снять статус (удалить запись)
+    if (member.attendance?.status === status) {
+      await handleRemoveAttendance(member);
+      return;
+    }
+
     const basisId = selectedBases[clientId];
 
     if (member.attendance) {
@@ -740,7 +746,7 @@ function AttendanceRow({
               )}
               onClick={() => onMark(member.id, option.value)}
               disabled={isLoading}
-              title={option.label}
+              title={isActive ? `Снять статус "${option.label}"` : option.label}
             >
               {option.icon}
             </Button>

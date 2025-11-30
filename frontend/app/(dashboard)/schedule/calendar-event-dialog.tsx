@@ -209,6 +209,7 @@ export function CalendarEventDialog({
         form.reset({
           roomId: rental.roomId,
           clientName: rental.clientName,
+          eventType: rental.eventType === 'Не указано' ? '' : (rental.eventType || ''),
           date: rentalDate,
           startTime: startTime,
           endTime: endTime,
@@ -279,6 +280,7 @@ export function CalendarEventDialog({
             form.reset({
               ...baseData,
               clientName: '',
+              eventType: '',
             });
             break;
           case 'event':
@@ -538,29 +540,43 @@ export function CalendarEventDialog({
 
                   <FormField
                     control={form.control}
-                    name="roomId"
+                    name="eventType"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Помещение *</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Выберите помещение" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {rooms?.map((room) => (
-                              <SelectItem key={room.id} value={room.id}>
-                                {room.name} {room.number ? `(${room.number})` : ''}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormLabel>Тип мероприятия</FormLabel>
+                        <FormControl>
+                          <Input placeholder="День рождения, Корпоратив, Съёмка..." {...field} />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                 </div>
+
+                <FormField
+                  control={form.control}
+                  name="roomId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Помещение *</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Выберите помещение" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {rooms?.map((room) => (
+                            <SelectItem key={room.id} value={room.id}>
+                              {room.name} {room.number ? `(${room.number})` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={form.control}

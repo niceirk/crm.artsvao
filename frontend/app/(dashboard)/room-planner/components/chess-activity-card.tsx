@@ -21,20 +21,30 @@ export function ChessActivityCard({
   const isCompact = heightPercent < 5; // меньше 5% (примерно 40 минут)
   const isTiny = heightPercent < 3.6; // меньше 3.6% (примерно 30 минут)
 
+  const isCancelled = activity.status === 'CANCELLED';
+
   return (
     <div
       className={cn(
-        'absolute left-1 right-1 rounded-md cursor-pointer transition-all hover:z-20',
-        'border-l-4 overflow-hidden',
+        'absolute left-1 right-1 cursor-pointer transition-all hover:z-20',
+        'overflow-hidden rounded-md',
         'hover:shadow-lg hover:scale-[1.02]',
         isCurrentlyActive && 'animate-pulse ring-2 ring-red-500 ring-offset-1',
-        activity.status === 'CANCELLED' && 'opacity-50 line-through'
+        isCancelled && 'opacity-60'
       )}
       style={{
         top: style.top,
         height: style.height,
-        backgroundColor: `${activity.color}15`,
-        borderLeftColor: activity.color,
+        backgroundColor: `${activity.color}25`,
+        ...(isCancelled && {
+          backgroundImage: `repeating-linear-gradient(
+            -45deg,
+            transparent,
+            transparent 4px,
+            rgba(0,0,0,0.1) 4px,
+            rgba(0,0,0,0.1) 8px
+          )`,
+        }),
       }}
       onClick={onClick}
       title={`${activity.title}${activity.subtitle ? ` - ${activity.subtitle}` : ''}\n${activity.startTime} - ${activity.endTime}`}
@@ -47,7 +57,7 @@ export function ChessActivityCard({
         {/* Время */}
         <span
           className={cn(
-            'text-[9px] font-medium text-muted-foreground whitespace-nowrap leading-tight',
+            'text-[9px] font-medium whitespace-nowrap leading-tight text-foreground/70',
             isTiny && 'hidden'
           )}
         >
@@ -57,10 +67,9 @@ export function ChessActivityCard({
         {/* Название */}
         <span
           className={cn(
-            'text-[11px] font-semibold truncate leading-tight',
+            'text-[11px] font-semibold truncate leading-tight text-foreground',
             isTiny && 'text-[9px]'
           )}
-          style={{ color: activity.color }}
         >
           {activity.title}
         </span>

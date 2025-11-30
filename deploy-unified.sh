@@ -30,6 +30,10 @@ ROLLBACK_NEEDED=false
 CURRENT_BACKUP=""
 DEPLOYMENT_STARTED=false
 
+# === ФЛАГИ ОПТИМИЗАЦИИ ===
+USE_NOCACHE=false
+FAST_MODE=false
+
 # === СОЗДАНИЕ ДИРЕКТОРИИ ЛОГОВ ===
 mkdir -p ./logs
 
@@ -76,7 +80,9 @@ scp_secure() {
 }
 
 rsync_copy() {
-    rsync -avz --progress \
+    # -a: архивный режим, -z: сжатие (опционально для близких серверов)
+    # Убраны -v и --progress для ускорения
+    rsync -az \
         -e "ssh -i $SSH_KEY -o StrictHostKeyChecking=no" \
         --exclude 'node_modules' \
         --exclude '.next' \
@@ -304,9 +310,19 @@ stop_containers() {
 build_images() {
     section "PHASE 7: СБОРКА DOCKER ОБРАЗОВ"
 
-    log "Запуск сборки (это может занять несколько минут)..."
+    log "Запуск сборки Docker образов..."
 
-    if ! ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml build --no-cache"; then
+    # Формируем команду сборки с BuildKit
+    local build_cmd="export DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 && cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml build"
+
+    if [[ "$USE_NOCACHE" == "true" ]]; then
+        build_cmd="$build_cmd --no-cache"
+        warn "Сборка с --no-cache (полная пересборка)"
+    else
+        log "Сборка с использованием кеша (быстрее)"
+    fi
+
+    if ! ssh_exec "$build_cmd"; then
         error "Ошибка сборки Docker образов"
         ROLLBACK_NEEDED=true
         return 1
@@ -317,13 +333,10 @@ build_images() {
 
 # === ПРОВЕРКА ГОТОВНОСТИ БД ===
 wait_for_db() {
-    local max_attempts=30
+    local max_attempts=15  # Уменьшено с 30 до 15 (макс 30 сек)
     local attempt=1
 
     log "Ожидание готовности базы данных..."
-
-    # Запускаем только postgres
-    ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml up -d postgres"
 
     while [[ $attempt -le $max_attempts ]]; do
         if ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml exec -T postgres pg_isready -U postgres" 2>/dev/null; then
@@ -352,21 +365,21 @@ run_migrations() {
 
     log "Lock файл создан"
 
+    # Поднимаем postgres + backend вместе
+    log "Запуск postgres и backend..."
+    ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml up -d postgres backend"
+
     # Ждём готовности БД
     if ! wait_for_db; then
         ssh_exec "rm -f /tmp/artsvao-migration.lock"
         return 1
     fi
 
-    # Сохраняем статус миграций до выполнения
-    ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml run --rm backend npx prisma migrate status > /tmp/migration-status-before.txt 2>&1" || true
+    log "Запуск миграций внутри уже запущенного backend..."
 
-    log "Запуск миграций..."
-
-    if ! ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml run --rm backend npx prisma migrate deploy"; then
+    # Используем exec вместо run --rm для ускорения (не создаём новый контейнер)
+    if ! ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml exec -T backend npx prisma migrate deploy"; then
         error "Миграция провалена!"
-        warn "Статус миграций до ошибки:"
-        ssh_exec "cat /tmp/migration-status-before.txt" || true
         ssh_exec "rm -f /tmp/artsvao-migration.lock"
         ROLLBACK_NEEDED=true
         return 1
@@ -397,11 +410,18 @@ start_services() {
 health_check() {
     section "PHASE 10: HEALTH CHECKS"
 
-    local max_attempts=30
+    # В fast mode уменьшаем количество попыток
+    local max_attempts=10  # Уменьшено с 30 до 10
+    local sleep_seconds=2  # Уменьшено с 3 до 2
     local attempt=1
 
+    if [[ "$FAST_MODE" == "true" ]]; then
+        max_attempts=5
+        sleep_seconds=2
+    fi
+
     # Ждём немного для инициализации
-    sleep 10
+    sleep 5
 
     # Проверка backend
     log "Проверка backend..."
@@ -411,7 +431,7 @@ health_check() {
             break
         fi
         log "Попытка $attempt/$max_attempts: Backend не готов..."
-        sleep 3
+        sleep $sleep_seconds
         ((attempt++))
     done
 
@@ -428,7 +448,7 @@ health_check() {
             break
         fi
         log "Попытка $attempt/$max_attempts: Frontend не готов..."
-        sleep 3
+        sleep $sleep_seconds
         ((attempt++))
     done
 
@@ -492,11 +512,18 @@ rollback() {
 cleanup() {
     section "ОЧИСТКА"
 
-    ssh_exec "
-        # Удаляем неиспользуемые образы
-        docker image prune -af --filter 'until=24h' || true
+    # В fast mode пропускаем очистку образов
+    if [[ "$FAST_MODE" == "true" ]]; then
+        warn "Очистка Docker образов пропущена (--fast режим)"
+    else
+        ssh_exec "
+            # Удаляем неиспользуемые образы
+            docker image prune -af --filter 'until=24h' || true
+        " 2>/dev/null || true
+    fi
 
-        # Удаляем старые бэкапы (оставляем последние 5)
+    # Удаляем старые бэкапы (всегда)
+    ssh_exec "
         cd $BACKUP_PATH 2>/dev/null && ls -t | tail -n +16 | xargs -r rm -rf || true
     " 2>/dev/null || true
 
@@ -554,13 +581,30 @@ while [[ $# -gt 0 ]]; do
             SKIP_BACKUP=true
             shift
             ;;
+        --no-cache-build)
+            USE_NOCACHE=true
+            shift
+            ;;
+        --fast)
+            FAST_MODE=true
+            SKIP_BACKUP=true
+            SKIP_CHECKS=true
+            shift
+            ;;
         -h|--help)
             echo "Использование: $0 [опции]"
             echo ""
             echo "Опции:"
-            echo "  --skip-checks    Пропустить pre-deploy проверки"
-            echo "  --skip-backup    Пропустить создание бэкапа"
-            echo "  -h, --help       Показать справку"
+            echo "  --skip-checks      Пропустить pre-deploy проверки"
+            echo "  --skip-backup      Пропустить создание бэкапа"
+            echo "  --no-cache-build   Собирать Docker образы с --no-cache (полная пересборка)"
+            echo "  --fast             Быстрый режим: пропускает проверки, бэкапы и очистку образов"
+            echo "  -h, --help         Показать справку"
+            echo ""
+            echo "Примеры:"
+            echo "  $0                  Обычный деплой с кешем Docker"
+            echo "  $0 --fast           Быстрый деплой для мелких изменений"
+            echo "  $0 --no-cache-build Полная пересборка образов"
             exit 0
             ;;
         *)
@@ -575,13 +619,21 @@ main() {
     echo ""
     echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
     echo -e "${CYAN}║                                                            ║${NC}"
-    echo -e "${CYAN}║          🚀 ARTSVAO UNIFIED DEPLOYMENT v2.0                ║${NC}"
+    echo -e "${CYAN}║          🚀 ARTSVAO UNIFIED DEPLOYMENT v2.1                ║${NC}"
     echo -e "${CYAN}║                                                            ║${NC}"
     echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
     echo ""
     echo -e "Сервер: ${CYAN}$SERVER_USER@$SERVER_HOST${NC}"
     echo -e "Путь:   ${CYAN}$DEPLOY_PATH${NC}"
     echo -e "Домен:  ${CYAN}$DOMAIN${NC}"
+
+    # Показываем активные режимы
+    if [[ "$FAST_MODE" == "true" ]]; then
+        echo -e "Режим:  ${YELLOW}FAST (ускоренный деплой)${NC}"
+    fi
+    if [[ "$USE_NOCACHE" == "true" ]]; then
+        echo -e "Сборка: ${YELLOW}--no-cache (полная пересборка)${NC}"
+    fi
     echo ""
 
     # Проверка SSH ключа (всегда)
@@ -603,8 +655,12 @@ main() {
         warn "Создание бэкапа пропущено (--skip-backup)"
     fi
 
-    # Бэкап SSL локально
-    backup_ssl_local
+    # Бэкап SSL локально (пропускается в fast режиме)
+    if [[ "$FAST_MODE" == "true" ]]; then
+        warn "Бэкап SSL пропущен (--fast режим)"
+    else
+        backup_ssl_local
+    fi
 
     # Копирование env файлов
     deploy_env || { ROLLBACK_NEEDED=true; rollback; exit 1; }

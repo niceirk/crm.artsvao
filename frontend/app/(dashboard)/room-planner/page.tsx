@@ -5,7 +5,7 @@ import { Calendar, CalendarDays, LayoutList, Grid3x3, Search } from 'lucide-reac
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { getCurrentDate } from '@/lib/utils/time-slots';
-import { getWeekStart } from '@/lib/utils/chess-grid';
+import { getWeekStart, formatDateFull, formatWeekRange } from '@/lib/utils/chess-grid';
 import { RoomPlannerFilters } from './components/room-planner-filters';
 import { ScheduleView } from './components/schedule-view';
 import { SearchView } from './components/search-view';
@@ -13,6 +13,7 @@ import { ChessView } from './components/chess-view';
 import { ChessWeekView } from './components/chess-week-view';
 import { RoomDetailSheet } from './components/room-detail-sheet';
 import { CalendarEventDialog } from '../schedule/calendar-event-dialog';
+import { AttendanceSheet } from '../schedule/attendance-sheet';
 import type { Schedule } from '@/lib/api/schedules';
 import type { Rental } from '@/lib/api/rentals';
 import type { Event } from '@/lib/api/events';
@@ -51,6 +52,9 @@ export default function RoomPlannerPage() {
   const [selectedRental, setSelectedRental] = useState<Rental | undefined>(undefined);
   const [selectedEvent, setSelectedEvent] = useState<Event | undefined>(undefined);
   const [selectedReservation, setSelectedReservation] = useState<Reservation | undefined>(undefined);
+
+  // Состояние журнала посещаемости
+  const [isAttendanceSheetOpen, setIsAttendanceSheetOpen] = useState(false);
 
   // Обработчик клика по помещению
   const handleRoomClick = (roomWithActivities: RoomWithActivities) => {
@@ -152,7 +156,7 @@ export default function RoomPlannerPage() {
   return (
     <div className="flex flex-col gap-4 px-6 pt-2 pb-2">
       {/* Верхний заголовок с табами */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-4 min-h-8">
           <TabLink value="schedule" label="Расписание" icon={LayoutList} isActive={activeTab === 'schedule'} />
           <TabLink value="chess" label="Шахматка" icon={Grid3x3} isActive={activeTab === 'chess'} />
@@ -161,7 +165,7 @@ export default function RoomPlannerPage() {
           {/* Дополнительные элементы для режима шахматки */}
           {activeTab === 'chess' && (
             <>
-              <div className="h-5 w-px bg-border" />
+              <div className="h-5 w-px bg-border ml-4" />
 
               {/* Переключатель День/Неделя */}
               <button
@@ -188,25 +192,36 @@ export default function RoomPlannerPage() {
                 <CalendarDays className="h-3.5 w-3.5" />
                 Неделя
               </button>
-
-              <div className="h-5 w-px bg-border" />
-
-              <RoomPlannerFilters
-                date={date}
-                onDateChange={setDate}
-                selectedRoomIds={selectedRoomIds}
-                onRoomsChange={setSelectedRoomIds}
-                selectedActivityTypes={selectedActivityTypes}
-                onActivityTypesChange={setSelectedActivityTypes}
-                showNowOnly={showNowOnly}
-                onShowNowOnlyChange={setShowNowOnly}
-                hideNowOnlyFilter
-                hideRoomsFilter={chessViewMode === 'week'}
-                viewMode={chessViewMode}
-              />
             </>
           )}
         </div>
+
+        {/* Дата по центру для режима шахматки */}
+        {activeTab === 'chess' && (
+          <span className="text-sm font-medium text-foreground">
+            {chessViewMode === 'day'
+              ? formatDateFull(date)
+              : formatWeekRange(getWeekStart(date))
+            }
+          </span>
+        )}
+
+        {/* Фильтры справа для режима шахматки */}
+        {activeTab === 'chess' && (
+          <RoomPlannerFilters
+            date={date}
+            onDateChange={setDate}
+            selectedRoomIds={selectedRoomIds}
+            onRoomsChange={setSelectedRoomIds}
+            selectedActivityTypes={selectedActivityTypes}
+            onActivityTypesChange={setSelectedActivityTypes}
+            showNowOnly={showNowOnly}
+            onShowNowOnlyChange={setShowNowOnly}
+            hideNowOnlyFilter
+            hideRoomsFilter={chessViewMode === 'week'}
+            viewMode={chessViewMode}
+          />
+        )}
         {activeTab !== 'chess' && (
           <Link
             href="/schedule"
@@ -302,7 +317,26 @@ export default function RoomPlannerPage() {
         rental={selectedRental}
         event={selectedEvent}
         reservation={selectedReservation}
+        onOpenAttendance={() => {
+          if (selectedSchedule) {
+            setIsEditDialogOpen(false);
+            setIsAttendanceSheetOpen(true);
+          }
+        }}
       />
+
+      {/* Журнал посещаемости */}
+      {selectedSchedule && selectedSchedule.group && (
+        <AttendanceSheet
+          open={isAttendanceSheetOpen}
+          onOpenChange={setIsAttendanceSheetOpen}
+          scheduleId={selectedSchedule.id}
+          groupId={selectedSchedule.group.id}
+          groupName={selectedSchedule.group.name}
+          startTime={selectedSchedule.startTime}
+          scheduleDate={selectedSchedule.date}
+        />
+      )}
     </div>
   );
 }

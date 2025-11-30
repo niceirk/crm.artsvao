@@ -51,7 +51,7 @@ import {
 import { CompensationEditDialog } from './components/compensation-edit-dialog';
 import { CreateInvoicesDialog } from './components/create-invoices-dialog';
 import { AttendanceSheet } from '@/app/(dashboard)/schedule/attendance-sheet';
-import { useMarkAttendance, useUpdateAttendance } from '@/hooks/use-attendance';
+import { useMarkAttendance, useUpdateAttendance, useDeleteAttendance } from '@/hooks/use-attendance';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { createBulkInvoices, timesheetsApi } from '@/lib/api/timesheets';
@@ -145,6 +145,7 @@ const AttendanceCell = memo(function AttendanceCell({
               )}
               onClick={() => onStatusChange(clientId, attendance, 'PRESENT')}
               disabled={isLoading}
+              title={attendance.status === 'PRESENT' ? 'Снять статус' : 'Присутствует'}
             >
               <Check className="h-4 w-4" />
             </Button>
@@ -157,6 +158,7 @@ const AttendanceCell = memo(function AttendanceCell({
               )}
               onClick={() => onStatusChange(clientId, attendance, 'ABSENT')}
               disabled={isLoading}
+              title={attendance.status === 'ABSENT' ? 'Снять статус' : 'Отсутствует'}
             >
               <X className="h-4 w-4" />
             </Button>
@@ -169,6 +171,7 @@ const AttendanceCell = memo(function AttendanceCell({
               )}
               onClick={() => onStatusChange(clientId, attendance, 'EXCUSED')}
               disabled={isLoading}
+              title={attendance.status === 'EXCUSED' ? 'Снять статус' : 'Уважительная причина'}
             >
               <AlertCircle className="h-4 w-4" />
             </Button>
@@ -197,6 +200,7 @@ export default function TimesheetsPage() {
   const queryClient = useQueryClient();
   const markAttendance = useMarkAttendance();
   const updateAttendance = useUpdateAttendance();
+  const deleteAttendance = useDeleteAttendance();
 
   const { data: studios, isLoading: studiosLoading } = useTimesheetStudios();
   const { data: groups, isLoading: groupsLoading } = useTimesheetGroups(
@@ -307,6 +311,58 @@ export default function TimesheetsPage() {
     setSelectedGroupId(value);
   };
 
+  // Обработчик снятия статуса (удаление записи attendance)
+  const handleClearStatus = useCallback(async (
+    clientId: string,
+    attendance: TimesheetAttendance
+  ) => {
+    if (!attendance.attendanceId) return;
+
+    const cellKey = `${clientId}-${attendance.scheduleId}`;
+    setPendingCell(cellKey);
+
+    // Оптимистичное обновление кэша
+    const queryKey = ['timesheets', 'timesheet', { groupId: selectedGroupId, month: selectedMonth }];
+    const previousData = queryClient.getQueryData(queryKey);
+
+    queryClient.setQueryData(queryKey, (old: any) => {
+      if (!old) return old;
+      return {
+        ...old,
+        clients: old.clients.map((client: TimesheetClient) => {
+          if (client.id !== clientId) return client;
+          const oldStatus = client.attendances.find(
+            (att: TimesheetAttendance) => att.scheduleId === attendance.scheduleId
+          )?.status;
+          return {
+            ...client,
+            attendances: client.attendances.map((att: TimesheetAttendance) => {
+              if (att.scheduleId !== attendance.scheduleId) return att;
+              return { ...att, status: null, attendanceId: null };
+            }),
+            summary: {
+              ...client.summary,
+              notMarked: client.summary.notMarked + 1,
+              present: oldStatus === 'PRESENT' ? client.summary.present - 1 : client.summary.present,
+              absent: oldStatus === 'ABSENT' ? client.summary.absent - 1 : client.summary.absent,
+              excused: oldStatus === 'EXCUSED' ? client.summary.excused - 1 : client.summary.excused,
+            },
+          };
+        }),
+      };
+    });
+
+    try {
+      await deleteAttendance.mutateAsync(attendance.attendanceId);
+      queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+    } catch (error) {
+      // Откатываем при ошибке
+      queryClient.setQueryData(queryKey, previousData);
+      toast.error('Ошибка при снятии статуса');
+    } finally {
+      setPendingCell(null);
+    }
+  }, [selectedGroupId, selectedMonth, queryClient, deleteAttendance]);
 
   // Обработчик изменения статуса посещения с оптимистичным обновлением
   const handleStatusChange = useCallback(async (
@@ -314,6 +370,11 @@ export default function TimesheetsPage() {
     attendance: TimesheetAttendance,
     newStatus: AttendanceStatus
   ) => {
+    // Если повторное нажатие на тот же статус - снять статус
+    if (attendance.status === newStatus && attendance.attendanceId) {
+      return handleClearStatus(clientId, attendance);
+    }
+
     const cellKey = `${clientId}-${attendance.scheduleId}`;
     setPendingCell(cellKey);
 
@@ -360,7 +421,7 @@ export default function TimesheetsPage() {
     } finally {
       setPendingCell(null);
     }
-  }, [selectedGroupId, selectedMonth, queryClient, updateAttendance, markAttendance]);
+  }, [selectedGroupId, selectedMonth, queryClient, updateAttendance, markAttendance, handleClearStatus]);
 
 
   return (
@@ -498,6 +559,12 @@ export default function TimesheetsPage() {
                     <AlertCircle className="h-3 w-3 text-orange-500" />
                   </div>
                   <span className="text-muted-foreground">Уваж.</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex h-5 w-5 items-center justify-center rounded bg-muted">
+                    <Minus className="h-3 w-3 text-muted-foreground" />
+                  </div>
+                  <span className="text-muted-foreground">Не отм.</span>
                 </div>
               </div>
               <div className="text-sm text-muted-foreground text-right">

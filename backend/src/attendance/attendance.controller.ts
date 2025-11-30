@@ -68,7 +68,6 @@ export class AttendanceController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
   async remove(@Param('id') id: string) {
     return this.attendanceService.remove(id);
   }

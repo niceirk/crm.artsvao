@@ -118,7 +118,7 @@ function rentalToActivity(rental: Rental): Activity {
   return {
     id: rental.id,
     type: 'rental',
-    title: rental.eventType || 'Аренда',
+    title: 'Аренда',
     subtitle: rental.clientName,
     startTime: parseTimeToHHmm(rental.startTime),
     endTime: parseTimeToHHmm(rental.endTime),

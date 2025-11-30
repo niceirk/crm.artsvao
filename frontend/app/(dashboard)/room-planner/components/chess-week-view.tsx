@@ -381,31 +381,40 @@ function WeekActivityCard({ activity, style, onClick, roomName }: WeekActivityCa
   const isCompact = heightPercent < 5;
   const isTiny = heightPercent < 3.6;
   const isNarrow = widthPercent < 50;
+  const isCancelled = activity.status === 'CANCELLED';
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <div
           className={cn(
-            'absolute rounded cursor-pointer transition-all hover:z-30',
-            'border-l-[3px] overflow-hidden',
-            'hover:shadow-lg hover:brightness-95',
-            activity.status === 'CANCELLED' && 'opacity-50'
+            'absolute cursor-pointer transition-all hover:z-30',
+            'overflow-hidden rounded-md',
+            'hover:shadow-lg hover:scale-[1.02]',
+            isCancelled && 'opacity-60'
           )}
           style={{
             top: style.top,
             height: style.height,
             left: `calc(${style.left} + 2px)`,
             width: `calc(${style.width} - 4px)`,
-            backgroundColor: `${activity.color}20`,
-            borderLeftColor: activity.color,
+            backgroundColor: `${activity.color}25`,
+            ...(isCancelled && {
+              backgroundImage: `repeating-linear-gradient(
+                -45deg,
+                transparent,
+                transparent 4px,
+                rgba(0,0,0,0.1) 4px,
+                rgba(0,0,0,0.1) 8px
+              )`,
+            }),
           }}
           onClick={onClick}
         >
           <div className="h-full px-1 py-0.5 flex flex-col justify-center overflow-hidden">
             {/* Время */}
             {!isTiny && !isNarrow && (
-              <span className="text-[8px] font-medium text-muted-foreground whitespace-nowrap leading-tight">
+              <span className="text-[8px] font-medium whitespace-nowrap leading-tight text-foreground/70">
                 {activity.startTime}
               </span>
             )}
@@ -413,10 +422,9 @@ function WeekActivityCard({ activity, style, onClick, roomName }: WeekActivityCa
             {/* Название */}
             <span
               className={cn(
-                'font-semibold truncate leading-tight',
+                'font-semibold truncate leading-tight text-foreground',
                 isTiny || isNarrow ? 'text-[8px]' : 'text-[10px]'
               )}
-              style={{ color: activity.color }}
             >
               {activity.title}
             </span>
@@ -432,7 +440,7 @@ function WeekActivityCard({ activity, style, onClick, roomName }: WeekActivityCa
       </TooltipTrigger>
       <TooltipContent side="right" className="max-w-[250px]">
         <div className="space-y-1">
-          <div className="font-semibold" style={{ color: activity.color }}>
+          <div className="font-semibold">
             {activity.title}
           </div>
           {activity.subtitle && (

@@ -47,8 +47,8 @@ export class RentalsService {
 
     const createData = {
       ...createRentalDto,
-      clientPhone: createRentalDto.clientPhone || 'Не указано',
-      eventType: createRentalDto.eventType || 'Не указано',
+      clientPhone: createRentalDto.clientPhone || 'Не указан',
+      eventType: createRentalDto.eventType || 'Аренда',
       totalPrice: createRentalDto.totalPrice ?? 0,
       date: new Date(createRentalDto.date),
       startTime: new Date(Date.UTC(1970, 0, 1, startHour, startMin, 0)),
