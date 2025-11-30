@@ -400,14 +400,14 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     );
   }
 
-  const handleEventClick = (info: EventClickArg) => {
+  const handleEventClick = useCallback((info: EventClickArg) => {
     const eventType = info.event.extendedProps.type as CalendarEventType;
     const eventData = info.event.extendedProps.data;
     const eventId = eventData.id;
     onEventClick(eventId, eventType);
-  };
+  }, [onEventClick]);
 
-  const handleSelect = (selectInfo: any) => {
+  const handleSelect = useCallback((selectInfo: any) => {
     const startDate = new Date(selectInfo.start);
     const endDate = new Date(selectInfo.end);
 
@@ -423,9 +423,9 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     // Unselect the time range
     const calendarApi = selectInfo.view.calendar;
     calendarApi.unselect();
-  };
+  }, [onDateSelect]);
 
-  const handleEventDropOrResize = (info: any) => {
+  const handleEventDropOrResize = useCallback((info: any) => {
     const eventType = info.event.extendedProps.type as CalendarEventType;
     const eventData = info.event.extendedProps.data;
     const eventId = eventData.id;
@@ -441,17 +441,17 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     const newRoomId = info.event.getResources?.()?.[0]?.id || info.event._def?.resourceIds?.[0];
 
     onEventDrop(eventId, eventType, date, startTime, endTime, newRoomId);
-  };
+  }, [onEventDrop]);
 
-  const handleViewChange = (info: any) => {
+  const handleViewChange = useCallback((info: any) => {
     setCurrentView(info.view.type);
     setCurrentDateRange({
       start: info.start,
       end: info.end,
     });
-  };
+  }, []);
 
-  const renderEventContent = (eventInfo: EventContentArg) => {
+  const renderEventContent = useCallback((eventInfo: EventContentArg) => {
     const eventType = eventInfo.event.extendedProps.type as CalendarEventType;
 
     // Определяем иконку в зависимости от типа события
@@ -504,7 +504,7 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
         </div>
       </div>
     );
-  };
+  }, []);
 
   return (
     <div className="schedule-calendar h-full" ref={titleRef}>

@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { MoreHorizontal, Pencil, Trash2, Users, Copy } from 'lucide-react';
+import { MoreHorizontal, Pencil, Trash2, Users, Copy, ArrowUpDown, ArrowUp, ArrowDown, Calendar } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -20,7 +20,17 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,16 +45,16 @@ import { Group } from '@/lib/api/groups';
 import { useDeleteGroup, useCreateGroup } from '@/hooks/use-groups';
 import { GroupDialog } from './group-dialog';
 
-const statusColors: Record<string, 'default' | 'secondary' | 'destructive' | 'success'> = {
-  ACTIVE: 'success',
-  INACTIVE: 'secondary',
-  ARCHIVED: 'destructive',
+const statusDotColors: Record<string, string> = {
+  ACTIVE: 'bg-green-500',
+  INACTIVE: 'bg-gray-400',
+  ARCHIVED: 'bg-red-500',
 };
 
 const statusLabels: Record<string, string> = {
   ACTIVE: 'Активна',
   INACTIVE: 'Неактивна',
-  ARCHIVED: 'Архив',
+  ARCHIVED: 'В архиве',
 };
 
 interface GroupsTableProps {
@@ -52,18 +62,27 @@ interface GroupsTableProps {
   isLoading: boolean;
 }
 
+type SortField = 'name' | 'isPaid' | 'teacher' | null;
+type SortOrder = 'asc' | 'desc';
+
 export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
   const router = useRouter();
   const [selectedGroup, setSelectedGroup] = useState<Group | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [groupToDelete, setGroupToDelete] = useState<Group | null>(null);
+  const [sortField, setSortField] = useState<SortField>(null);
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
 
   const deleteGroup = useDeleteGroup();
   const createGroup = useCreateGroup();
 
-  const handleRowClick = (groupId: string) => {
-    router.push(`/groups/${groupId}`);
+  const handleRowClick = (e: React.MouseEvent, groupId: string) => {
+    if (e.ctrlKey || e.metaKey) {
+      window.open(`/groups/${groupId}`, '_blank');
+    } else {
+      router.push(`/groups/${groupId}`);
+    }
   };
 
   const handleEdit = (group: Group) => {
@@ -120,6 +139,52 @@ export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
     return '—';
   };
 
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="ml-1 h-4 w-4 text-muted-foreground" />;
+    }
+    return sortOrder === 'asc'
+      ? <ArrowUp className="ml-1 h-4 w-4" />
+      : <ArrowDown className="ml-1 h-4 w-4" />;
+  };
+
+  const sortedGroups = useMemo(() => {
+    if (!sortField) return groups;
+
+    return [...groups].sort((a, b) => {
+      let aValue: string;
+      let bValue: string;
+
+      switch (sortField) {
+        case 'name':
+          aValue = a.name.toLowerCase();
+          bValue = b.name.toLowerCase();
+          break;
+        case 'isPaid':
+          aValue = a.isPaid !== false ? 'платно' : 'бесплатно';
+          bValue = b.isPaid !== false ? 'платно' : 'бесплатно';
+          break;
+        case 'teacher':
+          aValue = getTeacherFullName(a.teacher).toLowerCase();
+          bValue = getTeacherFullName(b.teacher).toLowerCase();
+          break;
+        default:
+          return 0;
+      }
+
+      const comparison = aValue.localeCompare(bValue, 'ru');
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+  }, [groups, sortField, sortOrder]);
 
   if (isLoading) {
     return <div className="text-center py-8">Загрузка...</div>;
@@ -143,11 +208,34 @@ export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Название</TableHead>
-              <TableHead>Тип</TableHead>
-              <TableHead>Статус</TableHead>
-              <TableHead>Студия</TableHead>
-              <TableHead>Преподаватель</TableHead>
+              <TableHead
+                className="cursor-pointer select-none hover:bg-muted/50"
+                onClick={() => handleSort('name')}
+              >
+                <div className="flex items-center">
+                  Название
+                  {getSortIcon('name')}
+                </div>
+              </TableHead>
+              <TableHead
+                className="cursor-pointer select-none hover:bg-muted/50"
+                onClick={() => handleSort('isPaid')}
+              >
+                <div className="flex items-center">
+                  Тип
+                  {getSortIcon('isPaid')}
+                </div>
+              </TableHead>
+              <TableHead>Расписание</TableHead>
+              <TableHead
+                className="cursor-pointer select-none hover:bg-muted/50"
+                onClick={() => handleSort('teacher')}
+              >
+                <div className="flex items-center">
+                  Преподаватель
+                  {getSortIcon('teacher')}
+                </div>
+              </TableHead>
               <TableHead>Возраст</TableHead>
               <TableHead>Помещение</TableHead>
               <TableHead>Участников</TableHead>
@@ -156,24 +244,104 @@ export function GroupsTable({ groups, isLoading }: GroupsTableProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {groups.map((group) => (
+            {sortedGroups.map((group) => (
               <TableRow
                 key={group.id}
                 className="cursor-pointer hover:bg-accent"
-                onClick={() => handleRowClick(group.id)}
+                onClick={(e) => handleRowClick(e, group.id)}
               >
-                <TableCell className="font-medium">{group.name}</TableCell>
-                <TableCell>
-                  <Badge variant={group.isPaid !== false ? 'default' : 'success'}>
-                    {group.isPaid !== false ? 'Платно' : 'Бесплатно'}
-                  </Badge>
+                <TableCell className="font-medium">
+                  <div className="flex items-center gap-2">
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${statusDotColors[group.status]}`} />
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{statusLabels[group.status]}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                    {group.name}
+                  </div>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={statusColors[group.status]}>
-                    {statusLabels[group.status]}
-                  </Badge>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        {group.isPaid !== false ? (
+                          <span className="font-semibold text-red-500">₽</span>
+                        ) : (
+                          <span className="font-semibold text-green-500">₽</span>
+                        )}
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{group.isPaid !== false ? 'Платно' : 'Бесплатно'}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </TableCell>
-                <TableCell>{group.studio?.name || '—'}</TableCell>
+                <TableCell>
+                  {(() => {
+                    // Фильтруем только текущий месяц и будущие
+                    const now = new Date();
+                    const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                    const futureMonths = group.scheduledMonths?.filter(
+                      (m) => m.yearMonth >= currentYearMonth
+                    ) || [];
+
+                    if (futureMonths.length === 0) {
+                      return <span className="text-muted-foreground">—</span>;
+                    }
+
+                    const monthNames = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+                    const visibleMonths = futureMonths.slice(0, 2);
+                    const remainingMonths = futureMonths.slice(2);
+
+                    return (
+                      <div className="flex items-start gap-1.5">
+                        <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                        <div className="flex flex-col gap-0.5">
+                          {visibleMonths.map((m) => {
+                            const [, mo] = m.yearMonth.split('-');
+                            return (
+                              <span key={m.yearMonth} className="text-sm leading-tight">
+                                {monthNames[parseInt(mo) - 1]}-{m.count}
+                              </span>
+                            );
+                          })}
+                        </div>
+                        {remainingMonths.length > 0 && (
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <button
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-xs text-muted-foreground hover:text-foreground px-1.5 py-0.5 rounded bg-muted hover:bg-muted/80 transition-colors mt-0.5"
+                              >
+                                +{remainingMonths.length}
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-2" align="start" onClick={(e) => e.stopPropagation()}>
+                              <div className="space-y-1">
+                                {remainingMonths.map((m) => {
+                                  const [, mo] = m.yearMonth.split('-');
+                                  return (
+                                    <div key={m.yearMonth} className="flex items-center gap-1.5">
+                                      <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                      <span className="text-sm">
+                                        {monthNames[parseInt(mo) - 1]}-{m.count}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </TableCell>
                 <TableCell>{getTeacherFullName(group.teacher)}</TableCell>
                 <TableCell>{getAgeRange(group)}</TableCell>
                 <TableCell>{group.room?.name || '—'}</TableCell>

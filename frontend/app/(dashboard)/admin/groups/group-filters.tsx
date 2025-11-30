@@ -21,7 +21,7 @@ export function GroupFilters({ filters, onFiltersChange }: GroupFiltersProps) {
   const { data: rooms } = useRooms();
 
   const handleClearFilters = () => {
-    onFiltersChange({});
+    onFiltersChange({ limit: filters.limit });
   };
 
   const hasActiveFilters =

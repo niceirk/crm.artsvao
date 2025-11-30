@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useClients } from '@/hooks/useClients';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -14,12 +15,23 @@ import { Filter, Search, Plus } from 'lucide-react';
 export default function ClientsPage() {
   const router = useRouter();
   const [showFilters, setShowFilters] = useState(false);
+  const [searchInput, setSearchInput] = useState('');
+  const debouncedSearch = useDebouncedValue(searchInput, 300);
   const [filters, setFilters] = useState<ClientFilterParams>({
     sortBy: 'name',
     sortOrder: 'asc',
     page: 1,
     limit: 20,
   });
+
+  // Update filters when debounced search changes
+  useEffect(() => {
+    setFilters((prev) => ({
+      ...prev,
+      search: debouncedSearch || undefined,
+      page: 1,
+    }));
+  }, [debouncedSearch]);
 
   const { data, isLoading, error } = useClients(filters);
 
@@ -48,11 +60,7 @@ export default function ClientsPage() {
   };
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFilters((prev) => ({
-      ...prev,
-      search: e.target.value || undefined,
-      page: 1,
-    }));
+    setSearchInput(e.target.value);
   };
 
   return (
@@ -86,7 +94,7 @@ export default function ClientsPage() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input
               placeholder="Поиск по имени, телефону, email..."
-              value={filters.search || ''}
+              value={searchInput}
               onChange={handleSearchChange}
               className="pl-10 h-12 text-base"
             />

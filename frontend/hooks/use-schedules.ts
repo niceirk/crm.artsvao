@@ -126,6 +126,8 @@ export const useBulkUpdateSchedules = () => {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      queryClient.invalidateQueries({ queryKey: ['planned-schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['planned-months-stats'] });
       toast.success(`Обновлено занятий: ${result.updated.count}, ошибок: ${result.failed.count}`);
     },
     onError: (error: any) => {
@@ -158,6 +160,8 @@ export const useBulkCancelSchedules = () => {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      queryClient.invalidateQueries({ queryKey: ['planned-schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['planned-months-stats'] });
       const message = result.transferred
         ? `Отменено: ${result.cancelled.count}, перенесено: ${result.transferred.count}`
         : `Отменено занятий: ${result.cancelled.count}`;
@@ -177,6 +181,8 @@ export const useBulkDeleteSchedules = () => {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      queryClient.invalidateQueries({ queryKey: ['planned-schedules'] });
+      queryClient.invalidateQueries({ queryKey: ['planned-months-stats'] });
       const message = result.totalCancelledEnrollments > 0
         ? `Удалено занятий: ${result.deleted.count}, отменено записей: ${result.totalCancelledEnrollments}. Занятия возвращены в абонементы клиентов.`
         : `Удалено занятий: ${result.deleted.count}`;

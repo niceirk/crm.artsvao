@@ -119,6 +119,96 @@ export interface ScheduleFilters {
   eventTypeId?: string | string[];
 }
 
+// ===== Schedule Planner Types =====
+
+export interface WeeklyScheduleItem {
+  day: 'MON' | 'TUE' | 'WED' | 'THU' | 'FRI' | 'SAT' | 'SUN';
+  startTime: string;
+  roomId?: string;
+}
+
+export interface PreviewGroupDto {
+  groupId: string;
+  teacherId: string;
+  roomId: string;
+  weeklySchedule: WeeklyScheduleItem[];
+  duration: number;
+}
+
+export interface PreviewRecurringScheduleDto {
+  groups: PreviewGroupDto[];
+  month: string; // "2025-01" format
+}
+
+export interface ConflictInfo {
+  type: 'room' | 'teacher' | 'rental' | 'event';
+  reason: string;
+}
+
+export interface PreviewScheduleItem {
+  tempId: string;
+  groupId: string;
+  groupName: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  roomId: string;
+  roomName: string;
+  teacherId: string;
+  teacherName: string;
+  hasConflict: boolean;
+  conflicts: ConflictInfo[];
+}
+
+export interface PreviewResult {
+  schedules: PreviewScheduleItem[];
+  summary: {
+    total: number;
+    withConflicts: number;
+    byGroup: Record<string, { total: number; conflicts: number; groupName: string }>;
+  };
+}
+
+export interface BulkScheduleItem {
+  groupId: string;
+  teacherId: string;
+  roomId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+}
+
+export interface BulkCreateRecurringDto {
+  schedules: BulkScheduleItem[];
+  autoEnrollClients?: boolean;
+}
+
+export interface BulkCreateResult {
+  created: {
+    count: number;
+    schedules: Schedule[];
+  };
+  failed: {
+    count: number;
+    errors: Array<{
+      schedule: BulkScheduleItem;
+      reason: string;
+    }>;
+  };
+}
+
+export interface PlannedSchedulesQuery {
+  status?: string;
+  year?: number;
+  month?: number;
+  groupIds?: string[];
+}
+
+export interface MonthStats {
+  yearMonth: string;
+  count: number;
+}
+
 export const schedulesApi = {
   getSchedules: async (filters?: ScheduleFilters): Promise<Schedule[]> => {
     const params = new URLSearchParams();
@@ -203,5 +293,35 @@ export const schedulesApi = {
   bulkDelete: async (data: BulkDeleteScheduleDto): Promise<any> => {
     const { data: response } = await apiClient.post('/schedules/bulk-delete', data);
     return response;
+  },
+
+  // ===== Schedule Planner Methods =====
+
+  previewRecurring: async (data: PreviewRecurringScheduleDto): Promise<PreviewResult> => {
+    const { data: response } = await apiClient.post('/schedules/recurring/preview', data);
+    return response;
+  },
+
+  bulkCreateRecurring: async (data: BulkCreateRecurringDto): Promise<BulkCreateResult> => {
+    const { data: response } = await apiClient.post('/schedules/recurring/bulk', data);
+    return response;
+  },
+
+  getPlannedSchedules: async (params: PlannedSchedulesQuery): Promise<Schedule[]> => {
+    const searchParams = new URLSearchParams();
+    if (params.status) searchParams.append('status', params.status);
+    if (params.year) searchParams.append('year', params.year.toString());
+    if (params.month) searchParams.append('month', params.month.toString());
+    if (params.groupIds && params.groupIds.length > 0) {
+      searchParams.append('groupIds', params.groupIds.join(','));
+    }
+    const { data } = await apiClient.get(`/schedules/planned?${searchParams.toString()}`);
+    return data;
+  },
+
+  getPlannedMonthsStats: async (groupIds?: string[]): Promise<MonthStats[]> => {
+    const params = groupIds && groupIds.length > 0 ? `?groupIds=${groupIds.join(',')}` : '';
+    const { data } = await apiClient.get(`/schedules/planned/months-stats${params}`);
+    return data;
   },
 };

@@ -180,7 +180,11 @@ export class GroupsService {
       this.prisma.group.count({ where }),
     ]);
 
-    const memberCountsMap = await this.getMemberCountsMap(data.map((group) => group.id));
+    const groupIds = data.map((group) => group.id);
+    const [memberCountsMap, scheduledMonthsMap] = await Promise.all([
+      this.getMemberCountsMap(groupIds),
+      this.getScheduledMonthsForGroups(groupIds),
+    ]);
 
     return {
       data: data.map((group) => ({
@@ -191,6 +195,7 @@ export class GroupsService {
           expelled: 0,
           total: 0,
         },
+        scheduledMonths: scheduledMonthsMap.get(group.id) ?? [],
       })),
       meta: {
         total,
@@ -199,6 +204,54 @@ export class GroupsService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  private async getScheduledMonthsForGroups(groupIds: string[]) {
+    if (groupIds.length === 0) {
+      return new Map<string, { yearMonth: string; count: number }[]>();
+    }
+
+    const schedules = await this.prisma.schedule.findMany({
+      where: {
+        groupId: { in: groupIds },
+        isRecurring: false,
+      },
+      select: {
+        groupId: true,
+        date: true,
+      },
+      orderBy: {
+        date: 'asc',
+      },
+    });
+
+    // Group by groupId and then by month
+    const result = new Map<string, Map<string, number>>();
+
+    schedules.forEach(schedule => {
+      const date = new Date(schedule.date);
+      const yearMonth = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+      if (!result.has(schedule.groupId)) {
+        result.set(schedule.groupId, new Map());
+      }
+      const groupMonths = result.get(schedule.groupId);
+      groupMonths.set(yearMonth, (groupMonths.get(yearMonth) || 0) + 1);
+    });
+
+    // Convert to final format
+    const finalResult = new Map<string, { yearMonth: string; count: number }[]>();
+    result.forEach((months, groupId) => {
+      finalResult.set(
+        groupId,
+        Array.from(months.entries()).map(([yearMonth, count]) => ({
+          yearMonth,
+          count,
+        }))
+      );
+    });
+
+    return finalResult;
   }
 
   async findOne(id: string) {
@@ -753,13 +806,16 @@ export class GroupsService {
       },
     });
 
-    for (let i = 0; i < remainingWaitlist.length; i++) {
-      await this.prisma.groupMember.update({
-        where: { id: remainingWaitlist[i].id },
-        data: {
-          waitlistPosition: i + 1,
-        },
-      });
+    // Batch update waitlist positions using transaction (instead of N+1 queries)
+    if (remainingWaitlist.length > 0) {
+      await this.prisma.$transaction(
+        remainingWaitlist.map((member, index) =>
+          this.prisma.groupMember.update({
+            where: { id: member.id },
+            data: { waitlistPosition: index + 1 },
+          })
+        )
+      );
     }
 
     return promoted;

@@ -408,7 +408,7 @@ export default function GroupDetailPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push(`/studios/${group.studioId}`)}
+            onClick={() => router.back()}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>

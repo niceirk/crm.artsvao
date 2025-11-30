@@ -17,6 +17,12 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
   private isRunning = false;
   private intervalId: NodeJS.Timeout | null = null;
 
+  // Adaptive polling intervals
+  private currentInterval = 5000; // Start with 5 seconds
+  private readonly minInterval = 5000; // 5 seconds minimum
+  private readonly maxInterval = 30000; // 30 seconds maximum
+  private emptyQueueCount = 0;
+
   // Rate limiting state
   private telegramSentThisSecond = 0;
   private emailSentThisHour = 0;
@@ -55,16 +61,35 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   private startWorker(): void {
-    this.logger.log('Starting notification queue worker...');
+    this.logger.log('Starting notification queue worker with adaptive polling...');
     this.isRunning = true;
-    this.intervalId = setInterval(() => this.processQueue(), 1000);
+    this.scheduleNextPoll();
+  }
+
+  private scheduleNextPoll(): void {
+    if (!this.isRunning) return;
+    this.intervalId = setTimeout(() => this.processQueue(), this.currentInterval);
+  }
+
+  private adjustPollingInterval(hasNotifications: boolean): void {
+    if (hasNotifications) {
+      // Reset to minimum interval when there's work to do
+      this.currentInterval = this.minInterval;
+      this.emptyQueueCount = 0;
+    } else {
+      // Gradually increase interval when queue is empty (backoff)
+      this.emptyQueueCount++;
+      if (this.emptyQueueCount >= 3) {
+        this.currentInterval = Math.min(this.currentInterval * 1.5, this.maxInterval);
+      }
+    }
   }
 
   private stopWorker(): void {
     this.logger.log('Stopping notification queue worker...');
     this.isRunning = false;
     if (this.intervalId) {
-      clearInterval(this.intervalId);
+      clearTimeout(this.intervalId);
       this.intervalId = null;
     }
   }
@@ -100,6 +125,9 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
         include: { template: true },
       });
 
+      // Adjust polling interval based on queue state
+      this.adjustPollingInterval(notifications.length > 0);
+
       for (const notification of notifications) {
         if (!this.canSend(notification.channel)) {
           continue; // Rate limited, skip for now
@@ -109,6 +137,9 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
       }
     } catch (error) {
       this.logger.error(`Queue processing error: ${error.message}`, error.stack);
+    } finally {
+      // Schedule next poll
+      this.scheduleNextPoll();
     }
   }
 

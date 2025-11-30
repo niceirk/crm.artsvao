@@ -96,6 +96,21 @@ function generateBreadcrumbs(pathname: string, customTitle: string | null = null
     return specialPaths[pathname];
   }
 
+  // Обработка страниц деталей группы /groups/[id]
+  if (pathname.startsWith('/groups/') && pathname !== '/groups') {
+    breadcrumbs.push({
+      label: 'Группы',
+      href: '/admin/groups',
+    });
+    if (customTitle) {
+      breadcrumbs.push({
+        label: customTitle,
+        href: pathname,
+      });
+    }
+    return breadcrumbs;
+  }
+
   const segments = pathname.split('/').filter(Boolean);
   let currentPath = '';
   let hasDetailPage = false;

@@ -50,6 +50,10 @@ export interface Group {
     expelled: number;
     total: number;
   };
+  scheduledMonths?: {
+    yearMonth: string;
+    count: number;
+  }[];
 }
 
 export interface CreateGroupDto {

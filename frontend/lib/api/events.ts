@@ -2,7 +2,7 @@ import { apiClient } from './client';
 import { CalendarEventStatus } from './calendar-event-status';
 
 // Re-export for convenience
-export { CalendarEventStatus };
+export type { CalendarEventStatus };
 
 export interface Event {
   id: string;
