@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Patch,
+  Delete,
   Param,
   Query,
   UseGuards,
@@ -15,7 +16,6 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 import { SubscriptionsService } from './subscriptions.service';
 import { SellSubscriptionDto } from './dto/sell-subscription.dto';
 import { SellSingleSessionDto } from './dto/sell-single-session.dto';
-import { SellSingleSessionPackDto } from './dto/sell-single-session-pack.dto';
 import { SellIndependentServiceDto } from './dto/sell-independent-service.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { SubscriptionFilterDto } from './dto/subscription-filter.dto';
@@ -41,15 +41,6 @@ export class SubscriptionsController {
   ) {
     const managerId = req.user?.sub;
     return this.subscriptionsService.sellSingleSession(dto, managerId);
-  }
-
-  @Post('sell-pack')
-  async sellSingleSessionPack(
-    @Body() dto: SellSingleSessionPackDto,
-    @Req() req: any,
-  ) {
-    const managerId = req.user?.sub;
-    return this.subscriptionsService.sellSingleSessionPack(dto, managerId);
   }
 
   @Post('sell-service')
@@ -87,5 +78,16 @@ export class SubscriptionsController {
   ) {
     const validationDate = date ? new Date(date) : new Date();
     return this.subscriptionsService.validateSubscription(id, validationDate);
+  }
+
+  @Get(':id/can-delete')
+  canDelete(@Param('id', ParseUUIDPipe) id: string) {
+    return this.subscriptionsService.canDelete(id);
+  }
+
+  @Delete(':id')
+  @UseGuards(AdminGuard)
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.subscriptionsService.remove(id);
   }
 }

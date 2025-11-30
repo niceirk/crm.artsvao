@@ -15,7 +15,9 @@ import {
   WriteOffStatus,
   WriteOffTiming,
   Subscription,
+  Prisma,
 } from '@prisma/client';
+import { atomicDecrementVisits } from '../common/utils/optimistic-lock.util';
 
 @Injectable()
 export class AttendanceService {
@@ -70,19 +72,19 @@ export class AttendanceService {
         : null;
 
       if (subscription) {
-        if (subscription.subscriptionType.type === 'SINGLE_VISIT') {
-          if (subscription.remainingVisits <= 0) {
+        if (subscription.subscriptionType.type === 'VISIT_PACK') {
+          // Атомарное списание с проверкой остатка
+          const decremented = await atomicDecrementVisits(
+            this.prisma,
+            subscription.id,
+            1,
+          );
+
+          if (!decremented) {
             throw new BadRequestException(
               'На абонементе не осталось посещений',
             );
           }
-
-          await this.prisma.subscription.update({
-            where: { id: subscription.id },
-            data: {
-              remainingVisits: subscription.remainingVisits - 1,
-            },
-          });
         }
 
         await this.updateInvoiceItemStatus(subscription.id, schedule.date);
@@ -190,7 +192,7 @@ export class AttendanceService {
         endDate: { gte: scheduleDate },
         OR: [
           { remainingVisits: null }, // UNLIMITED
-          { remainingVisits: { gt: 0 } }, // SINGLE_VISIT с остатком
+          { remainingVisits: { gt: 0 } }, // VISIT_PACK с остатком
         ],
       },
       include: {
@@ -251,7 +253,7 @@ export class AttendanceService {
     }
 
     if (
-      subscription.subscriptionType.type === 'SINGLE_VISIT' &&
+      subscription.subscriptionType.type === 'VISIT_PACK' &&
       (subscription.remainingVisits ?? 0) <= 0
     ) {
       throw new BadRequestException(
@@ -282,14 +284,14 @@ export class AttendanceService {
         });
       }
 
-      // Проверить, все ли посещения списаны (для SINGLE_VISIT)
+      // Проверить, все ли посещения списаны (для VISIT_PACK)
       const subscription = await this.prisma.subscription.findUnique({
         where: { id: subscriptionId },
         include: { subscriptionType: true },
       });
 
       if (
-        subscription?.subscriptionType.type === 'SINGLE_VISIT' &&
+        subscription?.subscriptionType.type === 'VISIT_PACK' &&
         subscription.remainingVisits === 0
       ) {
         await this.prisma.invoiceItem.update({
@@ -320,7 +322,7 @@ export class AttendanceService {
       // COMPLETED → IN_PROGRESS если есть остаток
       if (
         item.writeOffStatus === WriteOffStatus.COMPLETED &&
-        subscription?.subscriptionType.type === 'SINGLE_VISIT' &&
+        subscription?.subscriptionType.type === 'VISIT_PACK' &&
         subscription.remainingVisits > 0
       ) {
         await this.prisma.invoiceItem.update({
@@ -367,7 +369,7 @@ export class AttendanceService {
       attendance.subscriptionDeducted &&
       attendance.subscriptionId
     ) {
-      if (attendance.subscription?.subscriptionType.type === 'SINGLE_VISIT') {
+      if (attendance.subscription?.subscriptionType.type === 'VISIT_PACK') {
         await this.prisma.subscription.update({
           where: { id: attendance.subscriptionId },
           data: {
@@ -410,19 +412,19 @@ export class AttendanceService {
         : null;
 
       if (subscription) {
-        if (subscription.subscriptionType.type === 'SINGLE_VISIT') {
-          if (subscription.remainingVisits <= 0) {
+        if (subscription.subscriptionType.type === 'VISIT_PACK') {
+          // Атомарное списание с проверкой остатка
+          const decremented = await atomicDecrementVisits(
+            this.prisma,
+            subscription.id,
+            1,
+          );
+
+          if (!decremented) {
             throw new BadRequestException(
               'На абонементе не осталось посещений',
             );
           }
-
-          await this.prisma.subscription.update({
-            where: { id: subscription.id },
-            data: {
-              remainingVisits: subscription.remainingVisits - 1,
-            },
-          });
         }
 
         await this.updateInvoiceItemStatus(subscription.id, schedule.date);
@@ -480,7 +482,7 @@ export class AttendanceService {
       attendance.subscriptionDeducted &&
       attendance.subscriptionId
     ) {
-      if (attendance.subscription?.subscriptionType.type === 'SINGLE_VISIT') {
+      if (attendance.subscription?.subscriptionType.type === 'VISIT_PACK') {
         await this.prisma.subscription.update({
           where: { id: attendance.subscriptionId },
           data: {

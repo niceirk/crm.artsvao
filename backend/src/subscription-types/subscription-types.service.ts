@@ -32,12 +32,16 @@ export class SubscriptionTypesService {
   }
 
   async findAll(filter: SubscriptionTypeFilterDto = {}) {
-    const { groupId, type, isActive, page = 1, limit = 50 } = filter;
+    const { groupId, type, excludeTypes, isActive, page = 1, limit = 50 } = filter;
     const skip = (page - 1) * limit;
 
     const where: any = {};
     if (groupId) where.groupId = groupId;
-    if (type) where.type = type;
+    if (type) {
+      where.type = type;
+    } else if (excludeTypes?.length) {
+      where.type = { notIn: excludeTypes };
+    }
     if (isActive !== undefined) where.isActive = isActive;
 
     const [data, total] = await Promise.all([

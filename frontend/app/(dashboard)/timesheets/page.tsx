@@ -15,6 +15,7 @@ import {
   FileText,
   Send,
   Download,
+  FileHeart,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -92,6 +93,26 @@ const AttendanceCell = memo(function AttendanceCell({
   isLoading: boolean;
   onStatusChange: (clientId: string, attendance: TimesheetAttendance, status: AttendanceStatus) => void;
 }) {
+  // Блокируем редактирование если статус установлен по мед. справке
+  const isLocked = attendance.isFromMedicalCertificate;
+
+  // Если заблокировано - показываем ячейку без возможности редактирования
+  if (isLocked) {
+    return (
+      <TableCell className="text-center p-1">
+        <div
+          className={cn(
+            'flex items-center justify-center h-8 w-8 mx-auto rounded cursor-not-allowed',
+            attendance.status === 'EXCUSED' && 'bg-orange-100 ring-1 ring-orange-300'
+          )}
+          title="Установлено по медицинской справке"
+        >
+          <AlertCircle className="h-4 w-4 text-orange-600" />
+        </div>
+      </TableCell>
+    );
+  }
+
   return (
     <TableCell className="text-center p-1">
       <Popover>
@@ -202,7 +223,7 @@ export default function TimesheetsPage() {
     const singleVisit: typeof timesheet.clients = [];
 
     timesheet.clients.forEach(client => {
-      if (client.subscription?.type === 'SINGLE_VISIT') {
+      if (client.subscription?.type === 'VISIT_PACK') {
         singleVisit.push(client);
       } else {
         subscription.push(client);
@@ -585,14 +606,45 @@ export default function TimesheetsPage() {
                             />
                           </TableCell>
                           <TableCell className="sticky left-[40px] z-10 bg-background">
-                            <Link
-                              href={`/clients/${client.id}`}
-                              target="_blank"
-                              className="font-medium hover:text-primary transition-colors"
-                              style={{ textDecoration: 'underline', textDecorationStyle: 'dotted', textDecorationColor: '#a1a1aa', textDecorationThickness: '1px', textUnderlineOffset: '3px' }}
-                            >
-                              {client.lastName} {client.firstName}
-                            </Link>
+                            <div className="flex items-center gap-1.5">
+                              <Link
+                                href={`/clients/${client.id}`}
+                                target="_blank"
+                                className="font-medium hover:text-primary transition-colors"
+                                style={{ textDecoration: 'underline', textDecorationStyle: 'dotted', textDecorationColor: '#a1a1aa', textDecorationThickness: '1px', textUnderlineOffset: '3px' }}
+                              >
+                                {client.lastName} {client.firstName}
+                              </Link>
+                              {client.medicalCertificates && client.medicalCertificates.length > 0 && (
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <button
+                                      className="p-0.5 rounded hover:bg-orange-100 transition-colors"
+                                      title={`Справок: ${client.medicalCertificates.length}`}
+                                    >
+                                      <FileHeart className="h-4 w-4 text-orange-500" />
+                                    </button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-2" align="start">
+                                    <div className="text-sm font-medium mb-2">Медицинские справки</div>
+                                    <div className="space-y-1">
+                                      {client.medicalCertificates.map((cert) => (
+                                        <Link
+                                          key={cert.id}
+                                          href={`/medical-certificates?highlight=${cert.id}`}
+                                          className="flex items-center gap-2 px-2 py-1 rounded hover:bg-muted text-sm"
+                                        >
+                                          <FileHeart className="h-3.5 w-3.5 text-orange-500" />
+                                          <span>
+                                            {format(new Date(cert.startDate), 'dd.MM.yyyy')} — {format(new Date(cert.endDate), 'dd.MM.yyyy')}
+                                          </span>
+                                        </Link>
+                                      ))}
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              )}
+                            </div>
                           </TableCell>
                           {client.attendances.map((attendance) => (
                             <AttendanceCell

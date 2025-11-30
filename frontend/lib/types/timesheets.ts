@@ -15,6 +15,7 @@ export interface TimesheetAttendance {
   attendanceId: string | null;
   status: 'PRESENT' | 'ABSENT' | 'EXCUSED' | null;
   subscriptionName: string | null;
+  isFromMedicalCertificate: boolean; // Статус установлен по медицинской справке (не редактируется)
 }
 
 export interface TimesheetSummary {
@@ -40,8 +41,14 @@ export interface TimesheetCompensation {
 export interface TimesheetSubscription {
   id: string;
   name: string;
-  type: 'UNLIMITED' | 'SINGLE_VISIT' | 'VISIT_PACK';
+  type: 'UNLIMITED' | 'VISIT_PACK';
   price: number;
+}
+
+export interface TimesheetMedicalCertificate {
+  id: string;
+  startDate: string;
+  endDate: string;
 }
 
 export interface TimesheetClient {
@@ -57,6 +64,7 @@ export interface TimesheetClient {
   subscription: TimesheetSubscription | null;
   nextMonthInvoice: number | null;
   benefitDiscount: number | null;
+  medicalCertificates: TimesheetMedicalCertificate[];
 }
 
 export interface TimesheetScheduleDate {

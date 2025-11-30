@@ -62,7 +62,7 @@ export function RecurringScheduleForm() {
     },
   });
 
-  const { data: groups, isLoading: groupsLoading } = useGroups();
+  const { data: groups, isLoading: groupsLoading } = useGroups({ limit: 1000 });
   const { data: teachers, isLoading: teachersLoading } = useTeachers();
   const { data: rooms, isLoading: roomsLoading } = useRooms();
   const createRecurring = useCreateRecurringSchedule();

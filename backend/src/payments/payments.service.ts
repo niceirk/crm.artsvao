@@ -75,7 +75,27 @@ export class PaymentsService {
   }
 
   /**
-   * Создание платежа
+   * Расчет общей суммы оплаченных платежей для счета (для транзакции)
+   */
+  private async calculateTotalPaidInTx(
+    tx: Prisma.TransactionClient,
+    invoiceId: string,
+  ): Promise<number> {
+    const result = await tx.payment.aggregate({
+      where: {
+        invoiceId,
+        status: PaymentStatus.COMPLETED,
+      },
+      _sum: {
+        amount: true,
+      },
+    });
+
+    return result._sum.amount ? Number(result._sum.amount) : 0;
+  }
+
+  /**
+   * Создание платежа (с транзакцией для атомарности)
    */
   async create(dto: CreatePaymentDto): Promise<any> {
     // Проверка существования клиента
@@ -121,37 +141,72 @@ export class PaymentsService {
     }
 
     // Автоматическая установка статуса COMPLETED для наличных платежей
-    const status =
+    const paymentStatus =
       dto.paymentMethod === PaymentMethod.CASH
         ? PaymentStatus.COMPLETED
         : PaymentStatus.PENDING;
 
-    // Создание платежа
-    const payment = await this.prisma.payment.create({
-      data: {
-        clientId: dto.clientId,
-        amount: dto.amount,
-        paymentMethod: dto.paymentMethod,
-        paymentType: dto.paymentType,
-        status,
-        invoiceId: dto.invoiceId,
-        subscriptionId: dto.subscriptionId,
-        rentalId: dto.rentalId,
-        notes: dto.notes,
-        transactionId: dto.transactionId,
-      },
-      include: {
-        client: true,
-        invoice: true,
-        subscription: true,
-        rental: true,
-      },
-    });
+    // Выполняем в транзакции: создание платежа + обновление статуса счета
+    const payment = await this.prisma.$transaction(async (tx) => {
+      // Создание платежа
+      const newPayment = await tx.payment.create({
+        data: {
+          clientId: dto.clientId,
+          amount: dto.amount,
+          paymentMethod: dto.paymentMethod,
+          paymentType: dto.paymentType,
+          status: paymentStatus,
+          invoiceId: dto.invoiceId,
+          subscriptionId: dto.subscriptionId,
+          rentalId: dto.rentalId,
+          notes: dto.notes,
+          transactionId: dto.transactionId,
+        },
+        include: {
+          client: true,
+          invoice: true,
+          subscription: true,
+          rental: true,
+        },
+      });
 
-    // Обновляем статус счета, если платеж связан с invoice
-    if (dto.invoiceId && status === PaymentStatus.COMPLETED) {
-      await this.updateInvoiceStatus(dto.invoiceId);
-    }
+      // Обновляем статус счета в той же транзакции
+      if (dto.invoiceId && paymentStatus === PaymentStatus.COMPLETED) {
+        const invoice = await tx.invoice.findUnique({
+          where: { id: dto.invoiceId },
+        });
+
+        if (invoice) {
+          const totalPaid = await this.calculateTotalPaidInTx(tx, dto.invoiceId);
+          const totalAmount = Number(invoice.totalAmount);
+
+          let newStatus: InvoiceStatus;
+          let paidAt: Date | null = null;
+
+          if (totalPaid >= totalAmount) {
+            newStatus = InvoiceStatus.PAID;
+            paidAt = new Date();
+          } else if (totalPaid > 0) {
+            newStatus = InvoiceStatus.PARTIALLY_PAID;
+          } else {
+            newStatus = InvoiceStatus.PENDING;
+          }
+
+          if (invoice.status !== newStatus) {
+            await tx.invoice.update({
+              where: { id: dto.invoiceId },
+              data: {
+                status: newStatus,
+                paidAt: newStatus === InvoiceStatus.PAID ? paidAt : null,
+                version: { increment: 1 },
+              },
+            });
+          }
+        }
+      }
+
+      return newPayment;
+    });
 
     // Обновить активность клиента и автоматически реактивировать если нужно
     await this.clientActivityService.reactivateClientIfNeeded(dto.clientId);

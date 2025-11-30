@@ -51,7 +51,7 @@ interface FormValues {
 export function MassSendTab() {
   const { data: templates } = useTemplates({ isActive: true });
   const { data: studios } = useStudios();
-  const { data: groupsData } = useGroups();
+  const { data: groupsData } = useGroups({ limit: 1000 });
   const groups = groupsData?.data || [];
   const createMassSend = useCreateMassSend();
   const previewTemplate = usePreviewTemplate();

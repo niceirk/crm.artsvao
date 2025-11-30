@@ -396,7 +396,7 @@ async function main() {
         name: 'Абонемент на 8 занятий',
         description: '8 занятий в месяц',
         groupId: groups[0].id,
-        type: 'SINGLE_VISIT',
+        type: 'VISIT_PACK',
         price: 3200,
       },
     }),

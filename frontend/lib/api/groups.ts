@@ -112,7 +112,7 @@ export interface GroupMember {
   subscriptionType: {
     id: string;
     name: string;
-    type: 'UNLIMITED' | 'SINGLE_VISIT';
+    type: 'UNLIMITED' | 'VISIT_PACK';
   };
 }
 

@@ -1,16 +1,14 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
-import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
+import { ClientSearch } from '@/components/clients/client-search';
 import { groupsApi, type GroupAvailability } from '@/lib/api/groups';
-import { getClients, type Client } from '@/lib/api/clients';
 import { toast } from '@/lib/utils/toast';
 import { Loader2, AlertCircle, UserPlus, Users } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 interface AddMemberDialogProps {
   open: boolean;
@@ -26,21 +24,9 @@ export function AddMemberDialog({
   onSuccess,
 }: AddMemberDialogProps) {
   const [loading, setLoading] = useState(false);
-  const [clients, setClients] = useState<Client[]>([]);
   const [availability, setAvailability] = useState<GroupAvailability | null>(null);
   const [loadingData, setLoadingData] = useState(true);
-  const [loadingClients, setLoadingClients] = useState(false);
   const [selectedClientId, setSelectedClientId] = useState('');
-  const [clientSearch, setClientSearch] = useState('');
-  const debouncedClientSearch = useDebouncedValue(clientSearch, 300);
-
-  // Преобразуем клиентов в опции для Combobox
-  const clientOptions: ComboboxOption[] = useMemo(() => {
-    return clients.map(client => ({
-      value: client.id,
-      label: `${client.lastName} ${client.firstName} ${client.middleName || ''} (${client.phone})`.trim()
-    }));
-  }, [clients]);
 
   // Загрузка availability при открытии диалога
   useEffect(() => {
@@ -49,38 +35,8 @@ export function AddMemberDialog({
     } else {
       // Сброс при закрытии
       setSelectedClientId('');
-      setClientSearch('');
-      setClients([]);
     }
   }, [open, groupId]);
-
-  // Загрузка клиентов по поисковому запросу
-  useEffect(() => {
-    const loadClients = async () => {
-      if (!open) {
-        setClients([]);
-        return;
-      }
-
-      try {
-        setLoadingClients(true);
-        const clientsData = await getClients({
-          limit: 50,
-          page: 1,
-          ...(debouncedClientSearch ? { search: debouncedClientSearch } : {})
-        });
-        const clientsList = clientsData?.data || [];
-        setClients(clientsList);
-      } catch (error) {
-        console.error('Failed to load clients:', error);
-        toast.error('Не удалось загрузить клиентов');
-      } finally {
-        setLoadingClients(false);
-      }
-    };
-
-    loadClients();
-  }, [open, debouncedClientSearch]);
 
   const loadAvailability = async () => {
     try {
@@ -178,26 +134,11 @@ export function AddMemberDialog({
             {/* Выбор клиента */}
             <div className="space-y-2">
               <Label htmlFor="clientId">Клиент *</Label>
-              <Combobox
-                options={clientOptions}
-                value={selectedClientId}
-                onValueChange={(value) => setSelectedClientId(value || '')}
-                placeholder="Выберите клиента"
-                searchPlaceholder="Поиск клиента..."
-                emptyText="Клиент не найден"
-                allowEmpty={false}
-                disabled={loadingClients}
-                searchValue={clientSearch}
-                onSearchChange={setClientSearch}
+              <ClientSearch
+                value={selectedClientId || undefined}
+                onValueChange={(value) => setSelectedClientId(value ?? '')}
+                placeholder="Поиск клиента..."
               />
-              {loadingClients && (
-                <p className="text-sm text-muted-foreground">Загрузка...</p>
-              )}
-              {!loadingClients && !clientSearch && clients.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  Начните вводить для поиска клиента
-                </p>
-              )}
             </div>
 
             <DialogFooter>

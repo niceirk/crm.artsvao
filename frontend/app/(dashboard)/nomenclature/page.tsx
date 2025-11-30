@@ -75,7 +75,7 @@ import { IndependentServiceDialog } from './components/independent-service-dialo
 const typeLabels: Record<NomenclatureItemType, string> = {
   SUBSCRIPTION: 'Абонемент',
   SINGLE_SESSION: 'Разовое',
-  VISIT_PACK: 'Пакет разовых',
+  VISIT_PACK: 'Разовое',
   INDEPENDENT_SERVICE: 'Услуга',
 };
 
@@ -369,6 +369,7 @@ export default function NomenclaturePage() {
                     </TableHead>
                     <TableHead>Категория</TableHead>
                     <TableHead className="text-right">Цена</TableHead>
+                    <TableHead className="text-right">За занятие</TableHead>
                     <TableHead>НДС</TableHead>
                     <TableHead className="w-[60px]"></TableHead>
                   </TableRow>
@@ -400,6 +401,13 @@ export default function NomenclaturePage() {
                       </TableCell>
                       <TableCell className="text-right font-medium">
                         {formatCurrency(item.price)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {item.type === 'SUBSCRIPTION' && item.pricePerLesson ? (
+                          <span className="text-sm">{formatCurrency(item.pricePerLesson)}</span>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <span className={cn(

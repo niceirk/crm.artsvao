@@ -44,6 +44,7 @@ const formSchema = z.object({
   description: z.string().optional(),
   groupId: z.string().min(1, 'Выберите группу'),
   price: z.coerce.number().min(0, 'Цена не может быть отрицательной'),
+  pricePerLesson: z.coerce.number().min(0, 'Цена за занятие не может быть отрицательной').optional(),
   vatRate: z.coerce.number().min(0).max(100).optional(),
   isActive: z.boolean(),
 });
@@ -63,7 +64,7 @@ export function SubscriptionTypeDialog({
 }: SubscriptionTypeDialogProps) {
   const createMutation = useCreateSubscriptionTypeNomenclature();
   const updateMutation = useUpdateSubscriptionTypeNomenclature();
-  const { data: groupsData } = useGroups();
+  const { data: groupsData } = useGroups({ limit: 1000 });
   const [groupSearch, setGroupSearch] = useState('');
 
   const isEditing = !!editItem;
@@ -75,6 +76,7 @@ export function SubscriptionTypeDialog({
       description: '',
       groupId: '',
       price: 0,
+      pricePerLesson: undefined,
       vatRate: 0,
       isActive: true,
     },
@@ -89,6 +91,7 @@ export function SubscriptionTypeDialog({
           description: editItem.description || '',
           groupId: editItem.group?.id || '',
           price: editItem.price,
+          pricePerLesson: editItem.pricePerLesson ?? undefined,
           vatRate: editItem.vatRate,
           isActive: editItem.isActive,
         });
@@ -98,6 +101,7 @@ export function SubscriptionTypeDialog({
           description: '',
           groupId: '',
           price: 0,
+          pricePerLesson: undefined,
           vatRate: 0,
           isActive: true,
         });
@@ -128,6 +132,7 @@ export function SubscriptionTypeDialog({
             description: values.description,
             groupId: values.groupId,
             price: values.price,
+            pricePerLesson: values.pricePerLesson,
             vatRate: values.vatRate,
             isActive: values.isActive,
           },
@@ -138,6 +143,7 @@ export function SubscriptionTypeDialog({
           description: values.description,
           groupId: values.groupId,
           price: values.price,
+          pricePerLesson: values.pricePerLesson,
           vatRate: values.vatRate,
           isActive: values.isActive,
         });
@@ -213,7 +219,7 @@ export function SubscriptionTypeDialog({
                 name="price"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Цена (руб.) *</FormLabel>
+                    <FormLabel>Полная стоимость (руб.) *</FormLabel>
                     <FormControl>
                       <Input
                         type="number"
@@ -224,6 +230,9 @@ export function SubscriptionTypeDialog({
                         onChange={(e) => field.onChange(Number(e.target.value))}
                       />
                     </FormControl>
+                    <FormDescription>
+                      Стоимость при покупке на полный месяц
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -231,30 +240,55 @@ export function SubscriptionTypeDialog({
 
               <FormField
                 control={form.control}
-                name="vatRate"
+                name="pricePerLesson"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Ставка НДС (%)</FormLabel>
-                    <Select
-                      value={String(field.value ?? 0)}
-                      onValueChange={(v) => field.onChange(Number(v))}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Выберите ставку" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="0">Без НДС (0%)</SelectItem>
-                        <SelectItem value="10">10%</SelectItem>
-                        <SelectItem value="20">20%</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    <FormLabel>Цена за занятие (руб.)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        placeholder="0"
+                        {...field}
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Для расчёта при неполном месяце
+                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
+
+            <FormField
+              control={form.control}
+              name="vatRate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Ставка НДС (%)</FormLabel>
+                  <Select
+                    value={String(field.value ?? 0)}
+                    onValueChange={(v) => field.onChange(Number(v))}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Выберите ставку" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="0">Без НДС (0%)</SelectItem>
+                      <SelectItem value="10">10%</SelectItem>
+                      <SelectItem value="20">20%</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

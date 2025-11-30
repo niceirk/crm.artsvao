@@ -24,6 +24,9 @@ export const subscriptionTypesApi = {
     if (filter?.isActive !== undefined)
       params.append('isActive', String(filter.isActive));
     if (filter?.type) params.append('type', filter.type);
+    if (filter?.excludeTypes?.length) {
+      filter.excludeTypes.forEach(type => params.append('excludeTypes', type));
+    }
     if (filter?.page) params.append('page', String(filter.page));
     if (filter?.limit) params.append('limit', String(filter.limit));
 
@@ -79,17 +82,11 @@ export const subscriptionTypesApi = {
 export interface SellSingleSessionDto {
   clientId: string;
   groupId: string;
-  scheduleId: string;
+  scheduleId?: string; // Опционально - если указан, привязка к конкретному занятию
+  quantity?: number; // Количество посещений (по умолчанию 1)
   date?: string;
   notes?: string;
-}
-
-export interface SellSingleSessionPackDto {
-  clientId: string;
-  groupId: string;
-  quantity: number;
-  notes?: string;
-  applyBenefit?: boolean;
+  // Льготы не применяются к разовым занятиям
 }
 
 // Subscriptions API
@@ -105,14 +102,6 @@ export const subscriptionsApi = {
   sellSingleSession: async (data: SellSingleSessionDto): Promise<Subscription> => {
     const response = await apiClient.post<Subscription>(
       '/subscriptions/sell-single-session',
-      data,
-    );
-    return response.data;
-  },
-
-  sellPack: async (data: SellSingleSessionPackDto): Promise<Subscription> => {
-    const response = await apiClient.post<Subscription>(
-      '/subscriptions/sell-pack',
       data,
     );
     return response.data;
@@ -171,6 +160,27 @@ export const subscriptionsApi = {
       `/subscriptions/${id}/validate`,
       { date },
     );
+    return response.data;
+  },
+
+  canDelete: async (
+    id: string,
+  ): Promise<{ canDelete: boolean; reason?: string; attendanceCount: number }> => {
+    const response = await apiClient.get<{
+      canDelete: boolean;
+      reason?: string;
+      attendanceCount: number;
+    }>(`/subscriptions/${id}/can-delete`);
+    return response.data;
+  },
+
+  delete: async (
+    id: string,
+  ): Promise<{ deleted: boolean; attendanceDeleted: number }> => {
+    const response = await apiClient.delete<{
+      deleted: boolean;
+      attendanceDeleted: number;
+    }>(`/subscriptions/${id}`);
     return response.data;
   },
 };

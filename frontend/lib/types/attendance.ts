@@ -132,7 +132,7 @@ export interface ClientWithSubscription {
   phone: string;
   subscription?: {
     id: string;
-    type: 'UNLIMITED' | 'SINGLE_VISIT' | 'VISIT_PACK';
+    type: 'UNLIMITED' | 'VISIT_PACK';
     remainingVisits?: number;
     status: 'ACTIVE' | 'EXPIRED' | 'FROZEN' | 'CANCELLED';
     validMonth: string;

@@ -42,10 +42,9 @@ import type { SubscriptionType } from '@/lib/types/subscriptions';
 const formSchema = z.object({
   name: z.string().min(1, 'Введите название'),
   groupId: z.string().min(1, 'Выберите группу'),
-  type: z.enum(['UNLIMITED', 'SINGLE_VISIT'], {
-    required_error: 'Выберите тип',
-  }),
+  type: z.enum(['UNLIMITED']),
   price: z.coerce.number().min(0, 'Цена должна быть положительной'),
+  pricePerLesson: z.coerce.number().min(0, 'Цена за занятие не может быть отрицательной').optional(),
   description: z.string().optional(),
   isActive: z.boolean().default(true),
 });
@@ -84,6 +83,7 @@ export function SubscriptionTypeDialog({
       groupId: '',
       type: 'UNLIMITED',
       price: 0,
+      pricePerLesson: undefined,
       description: '',
       isActive: true,
     },
@@ -96,6 +96,7 @@ export function SubscriptionTypeDialog({
         groupId: subscriptionType.groupId,
         type: subscriptionType.type,
         price: subscriptionType.price,
+        pricePerLesson: subscriptionType.pricePerLesson ?? undefined,
         description: subscriptionType.description || '',
         isActive: subscriptionType.isActive,
       });
@@ -105,6 +106,7 @@ export function SubscriptionTypeDialog({
         groupId: defaultGroupId || '',
         type: 'UNLIMITED',
         price: 0,
+        pricePerLesson: undefined,
         description: '',
         isActive: true,
       });
@@ -213,38 +215,66 @@ export function SubscriptionTypeDialog({
                       <SelectItem value="UNLIMITED">
                         Безлимитный (на месяц)
                       </SelectItem>
-                      <SelectItem value="SINGLE_VISIT">
-                        Разовые посещения
-                      </SelectItem>
                     </SelectContent>
                   </Select>
                   <FormDescription>
-                    Безлимитный - неограниченное посещение в месяц. Разовые - фиксированное количество посещений.
+                    Неограниченное посещение в течение месяца
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="price"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Цена (₽) *</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      placeholder="5000"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="price"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Полная стоимость (₽) *</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        placeholder="5000"
+                        {...field}
+                        onChange={(e) => field.onChange(Number(e.target.value))}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Стоимость на полный месяц
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="pricePerLesson"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Цена за занятие (₽)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        placeholder="0"
+                        {...field}
+                        value={field.value ?? ''}
+                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Для неполного месяца
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <FormField
               control={form.control}

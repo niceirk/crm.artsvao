@@ -1,5 +1,5 @@
 import { IsOptional, IsUUID, IsBoolean, IsEnum, IsNumber, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { SubscriptionTypeEnum } from '@prisma/client';
 
 export class SubscriptionTypeFilterDto {
@@ -10,6 +10,15 @@ export class SubscriptionTypeFilterDto {
   @IsEnum(SubscriptionTypeEnum)
   @IsOptional()
   type?: SubscriptionTypeEnum;
+
+  @IsEnum(SubscriptionTypeEnum, { each: true })
+  @IsOptional()
+  @Transform(({ value }) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') return [value];
+    return value;
+  })
+  excludeTypes?: SubscriptionTypeEnum[];
 
   @IsBoolean()
   @IsOptional()

@@ -34,7 +34,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
+import { ClientSearch } from '@/components/clients/client-search';
 import {
   useAttendanceBySchedule,
   useAttendanceBases,
@@ -53,9 +53,6 @@ import type {
 } from '@/lib/types/attendance';
 import { cn } from '@/lib/utils';
 import { toast } from '@/lib/utils/toast';
-import { getClients } from '@/lib/api/clients';
-import type { Client } from '@/lib/types/clients';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { subscriptionsApi } from '@/lib/api/subscriptions';
 
 interface AttendanceSheetProps {
@@ -95,22 +92,11 @@ export function AttendanceSheet({
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedStatus, setSelectedStatus] =
     useState<AttendanceStatus>('PRESENT');
-  const [clients, setClients] = useState<Client[]>([]);
-  const [isLoadingClients, setIsLoadingClients] = useState(false);
-  const [clientSearch, setClientSearch] = useState('');
-  const debouncedClientSearch = useDebouncedValue(clientSearch, 300);
-  const comboboxTriggerRef = useRef<HTMLButtonElement>(null);
   const deleteAttendance = useDeleteAttendance();
   const [pendingClientId, setPendingClientId] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<'name' | 'status'>('name');
   const [groupData, setGroupData] = useState<{ singleSessionPrice: number } | null>(null);
   const [singleSessionLoading, setSingleSessionLoading] = useState(false);
-  const clientOptions: ComboboxOption[] = useMemo(() => {
-    return clients.map((client) => ({
-      value: client.id,
-      label: `${client.lastName} ${client.firstName}${client.middleName ? ` ${client.middleName}` : ''} (${client.phone})`,
-    }));
-  }, [clients]);
 
   const { data: attendances, isLoading: isLoadingAttendances } = useAttendanceBySchedule(scheduleId);
   const attendanceBasesQuery = useAttendanceBases(scheduleId);
@@ -237,33 +223,6 @@ export function AttendanceSheet({
 
     loadMembers();
   }, [groupId, open, attendances]);
-
-  // Загружаем список клиентов по поисковому запросу
-  useEffect(() => {
-    const loadClients = async () => {
-      if (!open) {
-        setClients([]);
-        return;
-      }
-
-      try {
-        setIsLoadingClients(true);
-        const clientsResponse = await getClients({
-          limit: 50,
-          page: 1,
-          ...(debouncedClientSearch ? { search: debouncedClientSearch } : {})
-        });
-        setClients(clientsResponse?.data || []);
-      } catch (error) {
-        console.error('Failed to load clients:', error);
-        toast.error('Не удалось загрузить клиентов');
-      } finally {
-        setIsLoadingClients(false);
-      }
-    };
-
-    loadClients();
-  }, [open, debouncedClientSearch]);
 
   const handleMarkAttendance = async (clientId: string, status: AttendanceStatus) => {
     const member = members.find((m) => m.id === clientId);
@@ -478,7 +437,6 @@ export function AttendanceSheet({
         className="w-[600px] sm:max-w-[600px]"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
-          comboboxTriggerRef.current?.focus();
         }}
       >
         <SheetHeader>
@@ -513,25 +471,13 @@ export function AttendanceSheet({
 
     <div className="mt-4 flex items-center justify-between gap-2">
       <div className="flex-1">
-        <Combobox
-          options={clientOptions}
-          value={selectedClientId}
+        <ClientSearch
+          value={selectedClientId || undefined}
           onValueChange={(value) => handleSelectClientForAdd(value || null)}
-          placeholder="Добавить клиента на занятие"
-          searchPlaceholder="Поиск клиента..."
-          emptyText="Клиент не найден"
-          disabled={markAttendance.isPending || isLoadingClients}
-          allowEmpty={false}
-          triggerRef={comboboxTriggerRef}
-          searchValue={clientSearch}
-          onSearchChange={setClientSearch}
+          placeholder="Добавить клиента на занятие..."
+          disabled={markAttendance.isPending}
+          showCreateButton={false}
         />
-        {isLoadingClients && (
-          <p className="text-xs text-muted-foreground mt-1">Загрузка...</p>
-        )}
-        {!isLoadingClients && !clientSearch && clients.length === 0 && (
-          <p className="text-xs text-muted-foreground mt-1">Начните вводить для поиска клиента</p>
-        )}
       </div>
       <div className="w-[170px]">
         <Select
@@ -709,11 +655,9 @@ function AttendanceRow({
                   className="text-[10px] text-muted-foreground underline decoration-dotted hover:text-primary cursor-pointer ml-1"
                   disabled={isLoading}
                 >
-                  {selectedBase?.subscriptionType.type === 'SINGLE_VISIT'
-                    ? 'Разовое'
-                    : selectedBase?.subscriptionType.type === 'VISIT_PACK'
-                      ? `Пакет (${selectedBase?.remainingVisits ?? 0})`
-                      : 'Абонемент'}
+                  {selectedBase?.subscriptionType.type === 'VISIT_PACK'
+                    ? `Разовое (${selectedBase?.remainingVisits ?? 0})`
+                    : 'Абонемент'}
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-64 p-2" align="start">
@@ -723,13 +667,11 @@ function AttendanceRow({
                       ? format(new Date(base.startDate), 'dd.MM.yyyy')
                       : 'дата не указана';
                     const isSelected = selectedBasisId === base.id;
-                    const typeLabel = base.subscriptionType.type === 'SINGLE_VISIT'
-                      ? 'Разовое'
-                      : base.subscriptionType.type === 'VISIT_PACK'
-                        ? `Пакет разовых`
-                        : base.subscriptionType.type === 'UNLIMITED'
-                          ? 'Безлимитный'
-                          : 'Абонемент';
+                    const typeLabel = base.subscriptionType.type === 'VISIT_PACK'
+                      ? `Разовые посещения`
+                      : base.subscriptionType.type === 'UNLIMITED'
+                        ? 'Безлимитный'
+                        : 'Абонемент';
                     return (
                       <button
                         key={base.id}

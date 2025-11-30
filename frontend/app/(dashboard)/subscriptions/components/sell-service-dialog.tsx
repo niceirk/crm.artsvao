@@ -4,7 +4,6 @@ import { useEffect, useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import {
   Dialog,
   DialogContent,
@@ -25,10 +24,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
+import { ClientSearch } from '@/components/clients/client-search';
 import { useSellService } from '@/hooks/use-subscriptions';
 import { useIndependentServices } from '@/hooks/use-nomenclature';
-import { apiClient } from '@/lib/api/client';
-import type { Client } from '@/lib/types/clients';
 import type { ServiceSale } from '@/lib/types/subscriptions';
 
 const formSchema = z.object({
@@ -55,11 +53,7 @@ export function SellServiceDialog({
 }: SellServiceDialogProps) {
   const sellMutation = useSellService();
   const { data: services } = useIndependentServices();
-  const [clients, setClients] = useState<Client[]>([]);
-  const [isLoadingClients, setIsLoadingClients] = useState(false);
-  const [clientSearch, setClientSearch] = useState('');
   const [serviceSearch, setServiceSearch] = useState('');
-  const debouncedClientSearch = useDebouncedValue(clientSearch, 300);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -92,41 +86,13 @@ export function SellServiceDialog({
     return label.includes(normalizedServiceSearch);
   });
 
-  const clientOptions: ComboboxOption[] = clients.map((client) => ({
-    value: client.id,
-    label: `${client.lastName} ${client.firstName} (${client.phone})`,
-  }));
-
   const serviceOptions: ComboboxOption[] = filteredServices.map((service) => ({
     value: service.id,
     label: `${service.name} - ${formatCurrency(service.price)}${service.category ? ` (${service.category.name})` : ''}`,
   }));
 
-  // Load clients with server-side search
-  useEffect(() => {
-    const loadClients = async () => {
-      if (!open) {
-        setClients([]);
-        return;
-      }
-
-      try {
-        setIsLoadingClients(true);
-        const searchParam = debouncedClientSearch ? `&search=${encodeURIComponent(debouncedClientSearch)}` : '';
-        const response = await apiClient.get<{ data: Client[] }>(`/clients?limit=50&page=1${searchParam}`);
-        setClients(response.data.data);
-      } catch (error) {
-        console.error('Failed to load clients:', error);
-      } finally {
-        setIsLoadingClients(false);
-      }
-    };
-    loadClients();
-  }, [open, debouncedClientSearch]);
-
   useEffect(() => {
     if (!open) {
-      setClientSearch('');
       setServiceSearch('');
       form.reset({
         clientId: preselectedClientId || '',
@@ -191,18 +157,14 @@ export function SellServiceDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Клиент *</FormLabel>
-                  <Combobox
-                    options={clientOptions}
-                    value={field.value || undefined}
-                    onValueChange={(value) => field.onChange(value ?? '')}
-                    placeholder="Выберите клиента"
-                    searchValue={clientSearch}
-                    onSearchChange={setClientSearch}
-                    emptyText="Клиенты не найдены"
-                    aria-label="Клиент"
-                    disabled={!!preselectedClientId}
-                    allowEmpty={false}
-                  />
+                  <FormControl>
+                    <ClientSearch
+                      value={field.value || undefined}
+                      onValueChange={(value) => field.onChange(value ?? '')}
+                      placeholder="Поиск клиента..."
+                      disabled={!!preselectedClientId}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}

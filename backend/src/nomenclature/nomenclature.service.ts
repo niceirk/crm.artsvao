@@ -30,7 +30,7 @@ export interface NomenclatureItem {
     name: string;
     defaultVatRate: number;
   };
-  subscriptionType?: 'UNLIMITED' | 'SINGLE_VISIT' | 'VISIT_PACK';
+  subscriptionType?: 'UNLIMITED' | 'VISIT_PACK';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -106,7 +106,7 @@ export class NomenclatureService {
       where.name = { contains: filter.search, mode: 'insensitive' };
     }
 
-    // Исключаем SINGLE_VISIT и VISIT_PACK - они будут отдельно
+    // Исключаем VISIT_PACK - они будут отдельно
     where.type = 'UNLIMITED';
 
     const subscriptionTypes = await this.prisma.subscriptionType.findMany({
@@ -140,7 +140,7 @@ export class NomenclatureService {
         name: st.group.serviceCategory.name,
         defaultVatRate: Number(st.group.serviceCategory.defaultVatRate),
       } : undefined,
-      subscriptionType: st.type as 'UNLIMITED' | 'SINGLE_VISIT' | 'VISIT_PACK',
+      subscriptionType: st.type as 'UNLIMITED' | 'VISIT_PACK',
       createdAt: st.createdAt,
       updatedAt: st.updatedAt,
     }));
@@ -199,7 +199,7 @@ export class NomenclatureService {
         name: group.serviceCategory.name,
         defaultVatRate: Number(group.serviceCategory.defaultVatRate),
       } : undefined,
-      subscriptionType: 'SINGLE_VISIT' as const,
+      subscriptionType: 'VISIT_PACK' as const,
       createdAt: group.createdAt,
       updatedAt: group.updatedAt,
     }));

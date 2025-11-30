@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { subscriptionsApi, SellSingleSessionPackDto } from '@/lib/api/subscriptions';
+import { subscriptionsApi, SellSingleSessionDto } from '@/lib/api/subscriptions';
 import type {
   SellSubscriptionDto,
   SellIndependentServiceDto,
@@ -12,6 +12,8 @@ export const useSubscriptions = (filters?: SubscriptionFilterDto) => {
   return useQuery({
     queryKey: ['subscriptions', filters],
     queryFn: () => subscriptionsApi.getAll(filters),
+    staleTime: 30 * 1000, // 30 секунд - данные считаются свежими
+    refetchOnWindowFocus: false, // Не перезагружать при фокусе окна
   });
 };
 
@@ -20,6 +22,8 @@ export const useSubscription = (id: string) => {
     queryKey: ['subscriptions', id],
     queryFn: () => subscriptionsApi.getById(id),
     enabled: !!id,
+    staleTime: 60 * 1000, // 1 минута - кэшируем детали подписки
+    refetchOnWindowFocus: false, // Не перезагружать при фокусе
   });
 };
 
@@ -50,21 +54,23 @@ export const useSellSubscription = () => {
   });
 };
 
-export const useSellSingleSessionPack = () => {
+export const useSellSingleSession = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: SellSingleSessionPackDto) => subscriptionsApi.sellPack(data),
+    mutationFn: (data: SellSingleSessionDto) => subscriptionsApi.sellSingleSession(data),
     onSuccess: (subscription) => {
       queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
       queryClient.invalidateQueries({
         queryKey: ['subscriptions', 'client', subscription.clientId]
       });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      toast.success('Пакет разовых успешно продан');
+      queryClient.invalidateQueries({ queryKey: ['attendance-bases'] });
+      const quantity = subscription.remainingVisits ?? 1;
+      toast.success(quantity === 1 ? 'Разовое посещение продано' : `Продано ${quantity} разовых посещений`);
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.message || 'Ошибка продажи пакета');
+      toast.error(error.response?.data?.message || 'Ошибка продажи');
     },
   });
 };
@@ -113,5 +119,34 @@ export const useValidateSubscription = (id: string, date?: string) => {
     queryKey: ['subscriptions', id, 'validate', date],
     queryFn: () => subscriptionsApi.validate(id, date),
     enabled: !!id,
+  });
+};
+
+export const useCanDeleteSubscription = (id: string | null) => {
+  return useQuery({
+    queryKey: ['subscriptions', id, 'can-delete'],
+    queryFn: () => subscriptionsApi.canDelete(id!),
+    enabled: !!id,
+    staleTime: 5 * 60 * 1000, // 5 минут - кэшируем результат
+    gcTime: 10 * 60 * 1000, // 10 минут - храним в памяти
+    refetchOnWindowFocus: false, // Не перезагружать при фокусе
+    refetchOnMount: false, // Не перезагружать при монтировании если есть кэш
+  });
+};
+
+export const useDeleteSubscription = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => subscriptionsApi.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['subscriptions'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['attendance'] });
+      toast.success('Абонемент удалён');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Ошибка при удалении абонемента');
+    },
   });
 };

@@ -11,6 +11,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import { BreadcrumbsProvider } from '@/lib/contexts/breadcrumbs-context';
 import { useMessagesNotifications } from '@/hooks/use-messages-notifications';
+import { useDataEvents } from '@/hooks/use-data-events';
+import { DataConflictDialog } from '@/components/conflict/data-conflict-dialog';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { sidebarCollapsed } = useNavigationStore();
@@ -19,6 +21,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const pathname = usePathname();
   useMessagesNotifications();
+  useDataEvents(['subscription', 'attendance', 'invoice', 'payment', 'schedule', 'medicalCertificate', 'client', 'group']);
 
   // Проверка авторизации
   useEffect(() => {
@@ -41,33 +44,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <BreadcrumbsProvider>
-      <div className="relative h-screen overflow-hidden">
-        {/* Desktop Sidebar */}
-        <Sidebar />
+    <>
+      <BreadcrumbsProvider>
+        <div className="relative h-screen overflow-hidden">
+          {/* Desktop Sidebar */}
+          <Sidebar />
 
-        {/* Mobile Sidebar (Drawer) */}
-        <MobileSidebar />
+          {/* Mobile Sidebar (Drawer) */}
+          <MobileSidebar />
 
-        {/* Main Content */}
-        <div
-          className={cn(
-            'flex h-screen flex-col transition-all duration-300',
-            'md:pl-20', // На desktop учитываем сайдбар
-            sidebarCollapsed ? 'md:pl-20' : 'md:pl-64'
-          )}
-        >
-          {/* Top Bar */}
-          {pathname !== '/schedule' && pathname !== '/room-planner' && (
-            <TopBar sidebarCollapsed={sidebarCollapsed} />
-          )}
+          {/* Main Content */}
+          <div
+            className={cn(
+              'flex h-screen flex-col transition-all duration-300',
+              'md:pl-20', // На desktop учитываем сайдбар
+              sidebarCollapsed ? 'md:pl-20' : 'md:pl-64'
+            )}
+          >
+            {/* Top Bar */}
+            {pathname !== '/schedule' && pathname !== '/room-planner' && (
+              <TopBar sidebarCollapsed={sidebarCollapsed} />
+            )}
 
-          {/* Page Content */}
-          <main className="flex-1 overflow-y-auto bg-muted/40 p-4 md:p-6">
-            <div className="mx-auto max-w-screen-2xl">{children}</div>
-          </main>
+            {/* Page Content */}
+            <main className="flex-1 overflow-y-auto bg-muted/40 p-4 md:p-6">
+              <div className="mx-auto max-w-screen-2xl">{children}</div>
+            </main>
+          </div>
         </div>
-      </div>
-    </BreadcrumbsProvider>
+      </BreadcrumbsProvider>
+      {/* Глобальный диалог конфликта данных */}
+      <DataConflictDialog />
+    </>
   );
 }

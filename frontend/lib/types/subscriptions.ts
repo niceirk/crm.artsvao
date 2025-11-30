@@ -1,6 +1,6 @@
 import type { AttendanceStatus } from './attendance';
 
-export type SubscriptionTypeEnum = 'UNLIMITED' | 'SINGLE_VISIT' | 'VISIT_PACK';
+export type SubscriptionTypeEnum = 'UNLIMITED' | 'VISIT_PACK' | 'SINGLE_VISIT';
 
 export type SubscriptionStatus = 'ACTIVE' | 'EXPIRED' | 'FROZEN' | 'CANCELLED';
 
@@ -46,6 +46,7 @@ export interface SubscriptionType {
   groupId: string;
   type: SubscriptionTypeEnum;
   price: number;
+  pricePerLesson?: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -122,6 +123,7 @@ export interface CreateSubscriptionTypeDto {
   groupId: string;
   type: SubscriptionTypeEnum;
   price: number;
+  pricePerLesson?: number;
   isActive?: boolean;
 }
 
@@ -129,6 +131,7 @@ export interface UpdateSubscriptionTypeDto {
   name?: string;
   description?: string;
   price?: number;
+  pricePerLesson?: number;
   isActive?: boolean;
 }
 
@@ -136,6 +139,7 @@ export interface SubscriptionTypeFilterDto {
   groupId?: string;
   isActive?: boolean;
   type?: SubscriptionTypeEnum;
+  excludeTypes?: SubscriptionTypeEnum[];
   page?: number;
   limit?: number;
 }

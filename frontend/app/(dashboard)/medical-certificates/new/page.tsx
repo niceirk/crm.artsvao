@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { format, addMonths } from 'date-fns';
+import { format, addMonths, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import {
   CalendarIcon,
@@ -46,7 +46,7 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
-import { ClientCombobox } from '@/components/client-combobox';
+import { ClientSearch } from '@/components/clients/client-search';
 import { useCreateMedicalCertificate, usePreviewSchedules } from '@/hooks/use-medical-certificates';
 import { SchedulePreview, CompensationMonthDto } from '@/lib/types/medical-certificates';
 import { AttendanceSheet } from '../../schedule/attendance-sheet';
@@ -80,6 +80,7 @@ const generateMonthOptions = () => {
 interface SubscriptionGroup {
   subscriptionId: string;
   subscriptionName: string;
+  validMonth: string;
   scheduleCount: number;
   totalCompensation: number;
   scheduleIds: string[];
@@ -181,6 +182,7 @@ export default function NewMedicalCertificatePage() {
         groups.set(subId, {
           subscriptionId: subId,
           subscriptionName: schedule.subscription.name,
+          validMonth: schedule.subscription.validMonth,
           scheduleCount: 1,
           totalCompensation: schedule.compensationAmount || 0,
           scheduleIds: [scheduleId],
@@ -346,10 +348,10 @@ export default function NewMedicalCertificatePage() {
                   Клиент
                   <span className="text-yellow-600">*</span>
                 </Label>
-                <ClientCombobox
-                  value={clientId}
-                  onValueChange={(value) => setValue('clientId', value)}
-                  placeholder="Выберите клиента"
+                <ClientSearch
+                  value={clientId || undefined}
+                  onValueChange={(value) => setValue('clientId', value ?? '')}
+                  placeholder="Поиск клиента..."
                 />
               </div>
 
@@ -582,7 +584,7 @@ export default function NewMedicalCertificatePage() {
                                         setSubscriptionSheetOpen(true);
                                       }}
                                     >
-                                      Абонемент, {format(new Date(schedule.subscription.purchaseDate), 'dd.MM.yyyy')}
+                                      Абонемент, {format(parseISO(schedule.subscription.purchaseDate), 'dd.MM.yyyy')}
                                     </button>
                                   ) : (
                                     <span className="text-muted-foreground text-sm">—</span>
@@ -653,14 +655,31 @@ export default function NewMedicalCertificatePage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {groupedBySubscription.map((group) => (
-                    <div key={group.subscriptionId} className="flex items-center gap-4">
-                      <div className="flex-1">
-                        <div className="font-medium">{group.subscriptionName}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {group.scheduleCount} занятий, {formatMoney(group.totalCompensation)}
+                  {groupedBySubscription.map((group) => {
+                    // Форматируем validMonth (2025-12) в "декабрь 2025"
+                    const formatValidMonth = (validMonth: string) => {
+                      if (!validMonth) return '';
+                      const [year, month] = validMonth.split('-');
+                      const date = new Date(Number(year), Number(month) - 1, 1);
+                      const monthName = format(date, 'LLLL yyyy', { locale: ru });
+                      return monthName.charAt(0).toUpperCase() + monthName.slice(1);
+                    };
+
+                    return (
+                      <div key={group.subscriptionId} className="flex items-center gap-4">
+                        <div className="flex-1">
+                          <div className="font-medium">
+                            {group.subscriptionName}
+                            {group.validMonth && (
+                              <span className="text-muted-foreground font-normal ml-2">
+                                ({formatValidMonth(group.validMonth)})
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            {group.scheduleCount} занятий, {formatMoney(group.totalCompensation)}
+                          </div>
                         </div>
-                      </div>
                       <Select
                         value={compensationMonths[group.subscriptionId] || ''}
                         onValueChange={(value) => handleCompensationMonthChange(group.subscriptionId, value)}
@@ -677,7 +696,8 @@ export default function NewMedicalCertificatePage() {
                         </SelectContent>
                       </Select>
                     </div>
-                  ))}
+                    );
+                  })}
                 </CardContent>
               </Card>
             )}

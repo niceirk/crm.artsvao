@@ -142,7 +142,7 @@ export class MedicalCertificatesService {
       }
     }
 
-    const [items, total] = await Promise.all([
+    const [rawItems, total] = await Promise.all([
       this.prisma.medicalCertificate.findMany({
         where,
         skip,
@@ -164,6 +164,12 @@ export class MedicalCertificatesService {
               lastName: true,
             },
           },
+          appliedSchedules: {
+            select: {
+              compensationAmount: true,
+              compensationMonth: true,
+            },
+          },
           _count: {
             select: {
               appliedSchedules: true,
@@ -173,6 +179,30 @@ export class MedicalCertificatesService {
       }),
       this.prisma.medicalCertificate.count({ where }),
     ]);
+
+    // Добавляем агрегированные данные о компенсации
+    const items = rawItems.map((cert) => {
+      const totalCompensation = cert.appliedSchedules.reduce(
+        (sum, s) => sum + (s.compensationAmount ? Number(s.compensationAmount) : 0),
+        0,
+      );
+      const compensationMonths = [
+        ...new Set(
+          cert.appliedSchedules
+            .map((s) => s.compensationMonth)
+            .filter((m): m is string => !!m),
+        ),
+      ].sort();
+
+      // Удаляем appliedSchedules из ответа, чтобы не нагружать
+      const { appliedSchedules, ...rest } = cert;
+
+      return {
+        ...rest,
+        totalCompensation,
+        compensationMonths,
+      };
+    });
 
     return {
       items,
@@ -378,6 +408,21 @@ export class MedicalCertificatesService {
     const end = new Date(endDate);
     console.log('[previewSchedules] Parsed dates:', { start, end });
 
+    // 0. Получить клиента с льготной категорией для расчета скидки
+    const client = await this.prisma.client.findUnique({
+      where: { id: clientId },
+      select: {
+        id: true,
+        benefitCategory: {
+          select: {
+            id: true,
+            discountPercent: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
     // 1. Найти группы где клиент является активным участником
     const groupMembers = await this.prisma.groupMember.findMany({
       where: {
@@ -415,6 +460,7 @@ export class MedicalCertificatesService {
             id: true,
             name: true,
             type: true,
+            pricePerLesson: true,
           },
         },
       },
@@ -483,9 +529,9 @@ export class MedicalCertificatesService {
     // Подсчитываем ВСЕ занятия месяца для каждой комбинации (для fallback)
     const allSchedulesCountByGroupMonth = await this.getSchedulesCountForGroupMonths(groupMonthsForFallback);
 
-    // 4. Фильтровать: оставить только занятия где есть абонемент или уже отмечено посещение
+    // 4. Фильтровать: оставить только занятия, покрытые абонементом
+    // Занятия без абонемента (без основания или по разовому посещению) не подлежат компенсации
     const result = schedules.filter((schedule) => {
-      const hasAttendance = schedule.attendances.length > 0;
       const scheduleDate = new Date(schedule.date);
 
       // Проверяем, есть ли активный абонемент на дату занятия
@@ -499,7 +545,8 @@ export class MedicalCertificatesService {
         );
       });
 
-      return hasAttendance || hasActiveSubscription;
+      // Только занятия с абонементом подлежат компенсации
+      return hasActiveSubscription;
     });
 
     console.log('[previewSchedules] Filtered result:', result.length);
@@ -525,17 +572,27 @@ export class MedicalCertificatesService {
       let pricePerLesson: number | null = null;
 
       if (matchingSubscription) {
-        if (matchingSubscription.pricePerLesson) {
-          // Используем сохранённую цену за занятие (рассчитана при продаже)
+        // Приоритет: subscriptionType.pricePerLesson → subscription.pricePerLesson → fallback
+        if (matchingSubscription.subscriptionType.pricePerLesson) {
+          // Используем цену за занятие из типа абонемента
+          pricePerLesson = Number(matchingSubscription.subscriptionType.pricePerLesson);
+        } else if (matchingSubscription.pricePerLesson) {
+          // Используем сохранённую цену за занятие в абонементе
           pricePerLesson = Number(matchingSubscription.pricePerLesson);
         } else if (matchingSubscription.paidPrice && matchingSubscription.groupId && matchingSubscription.validMonth) {
           // Fallback для старых абонементов без pricePerLesson
-          // Рассчитываем цену за занятие: paidPrice / ВСЕ занятия месяца группы
           const key = `${matchingSubscription.groupId}_${matchingSubscription.validMonth}`;
           const allSchedulesInMonth = allSchedulesCountByGroupMonth.get(key) || 1;
           pricePerLesson = Math.round(Number(matchingSubscription.paidPrice) / allSchedulesInMonth);
         }
-        compensationAmount = pricePerLesson;
+
+        // Применяем скидку клиента к компенсации
+        if (pricePerLesson !== null) {
+          const discountPercent = client?.benefitCategory?.isActive
+            ? Number(client.benefitCategory.discountPercent)
+            : 0;
+          compensationAmount = Math.round(pricePerLesson * (1 - discountPercent / 100) * 100) / 100;
+        }
       }
 
       return {
@@ -577,177 +634,211 @@ export class MedicalCertificatesService {
       throw new NotFoundException('Справка не найдена');
     }
 
-    // Создаём Map для быстрого доступа к данным о компенсации по scheduleId
-    const scheduleCompensationMap = new Map<string, {
-      subscriptionId?: string;
-      compensationAmount?: number;
-      compensationMonth?: string;
-    }>();
+    // Выполняем все операции в транзакции для защиты от race conditions
+    return this.prisma.$transaction(async (tx) => {
+      // Создаём Map для быстрого доступа к данным о компенсации по scheduleId
+      const scheduleCompensationMap = new Map<string, {
+        subscriptionId?: string;
+        compensationAmount?: number;
+        compensationMonth?: string;
+      }>();
 
-    // Если переданы scheduleCompensations, используем их напрямую
-    if (dto.scheduleCompensations) {
-      for (const sc of dto.scheduleCompensations) {
-        scheduleCompensationMap.set(sc.scheduleId, {
-          subscriptionId: sc.subscriptionId,
-          compensationAmount: sc.compensationAmount,
-          compensationMonth: sc.compensationMonth,
-        });
-      }
-    }
-
-    // Если переданы compensationMonths (по абонементам), нужно связать их с занятиями
-    // Для этого нужно получить занятия и их абонементы
-    if (dto.compensationMonths && dto.compensationMonths.length > 0) {
-      const compensationMonthMap = new Map(
-        dto.compensationMonths.map((cm) => [cm.subscriptionId, cm.compensationMonth])
-      );
-
-      // Получаем информацию о занятиях и их абонементах
-      const schedulesWithSubs = await this.prisma.schedule.findMany({
-        where: { id: { in: dto.scheduleIds } },
-        include: {
-          attendances: {
-            where: { clientId: certificate.clientId },
-            select: { subscriptionId: true },
-          },
-        },
-      });
-
-      // Получаем абонементы клиента для определения подходящего абонемента для каждого занятия
-      const subscriptions = await this.prisma.subscription.findMany({
-        where: {
-          clientId: certificate.clientId,
-          id: { in: Array.from(compensationMonthMap.keys()) },
-        },
-        select: {
-          id: true,
-          groupId: true,
-          startDate: true,
-          endDate: true,
-          pricePerLesson: true,
-          paidPrice: true,
-        },
-      });
-
-      for (const schedule of schedulesWithSubs) {
-        // Находим подходящий абонемент для этого занятия
-        const scheduleDate = new Date(schedule.date);
-        const matchingSub = subscriptions.find((sub) => {
-          return (
-            sub.groupId === schedule.groupId &&
-            new Date(sub.startDate) <= scheduleDate &&
-            new Date(sub.endDate) >= scheduleDate
-          );
-        });
-
-        if (matchingSub) {
-          const compensationMonth = compensationMonthMap.get(matchingSub.id);
-          const existing = scheduleCompensationMap.get(schedule.id) || {};
-
-          // Рассчитываем сумму компенсации если не задана
-          let compensationAmount = existing.compensationAmount;
-          if (!compensationAmount) {
-            if (matchingSub.pricePerLesson) {
-              compensationAmount = Number(matchingSub.pricePerLesson);
-            } else if (matchingSub.paidPrice) {
-              // Простой расчёт (можно улучшить)
-              compensationAmount = Math.round(Number(matchingSub.paidPrice) / 8); // ~8 занятий в месяц
-            }
-          }
-
-          scheduleCompensationMap.set(schedule.id, {
-            subscriptionId: matchingSub.id,
-            compensationAmount,
-            compensationMonth,
+      // Если переданы scheduleCompensations, используем их напрямую
+      if (dto.scheduleCompensations) {
+        for (const sc of dto.scheduleCompensations) {
+          scheduleCompensationMap.set(sc.scheduleId, {
+            subscriptionId: sc.subscriptionId,
+            compensationAmount: sc.compensationAmount,
+            compensationMonth: sc.compensationMonth,
           });
         }
       }
-    }
 
-    const results = [];
-    const formatDate = (date: Date) => date.toLocaleDateString('ru-RU');
-    const noteText = `Справка от ${formatDate(certificate.startDate)} до ${formatDate(certificate.endDate)}`;
+      // Если переданы compensationMonths (по абонементам), нужно связать их с занятиями
+      // Для этого нужно получить занятия и их абонементы
+      if (dto.compensationMonths && dto.compensationMonths.length > 0) {
+        const compensationMonthMap = new Map(
+          dto.compensationMonths.map((cm) => [cm.subscriptionId, cm.compensationMonth])
+        );
 
-    for (const scheduleId of dto.scheduleIds) {
-      // Проверяем, не была ли уже применена эта справка к этому занятию
-      const existingLink = await this.prisma.medicalCertificateSchedule.findUnique({
-        where: {
-          medicalCertificateId_scheduleId: {
-            medicalCertificateId: certificateId,
-            scheduleId,
-          },
-        },
-      });
-
-      if (existingLink) {
-        continue; // Пропускаем, если уже применена
-      }
-
-      // Найти или создать Attendance
-      let attendance = await this.prisma.attendance.findFirst({
-        where: {
-          scheduleId,
-          clientId: certificate.clientId,
-        },
-      });
-
-      const previousStatus = attendance?.status || null;
-
-      if (attendance) {
-        // Обновить существующую запись на EXCUSED
-        attendance = await this.prisma.attendance.update({
-          where: { id: attendance.id },
-          data: {
-            status: 'EXCUSED',
-            notes: noteText,
-            markedBy: userId,
-            markedAt: new Date(),
+        // Получаем информацию о занятиях и их абонементах
+        const schedulesWithSubs = await tx.schedule.findMany({
+          where: { id: { in: dto.scheduleIds } },
+          include: {
+            attendances: {
+              where: { clientId: certificate.clientId },
+              select: { subscriptionId: true },
+            },
           },
         });
-      } else {
-        // Создать новую запись с EXCUSED
-        attendance = await this.prisma.attendance.create({
-          data: {
+
+        // Получаем абонементы клиента для определения подходящего абонемента для каждого занятия
+        const subscriptions = await tx.subscription.findMany({
+          where: {
+            clientId: certificate.clientId,
+            id: { in: Array.from(compensationMonthMap.keys()) },
+          },
+          select: {
+            id: true,
+            groupId: true,
+            startDate: true,
+            endDate: true,
+            pricePerLesson: true,
+            paidPrice: true,
+            subscriptionType: {
+              select: {
+                pricePerLesson: true,
+              },
+            },
+          },
+        });
+
+        // Получаем клиента с льготной категорией для расчета скидки
+        const client = await tx.client.findUnique({
+          where: { id: certificate.clientId },
+          select: {
+            benefitCategory: {
+              select: {
+                discountPercent: true,
+                isActive: true,
+              },
+            },
+          },
+        });
+
+        for (const schedule of schedulesWithSubs) {
+          // Находим подходящий абонемент для этого занятия
+          const scheduleDate = new Date(schedule.date);
+          const matchingSub = subscriptions.find((sub) => {
+            return (
+              sub.groupId === schedule.groupId &&
+              new Date(sub.startDate) <= scheduleDate &&
+              new Date(sub.endDate) >= scheduleDate
+            );
+          });
+
+          if (matchingSub) {
+            const compensationMonth = compensationMonthMap.get(matchingSub.id);
+            const existing = scheduleCompensationMap.get(schedule.id) || {};
+
+            // Рассчитываем сумму компенсации если не задана
+            let compensationAmount = existing.compensationAmount;
+            if (!compensationAmount) {
+              let pricePerLesson: number | null = null;
+
+              // Приоритет: subscriptionType.pricePerLesson → subscription.pricePerLesson → fallback
+              if (matchingSub.subscriptionType.pricePerLesson) {
+                pricePerLesson = Number(matchingSub.subscriptionType.pricePerLesson);
+              } else if (matchingSub.pricePerLesson) {
+                pricePerLesson = Number(matchingSub.pricePerLesson);
+              } else if (matchingSub.paidPrice) {
+                // Простой fallback
+                pricePerLesson = Math.round(Number(matchingSub.paidPrice) / 8);
+              }
+
+              // Применяем скидку клиента
+              if (pricePerLesson !== null) {
+                const discountPercent = client?.benefitCategory?.isActive
+                  ? Number(client.benefitCategory.discountPercent)
+                  : 0;
+                compensationAmount = Math.round(pricePerLesson * (1 - discountPercent / 100) * 100) / 100;
+              }
+            }
+
+            scheduleCompensationMap.set(schedule.id, {
+              subscriptionId: matchingSub.id,
+              compensationAmount,
+              compensationMonth,
+            });
+          }
+        }
+      }
+
+      const results = [];
+      const formatDate = (date: Date) => date.toLocaleDateString('ru-RU');
+      const noteText = `Справка от ${formatDate(certificate.startDate)} до ${formatDate(certificate.endDate)}`;
+
+      for (const scheduleId of dto.scheduleIds) {
+        // Проверяем, не была ли уже применена эта справка к этому занятию
+        const existingLink = await tx.medicalCertificateSchedule.findUnique({
+          where: {
+            medicalCertificateId_scheduleId: {
+              medicalCertificateId: certificateId,
+              scheduleId,
+            },
+          },
+        });
+
+        if (existingLink) {
+          continue; // Пропускаем, если уже применена
+        }
+
+        // Найти или создать Attendance
+        let attendance = await tx.attendance.findFirst({
+          where: {
             scheduleId,
             clientId: certificate.clientId,
-            status: 'EXCUSED',
-            notes: noteText,
-            markedBy: userId,
-            markedAt: new Date(),
           },
         });
-      }
 
-      // Получаем данные о компенсации для этого занятия
-      const compensationData = scheduleCompensationMap.get(scheduleId);
+        const previousStatus = attendance?.status || null;
 
-      // Сохранить связь справки с занятием (включая данные о компенсации)
-      await this.prisma.medicalCertificateSchedule.create({
-        data: {
-          medicalCertificateId: certificateId,
+        if (attendance) {
+          // Обновить существующую запись на EXCUSED
+          attendance = await tx.attendance.update({
+            where: { id: attendance.id },
+            data: {
+              status: 'EXCUSED',
+              notes: noteText,
+              markedBy: userId,
+              markedAt: new Date(),
+            },
+          });
+        } else {
+          // Создать новую запись с EXCUSED
+          attendance = await tx.attendance.create({
+            data: {
+              scheduleId,
+              clientId: certificate.clientId,
+              status: 'EXCUSED',
+              notes: noteText,
+              markedBy: userId,
+              markedAt: new Date(),
+            },
+          });
+        }
+
+        // Получаем данные о компенсации для этого занятия
+        const compensationData = scheduleCompensationMap.get(scheduleId);
+
+        // Сохранить связь справки с занятием (включая данные о компенсации)
+        await tx.medicalCertificateSchedule.create({
+          data: {
+            medicalCertificateId: certificateId,
+            scheduleId,
+            attendanceId: attendance.id,
+            previousStatus,
+            subscriptionId: compensationData?.subscriptionId,
+            compensationAmount: compensationData?.compensationAmount,
+            compensationMonth: compensationData?.compensationMonth,
+          },
+        });
+
+        results.push({
           scheduleId,
           attendanceId: attendance.id,
           previousStatus,
           subscriptionId: compensationData?.subscriptionId,
           compensationAmount: compensationData?.compensationAmount,
           compensationMonth: compensationData?.compensationMonth,
-        },
-      });
+        });
+      }
 
-      results.push({
-        scheduleId,
-        attendanceId: attendance.id,
-        previousStatus,
-        subscriptionId: compensationData?.subscriptionId,
-        compensationAmount: compensationData?.compensationAmount,
-        compensationMonth: compensationData?.compensationMonth,
-      });
-    }
-
-    return {
-      applied: results.length,
-      results,
-    };
+      return {
+        applied: results.length,
+        results,
+      };
+    });
   }
 
   /**

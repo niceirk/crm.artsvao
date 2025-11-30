@@ -27,6 +27,9 @@ export interface MedicalCertificate {
   _count?: {
     appliedSchedules: number;
   };
+  // Агрегированные данные о компенсации
+  totalCompensation?: number;
+  compensationMonths?: string[];
 }
 
 export interface MedicalCertificateSchedule {
@@ -87,7 +90,7 @@ export interface SchedulePreview {
   subscription?: {
     id: string;
     name: string;
-    type: 'UNLIMITED' | 'SINGLE_VISIT' | 'VISIT_PACK';
+    type: 'UNLIMITED' | 'VISIT_PACK';
     pricePerLesson: number | null;
     validMonth: string;
     purchaseDate: string;

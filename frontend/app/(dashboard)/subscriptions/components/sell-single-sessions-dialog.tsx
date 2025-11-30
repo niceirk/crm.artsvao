@@ -4,7 +4,6 @@ import { useEffect, useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import {
   Dialog,
   DialogContent,
@@ -26,11 +25,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
-import { Switch } from '@/components/ui/switch';
-import { useSellSingleSessionPack } from '@/hooks/use-subscriptions';
+import { ClientSearch } from '@/components/clients/client-search';
+import { useSellSingleSession } from '@/hooks/use-subscriptions';
 import { useGroups } from '@/hooks/use-groups';
-import { apiClient } from '@/lib/api/client';
-import { getClient } from '@/lib/api/clients';
 import type { Client } from '@/lib/types/clients';
 import type { Subscription } from '@/lib/types/subscriptions';
 
@@ -39,12 +36,11 @@ const formSchema = z.object({
   groupId: z.string().min(1, 'Выберите группу'),
   quantity: z.number().min(1, 'Минимум 1 занятие').max(50, 'Максимум 50 занятий'),
   notes: z.string().optional(),
-  applyBenefit: z.boolean().default(true),
 });
 
 type FormValues = z.infer<typeof formSchema>;
 
-interface SellPackDialogProps {
+interface SellSingleSessionsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   preselectedClientId?: string;
@@ -52,22 +48,18 @@ interface SellPackDialogProps {
   onSuccess?: (subscription: Subscription) => void;
 }
 
-export function SellPackDialog({
+export function SellSingleSessionsDialog({
   open,
   onOpenChange,
   preselectedClientId,
   preselectedGroupId,
   onSuccess,
-}: SellPackDialogProps) {
-  const sellMutation = useSellSingleSessionPack();
-  const { data: groups } = useGroups();
-  const [clients, setClients] = useState<Client[]>([]);
-  const [isLoadingClients, setIsLoadingClients] = useState(false);
+}: SellSingleSessionsDialogProps) {
+  const sellMutation = useSellSingleSession();
+  const { data: groups } = useGroups({ limit: 1000 });
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<{ id: string; name: string; singleSessionPrice: number } | null>(null);
-  const [clientSearch, setClientSearch] = useState('');
   const [groupSearch, setGroupSearch] = useState('');
-  const debouncedClientSearch = useDebouncedValue(clientSearch, 300);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -76,7 +68,6 @@ export function SellPackDialog({
       groupId: '',
       quantity: 5,
       notes: '',
-      applyBenefit: true,
     },
   });
 
@@ -97,41 +88,13 @@ export function SellPackDialog({
     return label.includes(normalizedGroupSearch);
   });
 
-  const clientOptions: ComboboxOption[] = clients.map((client) => ({
-    value: client.id,
-    label: `${client.lastName} ${client.firstName} (${client.phone})`,
-  }));
-
   const groupOptions: ComboboxOption[] = filteredGroups.map((group) => ({
     value: group.id,
     label: `${group.name} (${group.studio.name}) - ${formatCurrency(group.singleSessionPrice || 0)}/занятие`,
   }));
 
-  // Load clients with server-side search
-  useEffect(() => {
-    const loadClients = async () => {
-      if (!open) {
-        setClients([]);
-        return;
-      }
-
-      try {
-        setIsLoadingClients(true);
-        const searchParam = debouncedClientSearch ? `&search=${encodeURIComponent(debouncedClientSearch)}` : '';
-        const response = await apiClient.get<{ data: Client[] }>(`/clients?limit=50&page=1${searchParam}`);
-        setClients(response.data.data);
-      } catch (error) {
-        console.error('Failed to load clients:', error);
-      } finally {
-        setIsLoadingClients(false);
-      }
-    };
-    loadClients();
-  }, [open, debouncedClientSearch]);
-
   useEffect(() => {
     if (!open) {
-      setClientSearch('');
       setGroupSearch('');
       form.reset();
     }
@@ -139,12 +102,10 @@ export function SellPackDialog({
 
   // Set preselected client
   useEffect(() => {
-    if (preselectedClientId && clients.length > 0) {
+    if (preselectedClientId) {
       form.setValue('clientId', preselectedClientId);
-      const client = clients.find(c => c.id === preselectedClientId);
-      setSelectedClient(client || null);
     }
-  }, [preselectedClientId, clients, form]);
+  }, [preselectedClientId, form]);
 
   useEffect(() => {
     if (preselectedGroupId) {
@@ -159,40 +120,6 @@ export function SellPackDialog({
       }
     }
   }, [preselectedGroupId, form, groupList]);
-
-  // Update selected client when clientId changes
-  useEffect(() => {
-    const clientId = watchedValues.clientId;
-    if (!clientId) {
-      setSelectedClient(null);
-      return;
-    }
-
-    const cachedClient = clients.find((c) => c.id === clientId) || null;
-    setSelectedClient(cachedClient);
-
-    if (cachedClient?.benefitCategory) {
-      return;
-    }
-
-    let isActive = true;
-    const loadClientDetail = async () => {
-      try {
-        const client = await getClient(clientId);
-        if (isActive) {
-          setSelectedClient(client);
-        }
-      } catch (error) {
-        console.error('Failed to load client details:', error);
-      }
-    };
-
-    loadClientDetail();
-
-    return () => {
-      isActive = false;
-    };
-  }, [watchedValues.clientId, clients]);
 
   // Update selected group
   useEffect(() => {
@@ -211,28 +138,21 @@ export function SellPackDialog({
     }
   }, [watchedValues.groupId, groupList]);
 
-  // Calculate price
+  // Calculate price (без скидок - льготы не применяются к разовым)
   const priceCalculation = useMemo(() => {
     if (!selectedGroup || !watchedValues.quantity) {
       return null;
     }
 
     const basePrice = selectedGroup.singleSessionPrice * watchedValues.quantity;
-    const discountPercent = watchedValues.applyBenefit && selectedClient?.benefitCategory
-      ? selectedClient.benefitCategory.discountPercent
-      : 0;
-    const discountAmount = Math.round((basePrice * discountPercent) / 100);
-    const finalPrice = basePrice - discountAmount;
 
     return {
       pricePerSession: selectedGroup.singleSessionPrice,
       quantity: watchedValues.quantity,
       basePrice,
-      discountPercent,
-      discountAmount,
-      finalPrice,
+      finalPrice: basePrice,
     };
-  }, [selectedGroup, watchedValues.quantity, watchedValues.applyBenefit, selectedClient]);
+  }, [selectedGroup, watchedValues.quantity]);
 
   const onSubmit = async (values: FormValues) => {
     try {
@@ -241,7 +161,6 @@ export function SellPackDialog({
         groupId: values.groupId,
         quantity: values.quantity,
         notes: values.notes,
-        applyBenefit: values.applyBenefit,
       });
       onSuccess?.(subscription);
       onOpenChange(false);
@@ -255,9 +174,9 @@ export function SellPackDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Продать пакет разовых занятий</DialogTitle>
+          <DialogTitle>Продать разовые посещения</DialogTitle>
           <DialogDescription>
-            Продажа нескольких разовых занятий клиенту без привязки к датам
+            Продажа разовых занятий клиенту без привязки к датам
           </DialogDescription>
         </DialogHeader>
 
@@ -270,18 +189,15 @@ export function SellPackDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Клиент *</FormLabel>
-                  <Combobox
-                    options={clientOptions}
-                    value={field.value || undefined}
-                    onValueChange={(value) => field.onChange(value ?? '')}
-                    placeholder="Выберите клиента"
-                    searchValue={clientSearch}
-                    onSearchChange={setClientSearch}
-                    emptyText="Клиенты не найдены"
-                    aria-label="Клиент"
-                    disabled={!!preselectedClientId}
-                    allowEmpty={false}
-                  />
+                  <FormControl>
+                    <ClientSearch
+                      value={field.value || undefined}
+                      onValueChange={(value) => field.onChange(value ?? '')}
+                      onClientSelect={(client) => setSelectedClient(client)}
+                      placeholder="Поиск клиента..."
+                      disabled={!!preselectedClientId}
+                    />
+                  </FormControl>
                   {selectedClient?.benefitCategory && (
                     <div className="mt-2">
                       <Badge variant="secondary">
@@ -361,30 +277,12 @@ export function SellPackDialog({
               )}
             />
 
-            {/* Apply Benefit */}
-            <FormField
-              control={form.control}
-              name="applyBenefit"
-              render={({ field }) => (
-                <FormItem className="flex items-center justify-between rounded-md border p-3">
-                  <div className="space-y-1">
-                    <FormLabel className="mb-0">Применить льготу</FormLabel>
-                    <FormDescription>
-                      {selectedClient?.benefitCategory
-                        ? `${selectedClient.benefitCategory.name}: скидка ${selectedClient.benefitCategory.discountPercent}%`
-                        : 'У клиента нет активной льготы'}
-                    </FormDescription>
-                  </div>
-                  <FormControl>
-                    <Switch
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                      disabled={!selectedClient?.benefitCategory}
-                    />
-                  </FormControl>
-                </FormItem>
-              )}
-            />
+            {/* Информация о льготе */}
+            {selectedClient?.benefitCategory && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                <span className="font-medium">Внимание:</span> У клиента есть льгота ({selectedClient.benefitCategory.name}: {selectedClient.benefitCategory.discountPercent}%), но она не применяется к разовым занятиям.
+              </div>
+            )}
 
             {/* Price Calculation */}
             {priceCalculation && (
@@ -399,23 +297,6 @@ export function SellPackDialog({
                     <span>Количество:</span>
                     <span>{priceCalculation.quantity} занятий</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Базовая стоимость:</span>
-                    <span className="font-medium">
-                      {formatCurrency(priceCalculation.basePrice)}
-                    </span>
-                  </div>
-                  {priceCalculation.discountAmount > 0 ? (
-                    <div className="flex justify-between text-destructive">
-                      <span>Скидка ({priceCalculation.discountPercent}%):</span>
-                      <span>-{formatCurrency(priceCalculation.discountAmount)}</span>
-                    </div>
-                  ) : (
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Скидка:</span>
-                      <span>Не применяется</span>
-                    </div>
-                  )}
                   <div className="flex justify-between pt-2 border-t text-base font-bold">
                     <span>К оплате:</span>
                     <span>{formatCurrency(priceCalculation.finalPrice)}</span>
@@ -433,7 +314,7 @@ export function SellPackDialog({
                 Отмена
               </Button>
               <Button type="submit" disabled={sellMutation.isPending}>
-                {sellMutation.isPending ? 'Создание...' : 'Продать пакет'}
+                {sellMutation.isPending ? 'Создание...' : 'Продать разовое'}
               </Button>
             </div>
           </form>

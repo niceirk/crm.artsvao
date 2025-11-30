@@ -18,7 +18,7 @@ export class InvoicesService {
    * Генерация уникального номера счета
    * Формат: МР-ГГ-NNNNNN (МР-год-порядковый номер)
    */
-  private async generateInvoiceNumber(): Promise<string> {
+  public async generateInvoiceNumber(): Promise<string> {
     const year = new Date().getFullYear().toString().slice(-2); // "25"
     const prefix = `МР-${year}`;
 
@@ -359,10 +359,16 @@ export class InvoicesService {
    * Создание подписок из оплаченного счёта
    */
   private async createSubscriptionsFromInvoice(invoice: any) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+    // Создаем UTC дату, чтобы избежать смещения часовых поясов
+    const today = new Date(Date.UTC(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      0, 0, 0, 0
+    ));
 
-    const validMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const validMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
 
     for (const item of invoice.items) {
@@ -377,7 +383,7 @@ export class InvoicesService {
       let subscriptionType = await this.prisma.subscriptionType.findFirst({
         where: {
           groupId: item.groupId,
-          type: item.serviceType === 'SINGLE_SESSION' ? 'SINGLE_VISIT' : 'UNLIMITED',
+          type: item.serviceType === 'SINGLE_SESSION' ? 'VISIT_PACK' : 'UNLIMITED',
           isActive: true,
         },
       });
@@ -386,7 +392,7 @@ export class InvoicesService {
         subscriptionType = await this.prisma.subscriptionType.create({
           data: {
             name: item.serviceName,
-            type: item.serviceType === 'SINGLE_SESSION' ? 'SINGLE_VISIT' : 'UNLIMITED',
+            type: item.serviceType === 'SINGLE_SESSION' ? 'VISIT_PACK' : 'UNLIMITED',
             price: Number(item.totalPrice),
             groupId: item.groupId,
             isActive: true,

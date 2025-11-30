@@ -16,7 +16,7 @@ interface ScheduleFiltersProps {
 export function ScheduleFilters({ filters, onFiltersChange }: ScheduleFiltersProps) {
   const { data: rooms } = useRooms();
   const { data: teachers } = useTeachers();
-  const { data: groups } = useGroups();
+  const { data: groups } = useGroups({ limit: 1000 });
 
   const handleClearFilters = () => {
     onFiltersChange({});

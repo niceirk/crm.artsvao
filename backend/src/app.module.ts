@@ -45,6 +45,7 @@ import { TimesheetsModule } from './timesheets/timesheets.module';
 import { ArchivedSalesModule } from './archived-sales/archived-sales.module';
 import { NomenclatureModule } from './nomenclature/nomenclature.module';
 import { MedicalCertificatesModule } from './medical-certificates/medical-certificates.module';
+import { DataEventsModule } from './common/events/data-events.module';
 
 @Module({
   imports: [
@@ -99,6 +100,7 @@ import { MedicalCertificatesModule } from './medical-certificates/medical-certif
     ArchivedSalesModule,
     NomenclatureModule,
     MedicalCertificatesModule,
+    DataEventsModule,
   ],
   controllers: [AppController],
   providers: [

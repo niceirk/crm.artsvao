@@ -16,7 +16,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { ConversationList, ChatWindow, EmptyState } from '@/components/chat';
-import { ClientCombobox } from '@/components/client-combobox';
+import { ClientSearch } from '@/components/clients/client-search';
 import {
   getConversations,
   getConversation,
@@ -507,10 +507,10 @@ export default function MessagesPage() {
           </DialogHeader>
 
           <div className="py-4">
-            <ClientCombobox
-              value={selectedClientId}
-              onValueChange={setSelectedClientId}
-              placeholder="Выберите клиента..."
+            <ClientSearch
+              value={selectedClientId || undefined}
+              onValueChange={(value) => setSelectedClientId(value ?? '')}
+              placeholder="Поиск клиента..."
             />
           </div>
 

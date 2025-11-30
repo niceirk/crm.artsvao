@@ -49,6 +49,13 @@ export class ClientsService {
       },
       include: {
         leadSource: true,
+        benefitCategory: {
+          select: {
+            id: true,
+            name: true,
+            discountPercent: true,
+          },
+        },
       },
     });
 
@@ -186,6 +193,13 @@ export class ClientsService {
             select: {
               id: true,
               name: true,
+            },
+          },
+          benefitCategory: {
+            select: {
+              id: true,
+              name: true,
+              discountPercent: true,
             },
           },
           // Relations loaded only on detail view for performance
@@ -613,6 +627,13 @@ export class ClientsService {
       data: { photoUrl: result.imageUrl },
       include: {
         leadSource: true,
+        benefitCategory: {
+          select: {
+            id: true,
+            name: true,
+            discountPercent: true,
+          },
+        },
       },
     });
 
@@ -653,6 +674,13 @@ export class ClientsService {
       data: { photoUrl: null },
       include: {
         leadSource: true,
+        benefitCategory: {
+          select: {
+            id: true,
+            name: true,
+            discountPercent: true,
+          },
+        },
       },
     });
 

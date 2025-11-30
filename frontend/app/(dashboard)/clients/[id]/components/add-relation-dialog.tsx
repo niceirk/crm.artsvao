@@ -1,6 +1,5 @@
 'use client';
 
-import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -28,9 +27,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Loader2 } from 'lucide-react';
-import { useCreateClientRelation, useSearchClients } from '@/hooks/useClients';
+import { useCreateClientRelation } from '@/hooks/useClients';
+import { ClientSearch } from '@/components/clients/client-search';
 import type { RelationType } from '@/lib/types/clients';
 
 interface AddRelationDialogProps {
@@ -56,8 +55,6 @@ const formSchema = z.object({
 type FormValues = z.infer<typeof formSchema>;
 
 export function AddRelationDialog({ clientId, open, onOpenChange }: AddRelationDialogProps) {
-  const [searchQuery, setSearchQuery] = useState('');
-  const { data: searchResults = [] } = useSearchClients(searchQuery);
   const createRelation = useCreateClientRelation();
 
   const form = useForm<FormValues>({
@@ -82,7 +79,6 @@ export function AddRelationDialog({ clientId, open, onOpenChange }: AddRelationD
 
   const handleCancel = () => {
     form.reset();
-    setSearchQuery('');
     onOpenChange(false);
   };
 
@@ -105,47 +101,12 @@ export function AddRelationDialog({ clientId, open, onOpenChange }: AddRelationD
                 <FormItem>
                   <FormLabel>Клиент</FormLabel>
                   <FormControl>
-                    <div className="space-y-2">
-                      <Input
-                        placeholder="Поиск клиента..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                      />
-                      {searchQuery.length >= 2 && (
-                        <div className="border rounded-md max-h-[200px] overflow-y-auto">
-                          {searchResults.length > 0 ? (
-                            searchResults
-                              .filter((client) => client.id !== clientId)
-                              .map((client) => (
-                                <button
-                                  key={client.id}
-                                  type="button"
-                                  className={`w-full text-left p-3 hover:bg-accent transition-colors ${
-                                    field.value === client.id ? 'bg-accent' : ''
-                                  }`}
-                                  onClick={() => {
-                                    field.onChange(client.id);
-                                    setSearchQuery(
-                                      `${client.lastName} ${client.firstName} ${client.middleName || ''}`
-                                    );
-                                  }}
-                                >
-                                  <div className="text-sm font-medium">
-                                    {client.lastName} {client.firstName} {client.middleName}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {client.phone} {client.email && `• ${client.email}`}
-                                  </div>
-                                </button>
-                              ))
-                          ) : (
-                            <div className="p-3 text-sm text-muted-foreground text-center">
-                              Клиенты не найдены
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
+                    <ClientSearch
+                      value={field.value || undefined}
+                      onValueChange={(value) => field.onChange(value ?? '')}
+                      placeholder="Поиск клиента..."
+                      excludeClientId={clientId}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

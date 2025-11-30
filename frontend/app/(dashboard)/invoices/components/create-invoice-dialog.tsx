@@ -42,7 +42,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Plus, Trash2, Loader2 } from 'lucide-react';
-import { ClientCombobox } from '@/components/client-combobox';
+import { ClientSearch } from '@/components/clients/client-search';
 import { useNomenclature, useIndependentServices } from '@/hooks/use-nomenclature';
 import { useCreateInvoice } from '@/hooks/use-invoices';
 import type { CreateInvoiceDto, CreateInvoiceItemDto } from '@/lib/types/invoices';
@@ -274,11 +274,10 @@ export function CreateInvoiceDialog({ open, onOpenChange }: CreateInvoiceDialogP
                 <FormItem>
                   <FormLabel>Клиент *</FormLabel>
                   <FormControl>
-                    <ClientCombobox
-                      value={field.value}
-                      onValueChange={field.onChange}
-                      placeholder="Начните вводить имя, телефон или email"
-                      emptyMessage="Клиент не найден"
+                    <ClientSearch
+                      value={field.value || undefined}
+                      onValueChange={(value) => field.onChange(value ?? '')}
+                      placeholder="Поиск клиента..."
                     />
                   </FormControl>
                   <FormMessage />

@@ -113,14 +113,22 @@ export class TimesheetsService {
           select: {
             id: true,
             pricePerLesson: true,
+            paidPrice: true,
             subscriptionType: {
               select: {
                 id: true,
                 name: true,
                 type: true,
+                pricePerLesson: true,
               },
             },
           },
+        },
+        medicalCertificateSchedules: {
+          select: {
+            id: true,
+          },
+          take: 1,
         },
       },
     });
@@ -144,6 +152,7 @@ export class TimesheetsService {
             name: true,
             type: true,
             price: true,
+            pricePerLesson: true,
           },
         },
       },
@@ -193,6 +202,44 @@ export class TimesheetsService {
       }
     }
 
+    // 6.2. Получить справки, которые были применены к занятиям этого табеля
+    const medCertSchedules = await this.prisma.medicalCertificateSchedule.findMany({
+      where: {
+        scheduleId: { in: scheduleIds },
+        medicalCertificate: {
+          clientId: { in: clientIds },
+        },
+      },
+      select: {
+        medicalCertificateId: true,
+        medicalCertificate: {
+          select: {
+            id: true,
+            clientId: true,
+            startDate: true,
+            endDate: true,
+          },
+        },
+      },
+    });
+
+    // Группируем справки по клиенту (уникальные)
+    const medCertsByClient = new Map<string, Array<{ id: string; startDate: Date; endDate: Date }>>();
+    for (const mcs of medCertSchedules) {
+      const clientId = mcs.medicalCertificate.clientId;
+      const certInfo = {
+        id: mcs.medicalCertificate.id,
+        startDate: mcs.medicalCertificate.startDate,
+        endDate: mcs.medicalCertificate.endDate,
+      };
+      const existing = medCertsByClient.get(clientId) || [];
+      // Добавляем только уникальные справки
+      if (!existing.some(c => c.id === certInfo.id)) {
+        existing.push(certInfo);
+      }
+      medCertsByClient.set(clientId, existing);
+    }
+
     // 7. Создаём Map для быстрого поиска O(1)
     const attendancesByClient = new Map<string, typeof attendances>();
     const subscriptionsByClient = new Map<string, typeof subscriptions[0]>();
@@ -224,6 +271,7 @@ export class TimesheetsService {
       const clientAttendances = attendancesByClient.get(member.clientId) || [];
       const clientSubscription = subscriptionsByClient.get(member.clientId);
       const existingCompensation = compensationsByClient.get(member.clientId);
+      const clientMedCerts = medCertsByClient.get(member.clientId) || [];
 
       // Сформировать данные по дням занятий
       const attendancesByDate = schedules.map(schedule => {
@@ -232,12 +280,15 @@ export class TimesheetsService {
         const year = dateObj.getFullYear();
         const month = String(dateObj.getMonth() + 1).padStart(2, '0');
         const day = String(dateObj.getDate()).padStart(2, '0');
+        // Проверяем, был ли статус установлен по медицинской справке
+        const isFromMedicalCertificate = attendance?.medicalCertificateSchedules?.length > 0;
         return {
           date: `${year}-${month}-${day}`,
           scheduleId: schedule.id,
           attendanceId: attendance?.id || null,
           status: attendance?.status || null,
           subscriptionName: attendance?.subscription?.subscriptionType?.name || null,
+          isFromMedicalCertificate,
         };
       });
 
@@ -253,15 +304,26 @@ export class TimesheetsService {
       ).length;
 
       // Рассчитать компенсацию
+      // Приоритет: subscriptionType.pricePerLesson → subscription.pricePerLesson → fallback
       let pricePerLesson = 0;
-      if (clientSubscription?.pricePerLesson) {
+      if (clientSubscription?.subscriptionType?.pricePerLesson) {
+        pricePerLesson = Number(clientSubscription.subscriptionType.pricePerLesson);
+      } else if (clientSubscription?.pricePerLesson) {
         pricePerLesson = Number(clientSubscription.pricePerLesson);
       } else if (clientSubscription && schedules.length > 0) {
         const paidPrice = Number(clientSubscription.paidPrice);
         pricePerLesson = Math.round(paidPrice / schedules.length);
       }
-      // Базовая компенсация за пропуски по уважительной причине (без справок)
-      const baseCalculatedAmount = excusedWithoutMedCert * pricePerLesson;
+
+      // Применяем скидку клиента к цене за занятие для расчета компенсации
+      const benefitCategory = member.client.benefitCategory;
+      const discountPercent = benefitCategory?.isActive
+        ? Number(benefitCategory.discountPercent)
+        : 0;
+      const pricePerLessonWithDiscount = Math.round(pricePerLesson * (1 - discountPercent / 100) * 100) / 100;
+
+      // Базовая компенсация за пропуски по уважительной причине (без справок) - с учетом скидки
+      const baseCalculatedAmount = excusedWithoutMedCert * pricePerLessonWithDiscount;
       // Дополнительная компенсация из медицинских справок (перенесённая на этот месяц)
       const medCertCompensation = medCertCompByClient.get(member.clientId) || 0;
       // Общая рассчитанная компенсация
@@ -279,11 +341,6 @@ export class TimesheetsService {
       // Расчет счета на следующий месяц
       const subscriptionTypePrice = clientSubscription
         ? Number(clientSubscription.subscriptionType.price)
-        : 0;
-
-      const benefitCategory = member.client.benefitCategory;
-      const discountPercent = benefitCategory?.isActive
-        ? Number(benefitCategory.discountPercent)
         : 0;
       const priceWithDiscount = subscriptionTypePrice * (1 - discountPercent / 100);
 
@@ -313,10 +370,10 @@ export class TimesheetsService {
           id: existingCompensation?.id,
           excusedCount: excusedTotal,
           calculatedAmount,
-          baseCalculatedAmount, // Компенсация за текущий месяц (excused без справок * pricePerLesson)
+          baseCalculatedAmount, // Компенсация за текущий месяц (excused без справок * pricePerLesson со скидкой)
           medCertCompensation, // Компенсация из мед. справок (перенесённая с других месяцев)
           adjustedAmount: existingCompensation?.adjustedAmount ? Number(existingCompensation.adjustedAmount) : null,
-          pricePerLesson,
+          pricePerLesson: pricePerLessonWithDiscount, // Цена за занятие с учетом льготы клиента
           notes: existingCompensation?.notes,
           appliedToInvoiceId: existingCompensation?.appliedToInvoiceId,
         },
@@ -330,6 +387,11 @@ export class TimesheetsService {
           : null,
         nextMonthInvoice,
         benefitDiscount: discountPercent > 0 ? discountPercent : null,
+        medicalCertificates: clientMedCerts.map(c => ({
+          id: c.id,
+          startDate: c.startDate,
+          endDate: c.endDate,
+        })),
       };
     });
 
@@ -761,8 +823,8 @@ export class TimesheetsService {
     sheet.getCell('AL16').font = { bold: true, size: 9 };
 
     // 6. Данные клиентов (с строки 18)
-    // Фильтруем только клиентов с абонементами (не SINGLE_VISIT)
-    const clients = timesheet.clients.filter(c => c.subscription?.type !== 'SINGLE_VISIT');
+    // Фильтруем только клиентов с абонементами (не VISIT_PACK)
+    const clients = timesheet.clients.filter(c => c.subscription?.type !== 'VISIT_PACK');
 
     // Создаем Set дат занятий для быстрого поиска
     const scheduleDatesSet = new Set(timesheet.scheduleDates.map(s => {

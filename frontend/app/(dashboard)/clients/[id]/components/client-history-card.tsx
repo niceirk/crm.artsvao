@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { format, startOfMonth, endOfMonth, isSameMonth } from 'date-fns';
+import { format, startOfMonth, endOfMonth, isSameMonth, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -277,7 +277,7 @@ export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
                       </div>
                       <div className="flex items-center gap-4 pl-13 text-sm text-muted-foreground">
                         <span>
-                          {format(new Date(subscription.startDate), 'dd MMM', { locale: ru })} - {format(new Date(subscription.endDate), 'dd MMM yyyy', { locale: ru })}
+                          {format(parseISO(subscription.startDate), 'dd MMM', { locale: ru })} - {format(parseISO(subscription.endDate), 'dd MMM yyyy', { locale: ru })}
                         </span>
                         {subscription.remainingVisits !== null && subscription.remainingVisits !== undefined && (
                           <>
@@ -369,7 +369,7 @@ export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
                     const scheduleGroup = record.schedule.group;
                     const scheduleStudio = scheduleGroup?.studio;
                     const basis = record.subscription
-                      ? `${record.subscription.subscriptionType.type === 'SINGLE_VISIT' ? 'Разовое' : 'Абонемент'} — ${record.subscription.subscriptionType.name}`
+                      ? `${record.subscription.subscriptionType.type === 'VISIT_PACK' ? 'Пакет' : 'Абонемент'} — ${record.subscription.subscriptionType.name}`
                       : 'Без абонемента/разовое';
                     return (
                       <div

@@ -7,7 +7,6 @@ import * as z from 'zod';
 import { format, startOfDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import {
   Dialog,
   DialogContent,
@@ -28,6 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Button } from '@/components/ui/button';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
+import { ClientSearch } from '@/components/clients/client-search';
 import {
   Popover,
   PopoverContent,
@@ -37,8 +37,6 @@ import { Switch } from '@/components/ui/switch';
 import { useSellSubscription } from '@/hooks/use-subscriptions';
 import { useSubscriptionTypesByGroup } from '@/hooks/use-subscription-types';
 import { useGroups } from '@/hooks/use-groups';
-import { apiClient } from '@/lib/api/client';
-import { getClient } from '@/lib/api/clients';
 import { groupsApi } from '@/lib/api/groups';
 import type { Client } from '@/lib/types/clients';
 import type { GroupScheduleEntry } from '@/lib/types/groups';
@@ -74,6 +72,7 @@ interface SellSubscriptionDialogProps {
   preselectedGroupId?: string;
   onSuccess?: (subscription: Subscription) => void;
   excludeSingleVisit?: boolean; // Исключить разовые посещения из списка типов
+  onlyUnlimited?: boolean; // Показывать только безлимитные абонементы
 }
 
 export function SellSubscriptionDialog({
@@ -83,20 +82,17 @@ export function SellSubscriptionDialog({
   preselectedGroupId,
   onSuccess,
   excludeSingleVisit = false,
+  onlyUnlimited = false,
 }: SellSubscriptionDialogProps) {
   const sellMutation = useSellSubscription();
-  const { data: groups } = useGroups();
-  const [clients, setClients] = useState<Client[]>([]);
-  const [isLoadingClients, setIsLoadingClients] = useState(false);
+  const { data: groups } = useGroups({ limit: 1000 });
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
   const [scheduleStats, setScheduleStats] = useState<{ totalPlanned: number; remainingPlanned: number } | null>(null);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [isLoadingSchedule, setIsLoadingSchedule] = useState(false);
-  const [clientSearch, setClientSearch] = useState('');
   const [groupSearch, setGroupSearch] = useState('');
   const [subscriptionSearch, setSubscriptionSearch] = useState('');
-  const debouncedClientSearch = useDebouncedValue(clientSearch, 300);
 
   const { data: subscriptionTypes } = useSubscriptionTypesByGroup(selectedGroupId);
 
@@ -131,18 +127,17 @@ export function SellSubscriptionDialog({
   const normalizedSubscriptionSearch = subscriptionSearch.trim().toLowerCase();
   const filteredSubscriptionTypes =
     subscriptionTypes?.filter((type) => {
-      // Исключаем разовые посещения если установлен флаг
-      if (excludeSingleVisit && type.type === 'SINGLE_VISIT') {
+      // Если установлен флаг onlyUnlimited, показываем только безлимитные
+      if (onlyUnlimited && type.type !== 'UNLIMITED') {
+        return false;
+      }
+      // Исключаем пакеты посещений если установлен флаг
+      if (excludeSingleVisit && type.type === 'VISIT_PACK') {
         return false;
       }
       const label = `${type.name} ${type.group?.name ?? ''}`.toLowerCase();
       return label.includes(normalizedSubscriptionSearch);
     }) ?? [];
-
-  const clientOptions: ComboboxOption[] = clients.map((client) => ({
-    value: client.id,
-    label: `${client.lastName} ${client.firstName} (${client.phone})`,
-  }));
 
   const groupOptions: ComboboxOption[] = filteredGroups.map((group) => ({
     value: group.id,
@@ -155,31 +150,8 @@ export function SellSubscriptionDialog({
       label: `${type.name} - ${formatCurrency(type.price)} ${type.type === 'UNLIMITED' ? 'Безлимитный' : 'Разовые посещения'}`,
     })) ?? [];
 
-  // Load clients with server-side search
-  useEffect(() => {
-    const loadClients = async () => {
-      if (!open) {
-        setClients([]);
-        return;
-      }
-
-      try {
-        setIsLoadingClients(true);
-        const searchParam = debouncedClientSearch ? `&search=${encodeURIComponent(debouncedClientSearch)}` : '';
-        const response = await apiClient.get<{ data: Client[] }>(`/clients?limit=50&page=1${searchParam}`);
-        setClients(response.data.data);
-      } catch (error) {
-        console.error('Failed to load clients:', error);
-      } finally {
-        setIsLoadingClients(false);
-      }
-    };
-    loadClients();
-  }, [open, debouncedClientSearch]);
-
   useEffect(() => {
     if (!open) {
-      setClientSearch('');
       setGroupSearch('');
       setSubscriptionSearch('');
     }
@@ -187,12 +159,10 @@ export function SellSubscriptionDialog({
 
   // Set preselected client
   useEffect(() => {
-    if (preselectedClientId && clients.length > 0) {
+    if (preselectedClientId) {
       form.setValue('clientId', preselectedClientId);
-      const client = clients.find(c => c.id === preselectedClientId);
-      setSelectedClient(client || null);
     }
-  }, [preselectedClientId, clients, form]);
+  }, [preselectedClientId, form]);
 
   useEffect(() => {
     if (preselectedGroupId) {
@@ -200,40 +170,6 @@ export function SellSubscriptionDialog({
       setSelectedGroupId(preselectedGroupId);
     }
   }, [preselectedGroupId, form]);
-
-  // Update selected client when clientId changes
-  useEffect(() => {
-    const clientId = watchedValues.clientId;
-    if (!clientId) {
-      setSelectedClient(null);
-      return;
-    }
-
-    const cachedClient = clients.find((c) => c.id === clientId) || null;
-    setSelectedClient(cachedClient);
-
-    if (cachedClient?.benefitCategory) {
-      return;
-    }
-
-    let isActive = true;
-    const loadClientDetail = async () => {
-      try {
-        const client = await getClient(clientId);
-        if (isActive) {
-          setSelectedClient(client);
-        }
-      } catch (error) {
-        console.error('Failed to load client details:', error);
-      }
-    };
-
-    loadClientDetail();
-
-    return () => {
-      isActive = false;
-    };
-  }, [watchedValues.clientId, clients]);
 
   // Update selected group
   useEffect(() => {
@@ -330,10 +266,20 @@ export function SellSubscriptionDialog({
       return { error: 'Нет доступных занятий до конца выбранного месяца' };
     }
 
-    const pricePerLesson = Math.round(
-      subscriptionType.price / scheduleStats.totalPlanned,
-    );
-    const firstMonthPrice = pricePerLesson * scheduleStats.remainingPlanned;
+    // Цена за занятие: из типа абонемента или fallback
+    const pricePerLesson = subscriptionType.pricePerLesson != null && subscriptionType.pricePerLesson > 0
+      ? subscriptionType.pricePerLesson
+      : Math.floor(subscriptionType.price / scheduleStats.totalPlanned);
+
+    // Стоимость первого месяца
+    let firstMonthPrice: number;
+    if (scheduleStats.remainingPlanned === scheduleStats.totalPlanned) {
+      // Полный месяц → полная стоимость
+      firstMonthPrice = subscriptionType.price;
+    } else {
+      // Неполный месяц → пропорционально
+      firstMonthPrice = pricePerLesson * scheduleStats.remainingPlanned;
+    }
     const totalPrice = Math.round(firstMonthPrice * 100) / 100;
 
     const discountPercent =
@@ -393,18 +339,15 @@ export function SellSubscriptionDialog({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Клиент *</FormLabel>
-                  <Combobox
-                    options={clientOptions}
-                    value={field.value || undefined}
-                    onValueChange={(value) => field.onChange(value ?? '')}
-                    placeholder="Выберите клиента"
-                    searchValue={clientSearch}
-                    onSearchChange={setClientSearch}
-                    emptyText="Клиенты не найдены"
-                    aria-label="Клиент"
-                    disabled={!!preselectedClientId}
-                    allowEmpty={false}
-                  />
+                  <FormControl>
+                    <ClientSearch
+                      value={field.value || undefined}
+                      onValueChange={(value) => field.onChange(value ?? '')}
+                      onClientSelect={(client) => setSelectedClient(client)}
+                      placeholder="Поиск клиента..."
+                      disabled={!!preselectedClientId}
+                    />
+                  </FormControl>
                   {selectedClient?.benefitCategory && (
                     <div className="mt-2">
                       <Badge variant="secondary">
@@ -572,9 +515,17 @@ export function SellSubscriptionDialog({
                     </div>
                     <div className="flex justify-between">
                       <span>Цена за занятие:</span>
-                      <span className="font-medium">
-                        {formatCurrency(priceCalculation.pricePerLesson)}
-                      </span>
+                      <div className="flex flex-col items-end">
+                        <span className="font-medium">
+                          {formatCurrency(priceCalculation.pricePerLesson)}
+                        </span>
+                        {(() => {
+                          const st = subscriptionTypes?.find(s => s.id === watchedValues.subscriptionTypeId);
+                          return !(st?.pricePerLesson != null && st.pricePerLesson > 0);
+                        })() && (
+                          <span className="text-xs text-muted-foreground">(расчётная)</span>
+                        )}
+                      </div>
                     </div>
                     <div className="flex justify-between">
                       <span>Стоимость первого месяца:</span>

@@ -82,7 +82,7 @@ export function ScheduleDialog({ open, onOpenChange, schedule, initialData }: Sc
   const updateSchedule = useUpdateSchedule();
   const { data: rooms } = useRooms();
   const { data: teachers } = useTeachers();
-  const { data: groups } = useGroups();
+  const { data: groups } = useGroups({ limit: 1000 });
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),

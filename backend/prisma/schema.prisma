@@ -203,6 +203,7 @@ model Service {
 
 model Client {
   id                String            @id @default(uuid())
+  version           Int               @default(1)
   clientType        ClientType        @default(INDIVIDUAL) @map("client_type")
   firstName         String            @map("first_name")
   lastName          String            @map("last_name")
@@ -384,6 +385,7 @@ model Studio {
 
 model Group {
   id                   String             @id @default(uuid())
+  version              Int                @default(1)
   studioId             String             @map("studio_id")
   name                 String
   teacherId            String             @map("teacher_id")
@@ -418,6 +420,7 @@ model Group {
 
 model GroupMember {
   id                    String            @id @default(uuid())
+  version               Int               @default(1)
   groupId               String            @map("group_id")
   clientId              String            @map("client_id")
   status                GroupMemberStatus @default(ACTIVE)
@@ -442,6 +445,7 @@ model GroupMember {
 
 model Schedule {
   id             String              @id @default(uuid())
+  version        Int                 @default(1)
   groupId        String?             @map("group_id")
   teacherId      String              @map("teacher_id")
   roomId         String              @map("room_id")
@@ -472,6 +476,7 @@ model Schedule {
 
 model Attendance {
   id                   String           @id @default(uuid())
+  version              Int              @default(1)
   scheduleId           String           @map("schedule_id")
   clientId             String           @map("client_id")
   status               AttendanceStatus
@@ -506,6 +511,7 @@ model SubscriptionType {
   groupId       String               @map("group_id")
   type          SubscriptionTypeEnum
   price         Decimal              @db.Decimal(10, 2)
+  pricePerLesson Decimal?            @map("price_per_lesson") @db.Decimal(10, 2)
   vatRate       Decimal?             @map("vat_rate") @db.Decimal(5, 2)
   vatIncluded   Boolean              @default(true) @map("vat_included")
   isActive      Boolean              @default(true) @map("is_active")
@@ -520,6 +526,7 @@ model SubscriptionType {
 
 model Subscription {
   id                 String             @id @default(uuid())
+  version            Int                @default(1)
   clientId           String             @map("client_id")
   subscriptionTypeId String             @map("subscription_type_id")
   groupId            String             @map("group_id")
@@ -560,6 +567,7 @@ model Subscription {
 
 model Payment {
   id             String        @id @default(uuid())
+  version        Int           @default(1)
   clientId       String        @map("client_id")
   amount         Decimal       @db.Decimal(10, 2)
   paymentMethod  PaymentMethod @map("payment_method")
@@ -737,6 +745,7 @@ model SystemSettings {
 
 model Invoice {
   id             String            @id @default(uuid())
+  version        Int               @default(1)
   invoiceNumber  String            @unique @map("invoice_number")
   clientId       String            @map("client_id")
   subscriptionId String?           @map("subscription_id")
@@ -766,6 +775,7 @@ model Invoice {
   @@index([status])
   @@index([issuedAt])
   @@index([dueDate])
+  @@index([subscriptionId, status])
   @@map("invoices")
 }
 
@@ -923,8 +933,8 @@ enum AttendanceStatus {
 
 enum SubscriptionTypeEnum {
   UNLIMITED
-  SINGLE_VISIT
   VISIT_PACK
+  SINGLE_VISIT
 }
 
 enum SubscriptionStatus {
@@ -1417,6 +1427,7 @@ model Notification {
 
 model MedicalCertificate {
   id          String   @id @default(uuid())
+  version     Int      @default(1)
   clientId    String   @map("client_id")
   fileUrl     String?  @map("file_url")
   fileName    String?  @map("file_name")
@@ -1460,5 +1471,6 @@ model MedicalCertificateSchedule {
   @@index([scheduleId])
   @@index([subscriptionId])
   @@index([compensationMonth])
+  @@index([subscriptionId, compensationAmount])
   @@map("medical_certificate_schedules")
 }

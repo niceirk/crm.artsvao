@@ -6,6 +6,7 @@ export interface NomenclatureItem {
   name: string;
   description?: string;
   price: number;
+  pricePerLesson?: number | null;
   vatRate: number;
   isActive: boolean;
   group?: {
@@ -21,7 +22,7 @@ export interface NomenclatureItem {
     name: string;
     defaultVatRate: number;
   };
-  subscriptionType?: 'UNLIMITED' | 'SINGLE_VISIT' | 'VISIT_PACK';
+  subscriptionType?: 'UNLIMITED' | 'VISIT_PACK';
   createdAt: string;
   updatedAt: string;
 }
@@ -57,6 +58,7 @@ export interface CreateSubscriptionTypeNomenclatureDto {
   description?: string;
   groupId: string;
   price: number;
+  pricePerLesson?: number;
   vatRate?: number;
   isActive?: boolean;
 }
@@ -66,6 +68,7 @@ export interface UpdateSubscriptionTypeNomenclatureDto {
   description?: string;
   groupId?: string;
   price?: number;
+  pricePerLesson?: number;
   vatRate?: number;
   isActive?: boolean;
 }

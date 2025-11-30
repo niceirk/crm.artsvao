@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -37,7 +37,9 @@ import {
 } from '@/components/ui/alert-dialog';
 
 export default function SubscriptionTypesPage() {
-  const { data: response, isLoading } = useSubscriptionTypes();
+  const { data: response, isLoading } = useSubscriptionTypes({
+    excludeTypes: ['VISIT_PACK'],
+  });
   const deleteMutation = useDeleteSubscriptionType();
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingType, setEditingType] = useState<SubscriptionType | undefined>();
@@ -88,6 +90,7 @@ export default function SubscriptionTypesPage() {
                   <TableHead>Студия</TableHead>
                   <TableHead>Тип</TableHead>
                   <TableHead>Цена</TableHead>
+                  <TableHead>За занятие</TableHead>
                   <TableHead>Абонементов</TableHead>
                   <TableHead>Статус</TableHead>
                   <TableHead className="text-right">Действия</TableHead>
@@ -107,6 +110,11 @@ export default function SubscriptionTypesPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>{type.price.toLocaleString('ru-RU')} ₽</TableCell>
+                    <TableCell>
+                      {type.pricePerLesson
+                        ? `${type.pricePerLesson.toLocaleString('ru-RU')} ₽`
+                        : <span className="text-muted-foreground">—</span>}
+                    </TableCell>
                     <TableCell>{type._count?.subscriptions || 0}</TableCell>
                     <TableCell>
                       {type.isActive ? (
@@ -115,21 +123,23 @@ export default function SubscriptionTypesPage() {
                         <Badge variant="secondary">Неактивен</Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-right space-x-2">
+                    <TableCell className="text-right space-x-1">
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon"
                         onClick={() => setEditingType(type)}
+                        title="Изменить"
                       >
-                        Изменить
+                        <Pencil className="h-4 w-4" />
                       </Button>
                       <Button
                         variant="ghost"
-                        size="sm"
+                        size="icon"
                         onClick={() => setDeleteId(type.id)}
                         disabled={(type._count?.subscriptions || 0) > 0}
+                        title="Удалить"
                       >
-                        Удалить
+                        <Trash2 className="h-4 w-4" />
                       </Button>
                     </TableCell>
                   </TableRow>

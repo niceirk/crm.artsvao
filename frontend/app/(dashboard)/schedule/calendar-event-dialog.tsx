@@ -145,7 +145,7 @@ export function CalendarEventDialog({
   const updateReservation = useUpdateReservation();
   const deleteReservation = useDeleteReservation();
 
-  const { data: groups } = useGroups();
+  const { data: groups } = useGroups({ limit: 1000 });
   const { data: teachers } = useTeachers();
   const { data: rooms } = useRooms();
   const { data: eventTypes } = useEventTypes();

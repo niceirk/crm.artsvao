@@ -1,6 +1,6 @@
 'use client';
 
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import {
   Calendar,
@@ -43,7 +43,6 @@ const statusVariants: Record<string, 'default' | 'secondary' | 'destructive' | '
 
 const typeLabels: Record<string, string> = {
   UNLIMITED: 'Безлимитный',
-  SINGLE_VISIT: 'Разовое посещение',
   VISIT_PACK: 'Пакет посещений',
 };
 
@@ -132,9 +131,9 @@ export function SubscriptionPreviewSheet({
                 <div className="ml-6 space-y-1">
                   <p className="text-sm">
                     <span className="text-muted-foreground">с </span>
-                    {format(new Date(subscription.startDate), 'dd MMMM yyyy', { locale: ru })}
+                    {format(parseISO(subscription.startDate), 'dd MMMM yyyy', { locale: ru })}
                     <span className="text-muted-foreground"> по </span>
-                    {format(new Date(subscription.endDate), 'dd MMMM yyyy', { locale: ru })}
+                    {format(parseISO(subscription.endDate), 'dd MMMM yyyy', { locale: ru })}
                   </p>
                   {subscription.purchasedMonths && subscription.purchasedMonths > 1 && (
                     <p className="text-sm text-muted-foreground">
@@ -199,7 +198,7 @@ export function SubscriptionPreviewSheet({
               {/* Дата покупки */}
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">
-                  Дата покупки: {format(new Date(subscription.purchaseDate), 'dd MMM yyyy', { locale: ru })}
+                  Дата покупки: {format(parseISO(subscription.purchaseDate), 'dd MMM yyyy', { locale: ru })}
                 </p>
               </div>
             </div>

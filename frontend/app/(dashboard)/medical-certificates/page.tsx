@@ -68,6 +68,24 @@ const MONTHS = [
 
 const currentYear = new Date().getFullYear();
 
+// Форматирование суммы
+const formatMoney = (amount: number | null | undefined) => {
+  if (!amount) return '—';
+  return new Intl.NumberFormat('ru-RU', {
+    style: 'currency',
+    currency: 'RUB',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount);
+};
+
+// Форматирование месяца из yyyy-MM в читаемый вид
+const formatCompensationMonth = (month: string) => {
+  const [year, m] = month.split('-');
+  const monthNames = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+  return `${monthNames[parseInt(m, 10) - 1]} ${year}`;
+};
+
 export default function MedicalCertificatesPage() {
   const [filter, setFilter] = useState<MedicalCertificateFilter>({
     page: 1,
@@ -79,7 +97,7 @@ export default function MedicalCertificatesPage() {
   const [selectedCertificate, setSelectedCertificate] = useState<MedicalCertificate | null>(null);
 
   // Фильтры по месяцу и году
-  const [selectedMonth, setSelectedMonth] = useState<number | null>(new Date().getMonth() + 1);
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
 
   // Поиск клиента по ФИО
@@ -264,6 +282,7 @@ export default function MedicalCertificatesPage() {
                     <TableHead>Период болезни</TableHead>
                     <TableHead>Файл</TableHead>
                     <TableHead>Занятий</TableHead>
+                    <TableHead>Компенсация</TableHead>
                     <TableHead>Создано</TableHead>
                     <TableHead className="w-[130px]">Действия</TableHead>
                   </TableRow>
@@ -309,6 +328,22 @@ export default function MedicalCertificatesPage() {
                         <Badge variant="secondary">
                           {certificate._count?.appliedSchedules || 0}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {certificate.totalCompensation ? (
+                          <div>
+                            <div className="font-medium text-orange-600">
+                              {formatMoney(certificate.totalCompensation)}
+                            </div>
+                            {certificate.compensationMonths && certificate.compensationMonths.length > 0 && (
+                              <div className="text-xs text-muted-foreground">
+                                {certificate.compensationMonths.map(formatCompensationMonth).join(', ')}
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <div className="text-sm text-muted-foreground">

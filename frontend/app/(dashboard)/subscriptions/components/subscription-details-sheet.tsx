@@ -1,8 +1,9 @@
 'use client';
 
-import { format } from 'date-fns';
+import { useState } from 'react';
+import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Calendar, User, Users2, Receipt, DollarSign, Info, CheckCircle, XCircle, Check, X, AlertCircle } from 'lucide-react';
+import { Calendar, User, Users2, Receipt, DollarSign, Info, CheckCircle, XCircle, Check, X, AlertCircle, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Sheet,
@@ -12,10 +13,12 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import type { AttendanceStatus } from '@/lib/types/attendance';
 import { useSubscription } from '@/hooks/use-subscriptions';
 import type { Subscription } from '@/lib/types/subscriptions';
+import { DeleteSubscriptionDialog } from './delete-subscription-dialog';
 
 interface SubscriptionDetailsSheetProps {
   subscription: Subscription;
@@ -60,6 +63,7 @@ export function SubscriptionDetailsSheet({
   open,
   onOpenChange,
 }: SubscriptionDetailsSheetProps) {
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const { data: detailedSubscription } = useSubscription(initialSubscription.id);
   const subscription = detailedSubscription ?? initialSubscription;
   const formatCurrency = (amount: number) => {
@@ -87,7 +91,7 @@ export function SubscriptionDetailsSheet({
                   {statusLabels[subscription.status]}
                 </Badge>
                 <span className="text-sm text-muted-foreground">
-                  до {format(new Date(subscription.endDate), 'dd MMM yyyy', { locale: ru })}
+                  до {format(parseISO(subscription.endDate), 'dd MMM yyyy', { locale: ru })}
                 </span>
               </div>
             </div>
@@ -130,10 +134,10 @@ export function SubscriptionDetailsSheet({
                 <div className="ml-6 space-y-3">
                   {subscription.attendances.map((attendance) => {
                     const attendanceDate = attendance.markedAt
-                      ? new Date(attendance.markedAt)
-                      : new Date(attendance.schedule.date);
+                      ? parseISO(attendance.markedAt)
+                      : parseISO(attendance.schedule.date);
                     const timeString = attendance.schedule.startTime
-                      ? new Date(attendance.schedule.startTime).toLocaleTimeString('ru-RU', {
+                      ? parseISO(attendance.schedule.startTime).toLocaleTimeString('ru-RU', {
                           hour: '2-digit',
                           minute: '2-digit',
                         })
@@ -213,9 +217,9 @@ export function SubscriptionDetailsSheet({
               <div className="ml-6 space-y-1">
                 <p className="text-sm">
                   <span className="text-muted-foreground">с </span>
-                  {format(new Date(subscription.startDate), 'dd MMMM yyyy', { locale: ru })}
+                  {format(parseISO(subscription.startDate), 'dd MMMM yyyy', { locale: ru })}
                   <span className="text-muted-foreground"> по </span>
-                  {format(new Date(subscription.endDate), 'dd MMMM yyyy', { locale: ru })}
+                  {format(parseISO(subscription.endDate), 'dd MMMM yyyy', { locale: ru })}
                 </p>
                 {subscription.purchasedMonths > 1 && (
                   <span className="text-sm text-muted-foreground">
@@ -274,12 +278,28 @@ export function SubscriptionDetailsSheet({
                   {formatCurrency(subscription.paidPrice)}
                 </span>
               </div>
-              {subscription.pricePerLesson && (
+              {subscription.subscriptionType.pricePerLesson && (
                 <div className="flex justify-between pt-2 mt-2 border-t border-dashed">
                   <span className="text-sm text-muted-foreground">Цена за занятие:</span>
-                  <span className="text-sm font-medium text-primary">
-                    {formatCurrency(subscription.pricePerLesson)}
-                  </span>
+                  <div className="flex flex-col items-end">
+                    {subscription.client.benefitCategory?.discountPercent ? (
+                      <>
+                        <span className="text-sm font-medium text-primary">
+                          {formatCurrency(
+                            subscription.subscriptionType.pricePerLesson *
+                              (1 - subscription.client.benefitCategory.discountPercent / 100)
+                          )}
+                        </span>
+                        <span className="text-xs text-muted-foreground line-through">
+                          {formatCurrency(subscription.subscriptionType.pricePerLesson)}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm font-medium text-primary">
+                        {formatCurrency(subscription.subscriptionType.pricePerLesson)}
+                      </span>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -297,19 +317,40 @@ export function SubscriptionDetailsSheet({
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Дата покупки:</span>
                 <span className="text-sm">
-                  {format(new Date(subscription.purchaseDate), 'dd MMM yyyy, HH:mm', { locale: ru })}
+                  {format(parseISO(subscription.purchaseDate), 'dd MMM yyyy', { locale: ru })}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-sm text-muted-foreground">Создан:</span>
                 <span className="text-sm">
-                  {format(new Date(subscription.createdAt), 'dd MMM yyyy, HH:mm', { locale: ru })}
+                  {format(parseISO(subscription.createdAt), 'dd MMM yyyy, HH:mm', { locale: ru })}
                 </span>
               </div>
             </div>
           </div>
+
+          <Separator />
+
+          {/* Действия */}
+          <div className="pt-2">
+            <Button
+              variant="destructive"
+              className="w-full"
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2 className="h-4 w-4 mr-2" />
+              Удалить абонемент
+            </Button>
+          </div>
         </div>
       </SheetContent>
+
+      <DeleteSubscriptionDialog
+        subscriptionId={subscription.id}
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        onDeleted={() => onOpenChange(false)}
+      />
     </Sheet>
   );
 }

@@ -50,7 +50,7 @@ export function BulkUpdateForm() {
     defaultValues: {},
   });
 
-  const { data: groups } = useGroups();
+  const { data: groups } = useGroups({ limit: 1000 });
   const { data: teachers } = useTeachers();
   const { data: rooms } = useRooms();
   const { data: schedules, isLoading: schedulesLoading } = useSchedules(

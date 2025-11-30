@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Plus, Package, ShoppingCart } from 'lucide-react';
+import { Plus, Banknote, ShoppingCart, ChevronDown, CreditCard, MoreHorizontal, Trash2, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -21,6 +21,13 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Switch } from '@/components/ui/switch';
 import {
   Select,
@@ -30,13 +37,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
+import { ClientSearch } from '@/components/clients/client-search';
 import { useSubscriptions } from '@/hooks/use-subscriptions';
 import { useGroups } from '@/hooks/use-groups';
 import { SellSubscriptionDialog } from './components/sell-subscription-dialog';
-import { SellPackDialog } from './components/sell-pack-dialog';
+import { SellSingleSessionsDialog } from './components/sell-single-sessions-dialog';
 import { SellServiceDialog } from './components/sell-service-dialog';
 import { SubscriptionDetailsSheet } from './components/subscription-details-sheet';
-import { searchClients } from '@/lib/api/clients';
+import { DeleteSubscriptionDialog } from './components/delete-subscription-dialog';
 import type {
   SubscriptionStatus,
   Subscription,
@@ -55,11 +63,7 @@ export default function SubscriptionsPage() {
   const [showExpired, setShowExpired] = useState(false);
   const [groupFilter, setGroupFilter] = useState('');
   const [groupSearch, setGroupSearch] = useState('');
-  const [clientSearch, setClientSearch] = useState('');
   const [selectedClientId, setSelectedClientId] = useState('');
-  const [selectedClientLabel, setSelectedClientLabel] = useState('');
-  const [clientOptions, setClientOptions] = useState<ComboboxOption[]>([]);
-  const [isClientLoading, setIsClientLoading] = useState(false);
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
   const [isPackDialogOpen, setIsPackDialogOpen] = useState(false);
@@ -67,8 +71,9 @@ export default function SubscriptionsPage() {
   const [selectedSubscription, setSelectedSubscription] = useState<Subscription | null>(
     null,
   );
+  const [deletingSubscriptionId, setDeletingSubscriptionId] = useState<string | null>(null);
 
-  const { data: groupsResponse } = useGroups();
+  const { data: groupsResponse } = useGroups({ limit: 1000 });
   const groups = groupsResponse?.data ?? [];
 
   const groupOptions = useMemo(() => {
@@ -84,58 +89,6 @@ export default function SubscriptionsPage() {
         label: group.name,
       }));
   }, [groups, groupSearch]);
-
-  useEffect(() => {
-    let active = true;
-
-    if (!clientSearch) {
-      setClientOptions(
-        selectedClientId
-          ? [
-              {
-                value: selectedClientId,
-                label: selectedClientLabel,
-              },
-            ]
-          : [],
-      );
-      setIsClientLoading(false);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      try {
-        setIsClientLoading(true);
-        const clients = await searchClients(clientSearch);
-        if (!active) return;
-        const options = clients.map((client) => ({
-          value: client.id,
-          label: `${client.lastName} ${client.firstName} (${client.phone})`,
-        }));
-        if (
-          selectedClientId &&
-          !options.some((option) => option.value === selectedClientId)
-        ) {
-          options.unshift({
-            value: selectedClientId,
-            label: selectedClientLabel,
-          });
-        }
-        setClientOptions(options);
-      } catch (error) {
-        console.error('Не удалось найти клиентов:', error);
-      } finally {
-        if (active) {
-          setIsClientLoading(false);
-        }
-      }
-    }, 300);
-
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [clientSearch, selectedClientId, selectedClientLabel]);
 
   const filters = useMemo(() => {
     const applied: SubscriptionFilterDto = {
@@ -185,20 +138,29 @@ export default function SubscriptionsPage() {
             Управление абонементами клиентов
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setIsServiceDialogOpen(true)}>
-            <ShoppingCart className="h-4 w-4 mr-2" />
-            Продать услугу
-          </Button>
-          <Button variant="outline" onClick={() => setIsPackDialogOpen(true)}>
-            <Package className="h-4 w-4 mr-2" />
-            Продать пакет
-          </Button>
-          <Button onClick={() => setIsSellDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Продать абонемент
-          </Button>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button>
+              <Plus className="h-4 w-4 mr-2" />
+              Продать
+              <ChevronDown className="h-4 w-4 ml-2" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setIsSellDialogOpen(true)}>
+              <CreditCard className="h-4 w-4 mr-2" />
+              Абонемент
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setIsPackDialogOpen(true)}>
+              <Banknote className="h-4 w-4 mr-2" />
+              Разовое посещение
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setIsServiceDialogOpen(true)}>
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              Услугу
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       <Card>
@@ -214,25 +176,11 @@ export default function SubscriptionsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3 items-center mb-4">
-            <Combobox
-              options={clientOptions}
+            <ClientSearch
               value={selectedClientId || undefined}
-              onValueChange={(value) => {
-                if (!value) {
-                  setSelectedClientId('');
-                  setSelectedClientLabel('');
-                  return;
-                }
-                const option = clientOptions.find((item) => item.value === value);
-                setSelectedClientId(value);
-                setSelectedClientLabel(option?.label ?? '');
-              }}
-              placeholder="Поиск клиента"
-              searchValue={clientSearch}
-              onSearchChange={setClientSearch}
-              emptyText="Клиент не найден"
-              allowEmpty
-              disabled={isClientLoading}
+              onValueChange={(value) => setSelectedClientId(value ?? '')}
+              placeholder="Поиск клиента..."
+              showCreateButton={true}
               className="min-w-[220px] max-w-[360px] flex-1"
             />
             <div className="flex items-center gap-2">
@@ -285,6 +233,7 @@ export default function SubscriptionsPage() {
                   <TableHead className="text-right">Цена</TableHead>
                   <TableHead className="text-right">Цена 1 занятия</TableHead>
                   <TableHead className="text-center">Посещений</TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -302,7 +251,7 @@ export default function SubscriptionsPage() {
                           statusDotClass[subscription.status],
                         )}
                       />
-                      <span className="text-sm">{format(new Date(subscription.purchaseDate), 'dd.MM.yyyy')}</span>
+                      <span className="text-sm">{format(parseISO(subscription.purchaseDate), 'dd.MM.yyyy')}</span>
                     </div>
                   </TableCell>
                   <TableCell>
@@ -329,11 +278,11 @@ export default function SubscriptionsPage() {
                     <TableCell>
                       <div className="flex flex-col text-sm">
                         <span>
-                          {format(new Date(subscription.startDate), 'dd MMM', {
+                          {format(parseISO(subscription.startDate), 'dd MMM', {
                             locale: ru,
                           })}{' '}
                           -{' '}
-                          {format(new Date(subscription.endDate), 'dd MMM yyyy', {
+                          {format(parseISO(subscription.endDate), 'dd MMM yyyy', {
                             locale: ru,
                           })}
                         </span>
@@ -355,10 +304,20 @@ export default function SubscriptionsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      {subscription.pricePerLesson ? (
-                        <span className="text-sm font-medium text-primary">
-                          {formatCurrency(subscription.pricePerLesson)}
-                        </span>
+                      {subscription.subscriptionType.pricePerLesson ? (
+                        <div className="flex flex-col items-end">
+                          <span className="text-sm font-medium text-primary">
+                            {formatCurrency(
+                              subscription.subscriptionType.pricePerLesson *
+                                (1 - (subscription.client.benefitCategory?.discountPercent || 0) / 100)
+                            )}
+                          </span>
+                          {subscription.client.benefitCategory?.discountPercent ? (
+                            <span className="text-xs text-muted-foreground line-through">
+                              {formatCurrency(subscription.subscriptionType.pricePerLesson)}
+                            </span>
+                          ) : null}
+                        </div>
                       ) : (
                         <span className="text-muted-foreground">—</span>
                       )}
@@ -371,6 +330,40 @@ export default function SubscriptionsPage() {
                         <span className="text-muted-foreground">∞</span>
                       )}
                     </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={(e) => {
+                            e.stopPropagation();
+                            handleViewDetails(subscription);
+                          }}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            Подробнее
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeletingSubscriptionId(subscription.id);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Удалить
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -382,9 +375,10 @@ export default function SubscriptionsPage() {
       <SellSubscriptionDialog
         open={isSellDialogOpen}
         onOpenChange={setIsSellDialogOpen}
+        onlyUnlimited={true}
       />
 
-      <SellPackDialog
+      <SellSingleSessionsDialog
         open={isPackDialogOpen}
         onOpenChange={setIsPackDialogOpen}
       />
@@ -401,6 +395,12 @@ export default function SubscriptionsPage() {
           onOpenChange={(open) => !open && setSelectedSubscription(null)}
         />
       )}
+
+      <DeleteSubscriptionDialog
+        subscriptionId={deletingSubscriptionId}
+        open={!!deletingSubscriptionId}
+        onOpenChange={(open) => !open && setDeletingSubscriptionId(null)}
+      />
     </div>
   );
 }

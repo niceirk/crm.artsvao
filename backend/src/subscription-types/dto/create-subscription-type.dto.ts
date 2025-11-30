@@ -19,6 +19,11 @@ export class CreateSubscriptionTypeDto {
   @Min(0)
   price: number;
 
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  pricePerLesson?: number;
+
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;

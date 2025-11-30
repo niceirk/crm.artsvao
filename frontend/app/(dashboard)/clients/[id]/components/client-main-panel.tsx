@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { format, startOfMonth, isSameMonth } from 'date-fns';
+import { format, startOfMonth, isSameMonth, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -45,6 +45,7 @@ import {
   Phone,
   Mail,
   Archive,
+  Trash2,
 } from 'lucide-react';
 import { useClientInvoices } from '@/hooks/use-invoices';
 import { useClientSubscriptions } from '@/hooks/use-subscriptions';
@@ -53,6 +54,7 @@ import { useClientRelations } from '@/hooks/useClients';
 import { useClientNotes } from '@/hooks/useClientNotes';
 import { SellSubscriptionDialog } from '@/app/(dashboard)/subscriptions/components/sell-subscription-dialog';
 import { SubscriptionDetailsSheet } from '@/app/(dashboard)/subscriptions/components/subscription-details-sheet';
+import { DeleteSubscriptionDialog } from '@/app/(dashboard)/subscriptions/components/delete-subscription-dialog';
 import { AttendanceSheet } from '@/app/(dashboard)/schedule/attendance-sheet';
 import type { Subscription } from '@/lib/types/subscriptions';
 import { ClientInfoSection } from './client-info-section';
@@ -135,6 +137,7 @@ export function ClientMainPanel({
   const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
   const [selectedSubscription, setSelectedSubscription] = useState<Subscription | null>(null);
   const [selectedAttendance, setSelectedAttendance] = useState<Attendance | null>(null);
+  const [deleteSubscriptionId, setDeleteSubscriptionId] = useState<string | null>(null);
 
   // Состояние поиска и сортировки для каждой вкладки
   const [invoiceSearch, setInvoiceSearch] = useState('');
@@ -602,36 +605,67 @@ export function ClientMainPanel({
                         </Button>
                       </TableHead>
                       <TableHead>Статус</TableHead>
+                      <TableHead className="w-[50px]"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredSubscriptions.map((subscription) => (
                       <TableRow
                         key={subscription.id}
-                        className="cursor-pointer hover:bg-muted/50"
-                        onClick={() => setSelectedSubscription(subscription as Subscription)}
+                        className="hover:bg-muted/50"
                       >
-                        <TableCell className="font-medium text-sm">
+                        <TableCell
+                          className="font-medium text-sm cursor-pointer"
+                          onClick={() => setSelectedSubscription(subscription as Subscription)}
+                        >
                           {subscription.subscriptionType.name}
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
+                        <TableCell
+                          className="text-sm text-muted-foreground cursor-pointer"
+                          onClick={() => setSelectedSubscription(subscription as Subscription)}
+                        >
                           {subscription.group.name}
                         </TableCell>
-                        <TableCell className="text-sm">
-                          {format(new Date(subscription.startDate), 'dd.MM', { locale: ru })} - {format(new Date(subscription.endDate), 'dd.MM.yy', { locale: ru })}
+                        <TableCell
+                          className="text-sm cursor-pointer"
+                          onClick={() => setSelectedSubscription(subscription as Subscription)}
+                        >
+                          {format(parseISO(subscription.startDate), 'dd.MM', { locale: ru })} - {format(parseISO(subscription.endDate), 'dd.MM.yy', { locale: ru })}
                         </TableCell>
-                        <TableCell className="text-sm">
+                        <TableCell
+                          className="text-sm cursor-pointer"
+                          onClick={() => setSelectedSubscription(subscription as Subscription)}
+                        >
                           {subscription.remainingVisits !== null && subscription.remainingVisits !== undefined
                             ? `${subscription.remainingVisits} пос.`
                             : '—'}
                         </TableCell>
-                        <TableCell className="font-medium">
+                        <TableCell
+                          className="font-medium cursor-pointer"
+                          onClick={() => setSelectedSubscription(subscription as Subscription)}
+                        >
                           {formatCurrency(subscription.paidPrice)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell
+                          className="cursor-pointer"
+                          onClick={() => setSelectedSubscription(subscription as Subscription)}
+                        >
                           <Badge variant={subscriptionStatusVariants[subscription.status]} className="text-xs">
                             {subscriptionStatusLabels[subscription.status]}
                           </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteSubscriptionId(subscription.id);
+                            }}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -767,7 +801,7 @@ export function ClientMainPanel({
                           })
                         : '—';
                       const basis = record.subscription
-                        ? `${record.subscription.subscriptionType.type === 'SINGLE_VISIT' ? 'Разовое' : 'Абонемент'}`
+                        ? `${record.subscription.subscriptionType.type === 'VISIT_PACK' ? 'Пакет' : 'Абонемент'}`
                         : 'Без абонемента';
 
                       return (
@@ -872,6 +906,18 @@ export function ClientMainPanel({
           scheduleDate={format(new Date(selectedAttendance.markedAt || selectedAttendance.createdAt), 'yyyy-MM-dd')}
         />
       )}
+
+      <DeleteSubscriptionDialog
+        subscriptionId={deleteSubscriptionId}
+        open={!!deleteSubscriptionId}
+        onOpenChange={(open) => {
+          if (!open) setDeleteSubscriptionId(null);
+        }}
+        onDeleted={() => {
+          setDeleteSubscriptionId(null);
+          onRefresh?.();
+        }}
+      />
     </Card>
   );
 }
