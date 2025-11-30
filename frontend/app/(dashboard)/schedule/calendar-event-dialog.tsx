@@ -303,7 +303,7 @@ export function CalendarEventDialog({
       switch (selectedEventType) {
         case 'schedule':
           if (schedule) {
-            await updateSchedule.mutateAsync({ id: schedule.id, data: values });
+            await updateSchedule.mutateAsync({ id: schedule.id, data: { ...values, version: schedule.version } });
           } else {
             await createSchedule.mutateAsync(values);
           }
@@ -321,6 +321,7 @@ export function CalendarEventDialog({
             await updateEvent.mutateAsync({
               id: event.id,
               data: {
+                version: event.version,
                 roomId: values.roomId,
                 date: values.date,
                 startTime: values.startTime,

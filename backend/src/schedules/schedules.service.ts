@@ -4,6 +4,7 @@ import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { ConflictCheckerService } from '../shared/conflict-checker.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { updateWithVersionCheck } from '../common/utils/optimistic-lock.util';
 
 @Injectable()
 export class SchedulesService {
@@ -270,8 +271,11 @@ export class SchedulesService {
       });
     }
 
+    // Извлекаем version для проверки
+    const { version, ...restDto } = updateScheduleDto;
+
     // Convert date and time strings to Date objects using UTC
-    const updateData: any = { ...updateScheduleDto };
+    const updateData: any = { ...restDto };
     if (updateScheduleDto.date) {
       updateData.date = new Date(updateScheduleDto.date);
     }
@@ -284,38 +288,53 @@ export class SchedulesService {
       updateData.endTime = new Date(Date.UTC(1970, 0, 1, hours, minutes, 0));
     }
 
-    const updatedSchedule = await this.prisma.schedule.update({
-      where: { id },
-      data: updateData,
-      include: {
-        group: {
-          select: {
-            id: true,
-            name: true,
-            studio: {
-              select: {
-                id: true,
-                name: true,
-              },
+    const include = {
+      group: {
+        select: {
+          id: true,
+          name: true,
+          studio: {
+            select: {
+              id: true,
+              name: true,
             },
           },
         },
-        teacher: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        room: {
-          select: {
-            id: true,
-            name: true,
-            number: true,
-          },
+      },
+      teacher: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
         },
       },
-    });
+      room: {
+        select: {
+          id: true,
+          name: true,
+          number: true,
+        },
+      },
+    };
+
+    // Используем атомарное обновление с проверкой версии только если version передан
+    let updatedSchedule;
+    if (version !== undefined) {
+      updatedSchedule = await updateWithVersionCheck(
+        this.prisma,
+        'schedule',
+        id,
+        version,
+        updateData,
+        include,
+      );
+    } else {
+      updatedSchedule = await this.prisma.schedule.update({
+        where: { id },
+        data: updateData,
+        include,
+      });
+    }
 
     // Отправить уведомление об изменении расписания
     try {

@@ -241,6 +241,7 @@ export function ClientInfoSection({ client, isEditing, onRefresh, onSaveSuccess,
         id: client.id,
         data: {
           ...data,
+          version: client.version, // Для оптимистичной блокировки
           phone: cleanPhoneNumber(data.phone) || data.phone,
           phoneAdditional: cleanPhoneNumber(data.phoneAdditional) || undefined,
           middleName: data.middleName || undefined,

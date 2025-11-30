@@ -3,6 +3,7 @@ export type ClientStatus = 'ACTIVE' | 'INACTIVE' | 'VIP';
 
 export interface Client {
   id: string;
+  version: number; // Версия для оптимистичной блокировки
   clientType: ClientType;
   firstName: string;
   lastName: string;
@@ -102,6 +103,7 @@ export interface CreateClientDto {
 }
 
 export interface UpdateClientDto {
+  version?: number; // Для защиты от перезатирания
   clientType?: ClientType;
   firstName?: string;
   lastName?: string;

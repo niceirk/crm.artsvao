@@ -246,6 +246,7 @@ export function ClientInfoCard({ client, isEditing, onRefresh, onSaveSuccess, on
         id: client.id,
         data: {
           ...data,
+          version: client.version, // Для оптимистичной блокировки
           phone: cleanPhoneNumber(data.phone) || data.phone,
           phoneAdditional: cleanPhoneNumber(data.phoneAdditional) || null,
           middleName: data.middleName || null,

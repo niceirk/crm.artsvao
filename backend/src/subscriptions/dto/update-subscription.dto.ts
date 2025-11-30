@@ -1,7 +1,11 @@
-import { IsEnum, IsOptional, IsNumber, Min } from 'class-validator';
+import { IsEnum, IsOptional, IsNumber, Min, IsInt } from 'class-validator';
 import { SubscriptionStatus } from '@prisma/client';
 
 export class UpdateSubscriptionDto {
+  @IsInt()
+  @IsOptional()
+  version?: number; // Для защиты от перезатирания
+
   @IsEnum(SubscriptionStatus)
   @IsOptional()
   status?: SubscriptionStatus;

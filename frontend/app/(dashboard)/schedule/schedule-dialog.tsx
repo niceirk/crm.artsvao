@@ -159,7 +159,7 @@ export function ScheduleDialog({ open, onOpenChange, schedule, initialData }: Sc
       };
 
       if (schedule) {
-        await updateSchedule.mutateAsync({ id: schedule.id, data: submitData });
+        await updateSchedule.mutateAsync({ id: schedule.id, data: { ...submitData, version: schedule.version } });
       } else {
         await createSchedule.mutateAsync(submitData);
       }

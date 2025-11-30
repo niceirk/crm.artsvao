@@ -21,6 +21,7 @@ export enum WriteOffTiming {
 
 export interface Service {
   id: string;
+  version: number; // Версия для оптимистичной блокировки
   name: string;
   description?: string | null;
   categoryId: string;
@@ -70,6 +71,7 @@ export interface CreateServiceDto {
 }
 
 export interface UpdateServiceDto {
+  version?: number; // Для защиты от перезатирания
   name?: string;
   description?: string;
   categoryId?: string;

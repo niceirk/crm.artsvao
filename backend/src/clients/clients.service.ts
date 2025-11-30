@@ -7,6 +7,7 @@ import { ClientStatus, AuditAction } from '@prisma/client';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { normalizePhone } from '../common/utils/phone.util';
 import { S3StorageService } from '../common/services/s3-storage.service';
+import { updateWithVersionCheck } from '../common/utils/optimistic-lock.util';
 
 @Injectable()
 export class ClientsService {
@@ -345,8 +346,11 @@ export class ClientsService {
   async update(id: string, updateClientDto: UpdateClientDto, userId: string) {
     const oldClient = await this.findOne(id); // Check if exists
 
+    // Извлекаем version для проверки
+    const { version, ...restDto } = updateClientDto;
+
     // Normalize phone if provided
-    const data: any = { ...updateClientDto };
+    const data: any = { ...restDto };
     if (updateClientDto.phone) {
       data.phone = normalizePhone(updateClientDto.phone);
     }
@@ -356,19 +360,35 @@ export class ClientsService {
     // Gender field is already in updateClientDto, no need for special handling
     // clientType, companyName, and inn are also already in updateClientDto
 
-    const updatedClient = await this.prisma.client.update({
-      where: { id },
-      data,
-      include: {
-        leadSource: {
-          select: {
-            id: true,
-            name: true,
-            description: true,
-          },
+    const include = {
+      leadSource: {
+        select: {
+          id: true,
+          name: true,
+          description: true,
         },
       },
-    });
+    };
+
+    // Используем атомарное обновление с проверкой версии только если version передан
+    let updatedClient;
+    if (version !== undefined) {
+      updatedClient = await updateWithVersionCheck(
+        this.prisma,
+        'client',
+        id,
+        version,
+        data,
+        include,
+      );
+    } else {
+      // Вызов без проверки версии
+      updatedClient = await this.prisma.client.update({
+        where: { id },
+        data,
+        include,
+      });
+    }
 
     // Log the update with changes
     await this.auditLog.log({

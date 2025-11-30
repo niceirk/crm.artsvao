@@ -11,6 +11,7 @@ import type { SubscriptionType } from '../types/subscriptions';
 
 export interface Group {
   id: string;
+  version: number; // Версия для оптимистичной блокировки
   name: string;
   maxParticipants: number;
   singleSessionPrice: number;
@@ -66,7 +67,9 @@ export interface CreateGroupDto {
   roomId?: string;
 }
 
-export interface UpdateGroupDto extends Partial<CreateGroupDto> {}
+export interface UpdateGroupDto extends Partial<CreateGroupDto> {
+  version?: number; // Для защиты от перезатирания
+}
 
 export interface GroupFilters {
   search?: string;

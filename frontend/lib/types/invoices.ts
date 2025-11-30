@@ -76,6 +76,7 @@ export interface InvoiceAuditLog {
 
 export interface Invoice {
   id: string;
+  version: number; // Версия для оптимистичной блокировки
   invoiceNumber: string;
   clientId: string;
   subscriptionId?: string;
@@ -157,6 +158,7 @@ export interface CreateInvoiceDto {
 }
 
 export interface UpdateInvoiceDto {
+  version?: number; // Для защиты от перезатирания
   status?: InvoiceStatus;
   dueDate?: string;
   paidAt?: string;

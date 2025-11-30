@@ -18,6 +18,7 @@ import { CalendarEventStatus } from '@/lib/api/events';
 interface StatusDropdownProps {
   eventId: string;
   currentStatus: CalendarEventStatus;
+  version?: number;
 }
 
 const STATUS_CONFIG = {
@@ -39,7 +40,7 @@ const STATUS_CONFIG = {
   },
 };
 
-export function StatusDropdown({ eventId, currentStatus }: StatusDropdownProps) {
+export function StatusDropdown({ eventId, currentStatus, version }: StatusDropdownProps) {
   const [isChanging, setIsChanging] = useState(false);
   const updateEvent = useUpdateEvent();
 
@@ -50,7 +51,7 @@ export function StatusDropdown({ eventId, currentStatus }: StatusDropdownProps) 
     try {
       await updateEvent.mutateAsync({
         id: eventId,
-        data: { status: newStatus },
+        data: { status: newStatus, version },
       });
       toast.success(`Статус изменен на "${STATUS_CONFIG[newStatus].label}"`);
     } catch (error) {

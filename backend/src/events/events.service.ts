@@ -7,6 +7,7 @@ import { ConflictCheckerService } from '../shared/conflict-checker.service';
 import { EmailService } from '../email/email.service';
 import { PyrusService } from '../integrations/pyrus/pyrus.service';
 import { S3StorageService } from '../common/services/s3-storage.service';
+import { updateWithVersionCheck } from '../common/utils/optimistic-lock.util';
 
 @Injectable()
 export class EventsService {
@@ -297,8 +298,11 @@ export class EventsService {
       });
     }
 
+    // Извлекаем version для проверки
+    const { version, ...restDto } = updateEventDto;
+
     // Convert date and time strings if provided
-    const updateData: any = { ...updateEventDto };
+    const updateData: any = { ...restDto };
 
     if (updateEventDto.date) {
       updateData.date = new Date(updateEventDto.date);
@@ -314,25 +318,42 @@ export class EventsService {
       updateData.endTime = new Date(Date.UTC(1970, 0, 1, endHour, endMin, 0));
     }
 
-    const updatedEvent = await this.prisma.event.update({
-      where: { id },
-      data: updateData,
-      include: {
-        eventType: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
-        responsibleUser: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
+    const include = {
+      eventType: {
+        select: {
+          id: true,
+          name: true,
         },
       },
-    });
+      responsibleUser: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
+    };
+
+    // Используем атомарное обновление с проверкой версии только если version передан
+    // (для внутренних вызовов, таких как sync, version не передаётся)
+    let updatedEvent;
+    if (version !== undefined) {
+      updatedEvent = await updateWithVersionCheck(
+        this.prisma,
+        'event',
+        id,
+        version,
+        updateData,
+        include,
+      );
+    } else {
+      // Внутренний вызов без проверки версии
+      updatedEvent = await this.prisma.event.update({
+        where: { id },
+        data: updateData,
+        include,
+      });
+    }
 
     // Определяем критичные изменения для уведомления
     const changes: string[] = [];

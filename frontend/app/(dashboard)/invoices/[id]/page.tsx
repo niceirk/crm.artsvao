@@ -104,6 +104,7 @@ export default function InvoiceDetailsPage() {
       await updateInvoice.mutateAsync({
         id: invoice.id,
         data: {
+          version: invoice.version,
           status: newStatus,
           paidAt: newStatus === 'PAID' ? new Date().toISOString() : undefined,
         },

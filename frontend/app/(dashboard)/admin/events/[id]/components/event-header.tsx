@@ -99,7 +99,7 @@ export function EventHeader({ event }: EventHeaderProps) {
           {/* Title and Status */}
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-3xl font-bold tracking-tight">{event.name}</h1>
-            <StatusDropdown eventId={event.id} currentStatus={event.status} />
+            <StatusDropdown eventId={event.id} currentStatus={event.status} version={event.version} />
           </div>
 
           {/* Meta information */}

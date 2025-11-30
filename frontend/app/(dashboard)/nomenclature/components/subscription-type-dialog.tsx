@@ -128,6 +128,7 @@ export function SubscriptionTypeDialog({
         await updateMutation.mutateAsync({
           id: editItem.id,
           data: {
+            version: editItem.version,
             name: values.name,
             description: values.description,
             groupId: values.groupId,

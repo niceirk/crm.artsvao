@@ -113,7 +113,7 @@ export function ServiceDialog({ open, onOpenChange, service }: ServiceDialogProp
   const onSubmit = async (values: FormValues) => {
     try {
       if (service) {
-        await updateMutation.mutateAsync({ id: service.id, data: values });
+        await updateMutation.mutateAsync({ id: service.id, data: { ...values, version: service.version } });
       } else {
         await createMutation.mutateAsync(values);
       }

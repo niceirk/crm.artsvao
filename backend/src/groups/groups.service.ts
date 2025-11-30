@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { UpdateGroupDto } from './dto/update-group.dto';
 import { GroupFilterDto } from './dto/group-filter.dto';
+import { updateWithVersionCheck } from '../common/utils/optimistic-lock.util';
 
 @Injectable()
 export class GroupsService {
@@ -285,38 +286,43 @@ export class GroupsService {
       }
     }
 
-    const { weeklySchedule, ...restDto } = updateGroupDto;
+    const { version, weeklySchedule, ...restDto } = updateGroupDto;
 
-    return this.prisma.group.update({
-      where: { id },
-      data: {
-        ...restDto,
-        ...(weeklySchedule !== undefined && { weeklySchedule: weeklySchedule as any }),
-      },
-      include: {
-        studio: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-          },
-        },
-        teacher: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        room: {
-          select: {
-            id: true,
-            name: true,
-            number: true,
-          },
+    const data = {
+      ...restDto,
+      ...(weeklySchedule !== undefined && { weeklySchedule: weeklySchedule as any }),
+    };
+
+    const include = {
+      studio: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
         },
       },
-    });
+      teacher: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+        },
+      },
+      room: {
+        select: {
+          id: true,
+          name: true,
+          number: true,
+        },
+      },
+    };
+
+    // Используем атомарное обновление с проверкой версии только если version передан
+    if (version !== undefined) {
+      return updateWithVersionCheck(this.prisma, 'group', id, version, data, include);
+    } else {
+      return this.prisma.group.update({ where: { id }, data, include });
+    }
   }
 
   async remove(id: string) {

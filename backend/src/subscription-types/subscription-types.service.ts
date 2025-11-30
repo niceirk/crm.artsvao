@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateSubscriptionTypeDto } from './dto/create-subscription-type.dto';
 import { UpdateSubscriptionTypeDto } from './dto/update-subscription-type.dto';
 import { SubscriptionTypeFilterDto } from './dto/subscription-type-filter.dto';
+import { updateWithVersionCheck } from '../common/utils/optimistic-lock.util';
 
 @Injectable()
 export class SubscriptionTypesService {
@@ -126,27 +127,46 @@ export class SubscriptionTypesService {
     // Check if exists
     await this.findOne(id);
 
-    return this.prisma.subscriptionType.update({
-      where: { id },
-      data: {
-        ...updateDto,
-        price: updateDto.price !== undefined ? updateDto.price : undefined,
-      },
-      include: {
-        group: {
-          select: {
-            id: true,
-            name: true,
-            studio: {
-              select: {
-                id: true,
-                name: true,
-              },
+    // Извлекаем version для проверки
+    const { version, ...restDto } = updateDto;
+
+    const data = {
+      ...restDto,
+      price: restDto.price !== undefined ? restDto.price : undefined,
+    };
+
+    const include = {
+      group: {
+        select: {
+          id: true,
+          name: true,
+          studio: {
+            select: {
+              id: true,
+              name: true,
             },
           },
         },
       },
-    });
+    };
+
+    // Используем условную проверку версии (только если version передан)
+    if (version !== undefined) {
+      return updateWithVersionCheck(
+        this.prisma,
+        'subscriptionType',
+        id,
+        version,
+        data,
+        include,
+      );
+    } else {
+      return this.prisma.subscriptionType.update({
+        where: { id },
+        data,
+        include,
+      });
+    }
   }
 
   async remove(id: string) {

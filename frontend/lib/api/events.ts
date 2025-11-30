@@ -6,6 +6,7 @@ export { CalendarEventStatus };
 
 export interface Event {
   id: string;
+  version: number; // Версия для оптимистичной блокировки
   name: string;
   description?: string;
   fullDescription?: string;
@@ -61,7 +62,9 @@ export interface CreateEventDto {
   budget?: number;
 }
 
-export interface UpdateEventDto extends Partial<CreateEventDto> {}
+export interface UpdateEventDto extends Partial<CreateEventDto> {
+  version?: number; // Для защиты от перезатирания
+}
 
 export interface EventFilters {
   date?: string;

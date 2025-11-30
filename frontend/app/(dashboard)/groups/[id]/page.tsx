@@ -212,6 +212,7 @@ export default function GroupDetailPage() {
       setIsSaving(true);
       const updateData: UpdateGroupDto = {
         ...values,
+        version: group?.version,
         ageMin: values.ageMin || undefined,
         ageMax: values.ageMax || undefined,
         duration: values.duration || undefined,

@@ -130,6 +130,7 @@ model ServiceCategory {
 
 model IndependentService {
   id          String           @id @default(uuid())
+  version     Int              @default(1)
   name        String
   description String?
   price       Decimal          @db.Decimal(10, 2)
@@ -506,6 +507,7 @@ model Attendance {
 
 model SubscriptionType {
   id            String               @id @default(uuid())
+  version       Int                  @default(1)
   name          String
   description   String?
   groupId       String               @map("group_id")
@@ -626,6 +628,7 @@ model Rental {
 
 model Event {
   id                String              @id @default(uuid())
+  version           Int                 @default(1)
   name              String
   description       String?
   fullDescription   String?             @map("full_description")

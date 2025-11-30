@@ -19,7 +19,7 @@ export function ClientContactsCard({ client }: ClientContactsCardProps) {
   const handleUpdate = async (field: string, value: string | null) => {
     await updateClient.mutateAsync({
       id: client.id,
-      data: { [field]: value },
+      data: { [field]: value, version: client.version },
     });
   };
 

@@ -141,7 +141,7 @@ export function EventDialog({ open, onOpenChange, event }: EventDialogProps) {
       };
 
       if (event) {
-        await updateEvent.mutateAsync({ id: event.id, data: submitData });
+        await updateEvent.mutateAsync({ id: event.id, data: { ...submitData, version: event.version } });
       } else {
         await createEvent.mutateAsync(submitData);
       }

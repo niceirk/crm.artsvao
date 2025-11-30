@@ -41,6 +41,7 @@ export interface SubscriptionAttendance {
 
 export interface SubscriptionType {
   id: string;
+  version: number; // Версия для оптимистичной блокировки
   name: string;
   description?: string;
   groupId: string;
@@ -65,6 +66,7 @@ export interface SubscriptionType {
 
 export interface Subscription {
   id: string;
+  version: number; // Версия для оптимистичной блокировки
   clientId: string;
   subscriptionTypeId: string;
   groupId: string;
@@ -128,6 +130,7 @@ export interface CreateSubscriptionTypeDto {
 }
 
 export interface UpdateSubscriptionTypeDto {
+  version?: number; // Для защиты от перезатирания
   name?: string;
   description?: string;
   price?: number;
@@ -156,6 +159,7 @@ export interface SellSubscriptionDto {
 }
 
 export interface UpdateSubscriptionDto {
+  version: number; // Обязательно для защиты от перезатирания
   status?: SubscriptionStatus;
   remainingVisits?: number;
 }

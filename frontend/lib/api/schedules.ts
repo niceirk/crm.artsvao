@@ -3,6 +3,7 @@ import { CalendarEventStatus } from './calendar-event-status';
 
 export interface Schedule {
   id: string;
+  version: number; // Версия для оптимистичной блокировки
   groupId?: string;
   teacherId: string;
   roomId: string;
@@ -54,7 +55,9 @@ export interface CreateScheduleDto {
   notes?: string;
 }
 
-export interface UpdateScheduleDto extends Partial<CreateScheduleDto> {}
+export interface UpdateScheduleDto extends Partial<CreateScheduleDto> {
+  version?: number; // Для защиты от перезатирания
+}
 
 export interface RecurrenceRuleDto {
   daysOfWeek: number[]; // 0=Sunday, 1=Monday, ..., 6=Saturday

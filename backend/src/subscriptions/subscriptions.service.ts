@@ -7,6 +7,7 @@ import { SellSubscriptionDto } from './dto/sell-subscription.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { SubscriptionFilterDto } from './dto/subscription-filter.dto';
 import { VatHelper } from './vat.helper';
+import { updateWithVersionCheck } from '../common/utils/optimistic-lock.util';
 import {
   Prisma,
   SubscriptionStatus,
@@ -700,29 +701,46 @@ export class SubscriptionsService {
 
   /**
    * Обновить абонемент (только статус и остаток посещений)
+   * Использует оптимистичную блокировку для защиты от перезатирания
    */
   async update(id: string, updateDto: UpdateSubscriptionDto) {
     await this.findOne(id);
 
-    return this.prisma.subscription.update({
-      where: { id },
-      data: updateDto,
-      include: {
-        client: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-          },
-        },
-        group: {
-          select: {
-            id: true,
-            name: true,
-          },
+    const { version, ...data } = updateDto;
+
+    const include = {
+      client: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
         },
       },
-    });
+      group: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    };
+
+    // Используем условную проверку версии (только если version передан)
+    if (version !== undefined) {
+      return updateWithVersionCheck(
+        this.prisma,
+        'subscription',
+        id,
+        version,
+        data,
+        include,
+      );
+    } else {
+      return this.prisma.subscription.update({
+        where: { id },
+        data,
+        include,
+      });
+    }
   }
 
   /**

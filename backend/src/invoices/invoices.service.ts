@@ -6,6 +6,7 @@ import { InvoiceFilterDto } from './dto/invoice-filter.dto';
 import { InvoiceStatus, Prisma } from '@prisma/client';
 import { QRGeneratorService } from './qr/qr-generator.service';
 import { QRPaymentDataBuilder, BudgetPaymentData } from './qr/qr-payment-data.builder';
+import { updateWithVersionCheck } from '../common/utils/optimistic-lock.util';
 
 @Injectable()
 export class InvoicesService {
@@ -312,6 +313,9 @@ export class InvoicesService {
     // Проверяем переход статуса на PAID
     const isBecomingPaid = dto.status === InvoiceStatus.PAID && invoice.status !== InvoiceStatus.PAID;
 
+    // Извлекаем version для проверки
+    const { version, ...restDto } = dto;
+
     // Создание audit log для каждого изменения
     const auditLogs: Prisma.InvoiceAuditLogCreateManyInvoiceInput[] = [];
 
@@ -325,27 +329,50 @@ export class InvoicesService {
       });
     }
 
-    const updated = await this.prisma.invoice.update({
-      where: { id },
-      data: {
-        ...dto,
-        paidAt: isBecomingPaid ? new Date() : dto.paidAt,
-        auditLogs: auditLogs.length > 0 ? {
-          createMany: {
-            data: auditLogs,
-          },
-        } : undefined,
-      },
-      include: {
-        items: {
-          include: {
-            group: true,
-          },
+    // Подготавливаем данные для обновления
+    const updateData: any = {
+      ...restDto,
+      paidAt: isBecomingPaid ? new Date() : restDto.paidAt,
+    };
+
+    const include = {
+      items: {
+        include: {
+          group: true,
         },
-        client: true,
-        creator: true,
       },
-    });
+      client: true,
+      creator: true,
+    };
+
+    // Используем условную проверку версии (только если version передан)
+    let updated;
+    if (version !== undefined) {
+      updated = await updateWithVersionCheck(
+        this.prisma,
+        'invoice',
+        id,
+        version,
+        updateData,
+        include,
+      );
+    } else {
+      updated = await this.prisma.invoice.update({
+        where: { id },
+        data: updateData,
+        include,
+      });
+    }
+
+    // Создаём аудит-лог отдельно если есть изменения
+    if (auditLogs.length > 0) {
+      await this.prisma.invoiceAuditLog.createMany({
+        data: auditLogs.map(log => ({
+          ...log,
+          invoiceId: id,
+        })),
+      });
+    }
 
     // При оплате счёта создаём подписки для позиций с groupId
     if (isBecomingPaid) {

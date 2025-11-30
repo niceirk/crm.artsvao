@@ -136,7 +136,7 @@ export function GroupDialog({
       };
 
       if (group) {
-        const updated = await updateGroup.mutateAsync({ id: group.id, data: submitData });
+        const updated = await updateGroup.mutateAsync({ id: group.id, data: { ...submitData, version: group.version } });
         onSuccess?.(updated);
       } else {
         const created = await createGroup.mutateAsync(submitData);

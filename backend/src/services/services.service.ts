@@ -4,6 +4,7 @@ import { CreateServiceDto } from './dto/create-service.dto';
 import { UpdateServiceDto } from './dto/update-service.dto';
 import { ServiceFilterDto } from './dto/service-filter.dto';
 import { Prisma } from '@prisma/client';
+import { updateWithVersionCheck } from '../common/utils/optimistic-lock.util';
 
 @Injectable()
 export class ServicesService {
@@ -234,10 +235,13 @@ export class ServicesService {
     // Проверка существования
     await this.findOne(id);
 
+    // Извлекаем version для проверки
+    const { version, ...restDto } = updateDto;
+
     // Валидация categoryId (если изменяется)
-    if (updateDto.categoryId) {
+    if (restDto.categoryId) {
       const category = await this.prisma.serviceCategory.findUnique({
-        where: { id: updateDto.categoryId },
+        where: { id: restDto.categoryId },
       });
 
       if (!category) {
@@ -246,9 +250,9 @@ export class ServicesService {
     }
 
     // Валидация groupId (если изменяется)
-    if (updateDto.groupId) {
+    if (restDto.groupId) {
       const group = await this.prisma.group.findUnique({
-        where: { id: updateDto.groupId },
+        where: { id: restDto.groupId },
       });
 
       if (!group) {
@@ -257,9 +261,9 @@ export class ServicesService {
     }
 
     // Валидация roomId (если изменяется)
-    if (updateDto.roomId) {
+    if (restDto.roomId) {
       const room = await this.prisma.room.findUnique({
-        where: { id: updateDto.roomId },
+        where: { id: restDto.roomId },
       });
 
       if (!room) {
@@ -272,22 +276,38 @@ export class ServicesService {
       where: { id },
     });
 
-    const basePrice = updateDto.basePrice ?? currentService.basePrice.toNumber();
-    const vatRate = updateDto.vatRate ?? currentService.vatRate.toNumber();
+    const basePrice = restDto.basePrice ?? currentService.basePrice.toNumber();
+    const vatRate = restDto.vatRate ?? currentService.vatRate.toNumber();
     const priceWithVat = this.calculatePriceWithVat(basePrice, vatRate);
 
-    return this.prisma.service.update({
-      where: { id },
-      data: {
-        ...updateDto,
-        priceWithVat,
-      },
-      include: {
-        category: true,
-        group: true,
-        room: true,
-      },
-    });
+    const data = {
+      ...restDto,
+      priceWithVat,
+    };
+
+    const include = {
+      category: true,
+      group: true,
+      room: true,
+    };
+
+    // Используем условную проверку версии (только если version передан)
+    if (version !== undefined) {
+      return updateWithVersionCheck(
+        this.prisma,
+        'service',
+        id,
+        version,
+        data,
+        include,
+      );
+    } else {
+      return this.prisma.service.update({
+        where: { id },
+        data,
+        include,
+      });
+    }
   }
 
   async remove(id: string) {

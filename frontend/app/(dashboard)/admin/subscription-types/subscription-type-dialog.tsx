@@ -116,7 +116,7 @@ export function SubscriptionTypeDialog({
   const onSubmit = async (values: FormValues) => {
     try {
       if (subscriptionType) {
-        const updated = await updateMutation.mutateAsync({ id: subscriptionType.id, data: values });
+        const updated = await updateMutation.mutateAsync({ id: subscriptionType.id, data: { ...values, version: subscriptionType.version } });
         onSuccess?.(updated);
       } else {
         const created = await createMutation.mutateAsync(values);

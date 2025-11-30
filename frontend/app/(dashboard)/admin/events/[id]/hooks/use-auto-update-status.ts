@@ -47,7 +47,7 @@ export function useAutoUpdateStatus(event: Event) {
         try {
           await updateEvent.mutateAsync({
             id: event.id,
-            data: { status: newStatus },
+            data: { status: newStatus, version: event.version },
           });
           hasUpdatedRef.current[newStatus] = true;
           console.log(`Auto-updated event status from ${event.status} to ${newStatus}`);
