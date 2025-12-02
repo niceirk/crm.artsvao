@@ -10,6 +10,10 @@ export interface Room {
   equipment?: string;
   hourlyRate: number;
   dailyRate?: number;
+  dailyRateCoworking?: number;
+  weeklyRateCoworking?: number;
+  monthlyRateCoworking?: number;
+  isCoworking?: boolean;
   status: 'AVAILABLE' | 'MAINTENANCE' | 'RETIRED';
   createdAt: string;
   updatedAt: string;

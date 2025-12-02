@@ -81,7 +81,7 @@ export function Sidebar() {
       </div>
 
       {/* Навигация */}
-      <div 
+      <div
         className="overflow-y-auto p-4 scrollbar-hide" 
         style={{ height: sidebarCollapsed ? 'calc(100vh - 144px)' : 'calc(100vh - 64px)' }}
       >

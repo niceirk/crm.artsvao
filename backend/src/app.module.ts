@@ -46,6 +46,9 @@ import { ArchivedSalesModule } from './archived-sales/archived-sales.module';
 import { NomenclatureModule } from './nomenclature/nomenclature.module';
 import { MedicalCertificatesModule } from './medical-certificates/medical-certificates.module';
 import { DataEventsModule } from './common/events/data-events.module';
+import { RentalApplicationsModule } from './rental-applications/rental-applications.module';
+import { WorkspacesModule } from './workspaces/workspaces.module';
+import { CacheModule } from './common/cache/cache.module';
 
 @Module({
   imports: [
@@ -62,6 +65,7 @@ import { DataEventsModule } from './common/events/data-events.module';
       },
     ]),
     PrismaModule,
+    CacheModule,
     EmailModule,
     TelegramModule,
     MessagesModule,
@@ -101,6 +105,8 @@ import { DataEventsModule } from './common/events/data-events.module';
     NomenclatureModule,
     MedicalCertificatesModule,
     DataEventsModule,
+    RentalApplicationsModule,
+    WorkspacesModule,
   ],
   controllers: [AppController],
   providers: [

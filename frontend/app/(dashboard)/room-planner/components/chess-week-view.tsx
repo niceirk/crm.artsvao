@@ -1,21 +1,26 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useWeekActivities, type Activity, type ActivityType } from '@/hooks/use-room-planner';
 import { useRooms } from '@/hooks/use-rooms';
+import { useRoomPlannerScaleStore } from '@/lib/stores/room-planner-scale-store';
+import {
+  ChessGridLayout,
+  type ChessColumn,
+  getActivityPositionPercent,
+  getOverlappingCardStyle,
+  CHESS_LAYOUT,
+} from './chess-grid-layout';
 import {
   CHESS_GRID,
-  generateTimeSlots,
   getTimeFromRowIndex,
   getDayName,
   getDayNumber,
   isCurrentWeek,
-  formatTimeLabel,
   layoutOverlappingEvents,
 } from '@/lib/utils/chess-grid';
-import { timeToMinutes } from '@/lib/utils/time-slots';
 import {
   Tooltip,
   TooltipContent,
@@ -29,29 +34,6 @@ interface ChessWeekViewProps {
   activityTypes?: ActivityType[];
   onActivityClick: (activity: Activity) => void;
   onEmptySlotClick: (date: string, startTime: string, endTime: string) => void;
-}
-
-// Ширина колонки времени
-const TIME_COLUMN_WIDTH = 50;
-
-/**
- * Расчет позиции карточки в процентах от общей высоты
- */
-function getActivityPositionPercent(startTime: string, endTime: string): { top: number; height: number } {
-  const startMinutes = timeToMinutes(startTime);
-  const endMinutes = timeToMinutes(endTime);
-  const gridStartMinutes = CHESS_GRID.START_HOUR * 60;
-  const gridEndMinutes = CHESS_GRID.END_HOUR * 60;
-  const totalMinutes = gridEndMinutes - gridStartMinutes;
-
-  // Ограничиваем время в пределах рабочих часов
-  const effectiveStart = Math.max(startMinutes, gridStartMinutes);
-  const effectiveEnd = Math.min(endMinutes, gridEndMinutes);
-
-  const top = ((effectiveStart - gridStartMinutes) / totalMinutes) * 100;
-  const height = ((effectiveEnd - effectiveStart) / totalMinutes) * 100;
-
-  return { top, height };
 }
 
 /**
@@ -92,6 +74,9 @@ export function ChessWeekView({
     activityTypes,
   });
 
+  // Получаем масштаб из store
+  const scale = useRoomPlannerScaleStore((state) => state.scale);
+
   // Получаем список помещений для отображения названий
   const { data: rooms } = useRooms();
   const roomsMap = useMemo(() => {
@@ -99,15 +84,75 @@ export function ChessWeekView({
     return new Map(rooms.map((r) => [r.id, r.name]));
   }, [rooms]);
 
-  // Временные слоты для отображения
-  const timeSlots = useMemo(() => generateTimeSlots(), []);
-
   // Позиция линии текущего времени (в процентах)
   const [currentTimePosition, setCurrentTimePosition] = useState<number | null>(null);
   const [todayDate] = useState(getCurrentDate());
 
   // Текущая неделя?
   const isThisWeek = isCurrentWeek(weekStartDate);
+
+  // Состояние выделения для каждого дня
+  const [selection, setSelection] = useState<{ date: string; startRow: number; endRow: number } | null>(null);
+  const [isSelecting, setIsSelecting] = useState(false);
+
+  // Преобразуем дни недели в колонки для ChessGridLayout
+  const columns: ChessColumn[] = useMemo(() => {
+    return weekDates.map((date) => ({
+      id: date,
+      name: getDayName(date),
+      subtext: getDayNumber(date).toString(),
+      isHighlighted: date === todayDate,
+    }));
+  }, [weekDates, todayDate]);
+
+  // Обработчик начала выделения
+  const handleCellMouseDown = useCallback((columnId: string, rowIndex: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsSelecting(true);
+    setSelection({ date: columnId, startRow: rowIndex, endRow: rowIndex });
+  }, []);
+
+  // Обработчик движения выделения
+  const handleCellMouseEnter = useCallback((columnId: string, rowIndex: number) => {
+    if (isSelecting && selection && selection.date === columnId) {
+      setSelection({ ...selection, endRow: rowIndex });
+    }
+  }, [isSelecting, selection]);
+
+  // Обработчик окончания выделения
+  const handleCellMouseUp = useCallback(() => {
+    if (isSelecting && selection) {
+      const minRow = Math.min(selection.startRow, selection.endRow);
+      const maxRow = Math.max(selection.startRow, selection.endRow);
+
+      const { startTime } = getTimeFromRowIndex(minRow);
+      const { endTime } = getTimeFromRowIndex(maxRow);
+
+      onEmptySlotClick(selection.date, startTime, endTime);
+    }
+    setIsSelecting(false);
+    setSelection(null);
+  }, [isSelecting, selection, onEmptySlotClick]);
+
+  // Проверка, выделена ли ячейка
+  const isCellSelected = useCallback((columnId: string, rowIndex: number) => {
+    if (!selection || selection.date !== columnId) return false;
+    const minRow = Math.min(selection.startRow, selection.endRow);
+    const maxRow = Math.max(selection.startRow, selection.endRow);
+    return rowIndex >= minRow && rowIndex <= maxRow;
+  }, [selection]);
+
+  // Глобальный обработчик mouseup
+  useEffect(() => {
+    const handleGlobalMouseUp = () => {
+      if (isSelecting) {
+        handleCellMouseUp();
+      }
+    };
+
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
+  }, [isSelecting, handleCellMouseUp]);
 
   // Обновляем позицию линии текущего времени каждую минуту
   useEffect(() => {
@@ -121,10 +166,70 @@ export function ChessWeekView({
     };
 
     updatePosition();
-    const interval = setInterval(updatePosition, 60000); // каждую минуту
+    const interval = setInterval(updatePosition, 60000);
 
     return () => clearInterval(interval);
   }, [isThisWeek]);
+
+  // Рендер заголовка колонки (дня недели)
+  const renderColumnHeader = useCallback((column: ChessColumn) => {
+    const isToday = column.id === todayDate;
+    const applyScale = scale !== 1.0;
+    const headerFontSize = applyScale ? `calc(0.75rem * ${scale})` : undefined;
+    const dayNumberFontSize = applyScale ? `calc(0.875rem * ${scale})` : undefined;
+
+    return (
+      <div className="flex items-center gap-2">
+        <span
+          className={cn(
+            'text-xs font-medium',
+            isToday ? 'text-primary' : 'text-muted-foreground'
+          )}
+          style={headerFontSize ? { fontSize: headerFontSize } : undefined}
+        >
+          {column.name}
+        </span>
+        <span
+          className={cn(
+            'text-sm font-semibold',
+            isToday && 'bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center'
+          )}
+          style={dayNumberFontSize ? { fontSize: dayNumberFontSize } : undefined}
+        >
+          {column.subtext}
+        </span>
+      </div>
+    );
+  }, [todayDate, scale]);
+
+  // Рендер контента колонки (карточки активностей)
+  const renderColumnContent = useCallback((column: ChessColumn) => {
+    const date = column.id;
+    const activities = weekActivities[date] || [];
+    const activitiesWithLayout = layoutOverlappingEvents(activities);
+    const isToday = date === todayDate;
+
+    return activitiesWithLayout.map((activity) => {
+      const position = getActivityPositionPercent(activity.startTime, activity.endTime);
+      const roomName = roomsMap.get(activity.roomId) || 'Помещение';
+
+      return (
+        <WeekActivityCard
+          key={activity.id}
+          activity={activity}
+          style={getOverlappingCardStyle(
+            position.top,
+            position.height,
+            activity.column,
+            activity.totalColumns
+          )}
+          onClick={() => onActivityClick(activity)}
+          roomName={roomName}
+          scale={scale}
+        />
+      );
+    });
+  }, [weekActivities, todayDate, roomsMap, scale, onActivityClick]);
 
   // Загрузка
   if (isLoading) {
@@ -135,269 +240,57 @@ export function ChessWeekView({
     );
   }
 
+  // Определяем, показывать ли линию времени только для сегодняшнего дня
+  // Мы передадим currentTimePosition только когда isThisWeek === true
+  // Линия отрисуется во всех колонках, но это нормально для недельного вида
+  // (можно доработать, чтобы линия была только в колонке сегодняшнего дня)
+
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="border rounded-lg bg-background overflow-hidden h-[calc(100vh-100px)] overflow-x-auto">
-        <div className="flex flex-col h-full" style={{ minWidth: 'min-content' }}>
-          {/* Заголовок с днями недели */}
-          <div className="flex-shrink-0 flex border-b">
-            {/* Пустая ячейка над колонкой времени */}
-            <div
-              className="flex-shrink-0 border-r bg-muted/30"
-              style={{ width: TIME_COLUMN_WIDTH }}
-            />
-            {/* Заголовки дней */}
-            {weekDates.map((date) => {
-              const isToday = date === todayDate;
-              return (
-                <div
-                  key={date}
-                  className={cn(
-                    'flex-1 border-r px-2 py-1.5 bg-muted/30 min-w-[120px]',
-                    isToday && 'bg-primary/10'
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className={cn(
-                        'text-xs font-medium',
-                        isToday ? 'text-primary' : 'text-muted-foreground'
-                      )}
-                    >
-                      {getDayName(date)}
-                    </span>
-                    <span
-                      className={cn(
-                        'text-sm font-semibold',
-                        isToday && 'bg-primary text-primary-foreground rounded-full w-6 h-6 flex items-center justify-center'
-                      )}
-                    >
-                      {getDayNumber(date)}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Основная сетка */}
-          <div className="flex-1 flex overflow-y-hidden">
-            {/* Колонка времени */}
-            <div
-              className="flex-shrink-0 flex flex-col border-r bg-background"
-              style={{ width: TIME_COLUMN_WIDTH }}
-            >
-              {timeSlots.map((time, index) => (
-                <div
-                  key={time}
-                  className={cn(
-                    'flex-1 flex items-start justify-end pr-1 text-xs text-muted-foreground border-b min-h-0',
-                    index % 2 === 0 ? 'font-medium' : 'text-[10px] opacity-60'
-                  )}
-                >
-                  <span className="-mt-1.5">{index % 2 === 0 ? formatTimeLabel(time) : ''}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Колонки дней */}
-            {weekDates.map((date) => (
-              <DayColumn
-                key={date}
-                date={date}
-                activities={weekActivities[date] || []}
-                timeSlots={timeSlots}
-                onActivityClick={onActivityClick}
-                onEmptySlotClick={onEmptySlotClick}
-                currentTimePosition={date === todayDate ? currentTimePosition : null}
-                roomsMap={roomsMap}
-                isToday={date === todayDate}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
+      <ChessGridLayout
+        columns={columns}
+        containerHeight="calc(100vh - 100px)"
+        scale={scale}
+        onCellMouseDown={handleCellMouseDown}
+        onCellMouseEnter={handleCellMouseEnter}
+        onCellMouseUp={handleCellMouseUp}
+        isCellSelected={isCellSelected}
+        renderColumnHeader={renderColumnHeader}
+        renderColumnContent={renderColumnContent}
+        currentTimePosition={isThisWeek ? currentTimePosition : null}
+      />
     </TooltipProvider>
-  );
-}
-
-// Компонент колонки дня
-interface DayColumnProps {
-  date: string;
-  activities: Activity[];
-  timeSlots: string[];
-  onActivityClick: (activity: Activity) => void;
-  onEmptySlotClick: (date: string, startTime: string, endTime: string) => void;
-  currentTimePosition: number | null;
-  roomsMap: Map<string, string>;
-  isToday: boolean;
-}
-
-function DayColumn({
-  date,
-  activities,
-  timeSlots,
-  onActivityClick,
-  onEmptySlotClick,
-  currentTimePosition,
-  roomsMap,
-  isToday,
-}: DayColumnProps) {
-  // Состояние выделения
-  const [selection, setSelection] = useState<{ startRow: number; endRow: number } | null>(null);
-  const [isSelecting, setIsSelecting] = useState(false);
-
-  // Расчет layout для пересекающихся событий
-  const activitiesWithLayout = useMemo(
-    () => layoutOverlappingEvents(activities),
-    [activities]
-  );
-
-  // Обработчик начала выделения
-  const handleMouseDown = (rowIndex: number, e: React.MouseEvent) => {
-    e.preventDefault();
-    setIsSelecting(true);
-    setSelection({ startRow: rowIndex, endRow: rowIndex });
-  };
-
-  // Обработчик движения выделения
-  const handleMouseEnter = (rowIndex: number) => {
-    if (isSelecting && selection) {
-      setSelection({ ...selection, endRow: rowIndex });
-    }
-  };
-
-  // Обработчик окончания выделения
-  const handleMouseUp = () => {
-    if (isSelecting && selection) {
-      const minRow = Math.min(selection.startRow, selection.endRow);
-      const maxRow = Math.max(selection.startRow, selection.endRow);
-
-      const { startTime } = getTimeFromRowIndex(minRow);
-      const { endTime } = getTimeFromRowIndex(maxRow);
-
-      onEmptySlotClick(date, startTime, endTime);
-    }
-    setIsSelecting(false);
-    setSelection(null);
-  };
-
-  // Глобальный обработчик mouseup
-  useEffect(() => {
-    const handleGlobalMouseUp = () => {
-      if (isSelecting) {
-        handleMouseUp();
-      }
-    };
-
-    window.addEventListener('mouseup', handleGlobalMouseUp);
-    return () => window.removeEventListener('mouseup', handleGlobalMouseUp);
-  }, [isSelecting, selection]);
-
-  // Проверка, выделена ли ячейка
-  const isCellSelected = (rowIndex: number) => {
-    if (!selection) return false;
-    const minRow = Math.min(selection.startRow, selection.endRow);
-    const maxRow = Math.max(selection.startRow, selection.endRow);
-    return rowIndex >= minRow && rowIndex <= maxRow;
-  };
-
-  return (
-    <div
-      className={cn(
-        'flex-1 border-r relative flex flex-col select-none min-w-[120px]',
-        isToday && 'bg-primary/5'
-      )}
-      onMouseUp={handleMouseUp}
-    >
-      {/* Фоновые ячейки (строки) */}
-      {timeSlots.map((_, index) => (
-        <div
-          key={index}
-          className={cn(
-            'flex-1 border-b cursor-pointer transition-colors min-h-0',
-            index % 2 === 0 ? 'bg-background' : 'bg-muted/20',
-            isToday && (index % 2 === 0 ? 'bg-primary/5' : 'bg-primary/10'),
-            isCellSelected(index) && 'bg-primary/20',
-            !isCellSelected(index) && 'hover:bg-muted/50'
-          )}
-          onMouseDown={(e) => handleMouseDown(index, e)}
-          onMouseEnter={() => handleMouseEnter(index)}
-        />
-      ))}
-
-      {/* Карточки активностей */}
-      {activitiesWithLayout.map((activity) => {
-        const position = getActivityPositionPercent(activity.startTime, activity.endTime);
-        const roomName = roomsMap.get(activity.roomId) || 'Помещение';
-
-        // Вычисляем ширину и позицию для пересекающихся событий
-        const width = 100 / activity.totalColumns;
-        const left = activity.column * width;
-
-        return (
-          <WeekActivityCard
-            key={activity.id}
-            activity={activity}
-            style={{
-              top: `${position.top}%`,
-              height: `${position.height}%`,
-              left: `${left}%`,
-              width: `${width}%`,
-            }}
-            onClick={() => onActivityClick(activity)}
-            roomName={roomName}
-          />
-        );
-      })}
-
-      {/* Линия текущего времени */}
-      {currentTimePosition !== null && (
-        <div
-          className="absolute left-0 right-0 z-20 pointer-events-none"
-          style={{ top: `${currentTimePosition}%` }}
-        >
-          <div className="flex items-center">
-            <div className="w-2 h-2 rounded-full bg-red-500" />
-            <div className="flex-1 h-0.5 bg-red-500" />
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
 // Карточка активности для недельного вида
 interface WeekActivityCardProps {
-  activity: Activity;
-  style: { top: string; height: string; left: string; width: string };
+  activity: Activity & { column: number; totalColumns: number };
+  style: React.CSSProperties;
   onClick: () => void;
   roomName: string;
+  scale: number;
 }
 
-function WeekActivityCard({ activity, style, onClick, roomName }: WeekActivityCardProps) {
-  const heightPercent = parseFloat(style.height);
-  const widthPercent = parseFloat(style.width);
-  const isCompact = heightPercent < 5;
-  const isTiny = heightPercent < 3.6;
-  const isNarrow = widthPercent < 50;
+function WeekActivityCard({ activity, style, onClick, roomName, scale }: WeekActivityCardProps) {
   const isCancelled = activity.status === 'CANCELLED';
+
+  // Собираем полный текст
+  const fullText = `${activity.startTime} ${activity.title}, ${roomName}`;
+  // Обрезка до 52 символов
+  const truncatedText = fullText.length > 52 ? fullText.slice(0, 52) + '…' : fullText;
 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <div
           className={cn(
-            'absolute cursor-pointer transition-all hover:z-30',
-            'overflow-hidden rounded-md',
-            'hover:shadow-lg hover:scale-[1.02]',
+            'absolute cursor-pointer transition-shadow duration-200 hover:z-50',
+            'overflow-hidden rounded-md shadow-sm hover:shadow-lg',
             isCancelled && 'opacity-60'
           )}
           style={{
-            top: style.top,
-            height: style.height,
-            left: `calc(${style.left} + 2px)`,
-            width: `calc(${style.width} - 4px)`,
+            ...style,
             backgroundColor: `${activity.color}25`,
             ...(isCancelled && {
               backgroundImage: `repeating-linear-gradient(
@@ -411,38 +304,24 @@ function WeekActivityCard({ activity, style, onClick, roomName }: WeekActivityCa
           }}
           onClick={onClick}
         >
-          <div className="h-full px-1 py-0.5 flex flex-col justify-center overflow-hidden">
-            {/* Время */}
-            {!isTiny && !isNarrow && (
-              <span className="text-[8px] font-medium whitespace-nowrap leading-tight text-foreground/70">
-                {activity.startTime}
-              </span>
-            )}
-
-            {/* Название */}
-            <span
-              className={cn(
-                'font-semibold truncate leading-tight text-foreground',
-                isTiny || isNarrow ? 'text-[8px]' : 'text-[10px]'
-              )}
-            >
-              {activity.title}
-            </span>
-
-            {/* Помещение */}
-            {!isCompact && !isNarrow && (
-              <span className="text-[8px] text-muted-foreground truncate leading-tight">
-                {roomName}
-              </span>
-            )}
-          </div>
+          <p
+            className="h-full px-1 py-0.5 leading-snug text-foreground overflow-hidden"
+            style={{
+              fontSize: `${11 * scale}px`,
+              hyphens: 'auto',
+              textAlign: 'left',
+              WebkitHyphens: 'auto',
+              wordBreak: 'break-word',
+            }}
+            lang="ru"
+          >
+            {truncatedText}
+          </p>
         </div>
       </TooltipTrigger>
       <TooltipContent side="right" className="max-w-[250px]">
         <div className="space-y-1">
-          <div className="font-semibold">
-            {activity.title}
-          </div>
+          <div className="font-semibold">{activity.title}</div>
           {activity.subtitle && (
             <div className="text-sm text-muted-foreground">{activity.subtitle}</div>
           )}

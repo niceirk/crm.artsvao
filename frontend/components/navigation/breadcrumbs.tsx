@@ -132,6 +132,7 @@ function generateBreadcrumbs(pathname: string, customTitle: string | null = null
       const newLabels: Record<string, string> = {
         '/clients/new': 'Новый клиент',
         '/medical-certificates/new': 'Новая справка',
+        '/rentals/new': 'Новая заявка',
       };
       const label = newLabels[currentPath] || 'Новый';
       breadcrumbs.push({
@@ -228,6 +229,7 @@ function formatSegment(segment: string): string {
     'timesheets': 'Табели',
     'messages': 'Сообщения',
     'nomenclature': 'Номенклатура',
+    'rentals': 'Аренда',
   };
 
   if (segmentTranslations[segment]) {

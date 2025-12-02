@@ -28,6 +28,18 @@ export interface Rental {
     lastName: string;
     email: string;
   };
+  rentalApplication?: {
+    id: string;
+    applicationNumber: string;
+    status: string;
+    invoices: {
+      id: string;
+      invoiceNumber: string;
+      status: string;
+      totalAmount: number;
+      paidAt: string | null;
+    }[];
+  };
 }
 
 export interface RentalFilters {

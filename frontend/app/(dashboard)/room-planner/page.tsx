@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { Calendar, CalendarDays, LayoutList, Grid3x3, Search } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
+import { Calendar, CalendarDays, LayoutList, Grid3x3, Search, ZoomIn, ZoomOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { getCurrentDate } from '@/lib/utils/time-slots';
@@ -14,6 +15,8 @@ import { ChessWeekView } from './components/chess-week-view';
 import { RoomDetailSheet } from './components/room-detail-sheet';
 import { CalendarEventDialog } from '../schedule/calendar-event-dialog';
 import { AttendanceSheet } from '../schedule/attendance-sheet';
+import { Button } from '@/components/ui/button';
+import { useRoomPlannerScaleStore } from '@/lib/stores/room-planner-scale-store';
 import type { Schedule } from '@/lib/api/schedules';
 import type { Rental } from '@/lib/api/rentals';
 import type { Event } from '@/lib/api/events';
@@ -21,17 +24,76 @@ import type { Reservation } from '@/lib/api/reservations';
 import type { Activity, ActivityType, RoomWithActivities } from '@/hooks/use-room-planner';
 
 export default function RoomPlannerPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Читаем начальные значения из URL
+  const getInitialTab = (): 'schedule' | 'search' | 'chess' => {
+    const tab = searchParams.get('tab');
+    if (tab === 'schedule' || tab === 'search' || tab === 'chess') return tab;
+    return 'chess'; // По умолчанию шахматка
+  };
+
+  const getInitialChessViewMode = (): 'day' | 'week' => {
+    const mode = searchParams.get('mode');
+    if (mode === 'day' || mode === 'week') return mode;
+    return 'day';
+  };
+
+  const getInitialRoomIds = (): string[] => {
+    const rooms = searchParams.get('rooms');
+    return rooms ? rooms.split(',').filter(Boolean) : [];
+  };
+
+  const getInitialActivityTypes = (): ActivityType[] => {
+    const types = searchParams.get('types');
+    if (!types) return [];
+    return types.split(',').filter((t): t is ActivityType =>
+      ['schedule', 'rental', 'event', 'reservation'].includes(t)
+    );
+  };
+
   // Состояние вкладок
-  const [activeTab, setActiveTab] = useState<'schedule' | 'search' | 'chess'>('schedule');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'search' | 'chess'>(getInitialTab);
 
   // Состояние фильтров режима "Расписание"
-  const [date, setDate] = useState(getCurrentDate());
-  const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>([]);
-  const [selectedActivityTypes, setSelectedActivityTypes] = useState<ActivityType[]>([]);
-  const [showNowOnly, setShowNowOnly] = useState(false);
+  const [date, setDate] = useState(() => searchParams.get('date') || getCurrentDate());
+  const [selectedRoomIds, setSelectedRoomIds] = useState<string[]>(getInitialRoomIds);
+  const [selectedActivityTypes, setSelectedActivityTypes] = useState<ActivityType[]>(getInitialActivityTypes);
+  const [showNowOnly, setShowNowOnly] = useState(() => searchParams.get('now') === 'true');
 
   // Состояние режима шахматки (день/неделя)
-  const [chessViewMode, setChessViewMode] = useState<'day' | 'week'>('day');
+  const [chessViewMode, setChessViewMode] = useState<'day' | 'week'>(getInitialChessViewMode);
+
+  // Обновление URL при изменении фильтров
+  const updateUrl = useCallback((params: Record<string, string | null>) => {
+    const newParams = new URLSearchParams(searchParams.toString());
+
+    Object.entries(params).forEach(([key, value]) => {
+      if (value === null || value === '') {
+        newParams.delete(key);
+      } else {
+        newParams.set(key, value);
+      }
+    });
+
+    const newUrl = newParams.toString() ? `${pathname}?${newParams.toString()}` : pathname;
+    router.replace(newUrl, { scroll: false });
+  }, [searchParams, pathname, router]);
+
+  // Синхронизация состояния с URL
+  useEffect(() => {
+    const params: Record<string, string | null> = {
+      tab: activeTab === 'chess' ? null : activeTab, // chess - по умолчанию, не пишем в URL
+      date: date === getCurrentDate() ? null : date,
+      mode: chessViewMode === 'day' ? null : chessViewMode,
+      rooms: selectedRoomIds.length > 0 ? selectedRoomIds.join(',') : null,
+      types: selectedActivityTypes.length > 0 ? selectedActivityTypes.join(',') : null,
+      now: showNowOnly ? 'true' : null,
+    };
+    updateUrl(params);
+  }, [activeTab, date, chessViewMode, selectedRoomIds, selectedActivityTypes, showNowOnly, updateUrl]);
 
   // Состояние детальной карточки
   const [selectedRoom, setSelectedRoom] = useState<RoomWithActivities | null>(null);
@@ -55,6 +117,9 @@ export default function RoomPlannerPage() {
 
   // Состояние журнала посещаемости
   const [isAttendanceSheetOpen, setIsAttendanceSheetOpen] = useState(false);
+
+  // Масштаб для режима шахматки
+  const { scale, increaseScale, decreaseScale } = useRoomPlannerScaleStore();
 
   // Обработчик клика по помещению
   const handleRoomClick = (roomWithActivities: RoomWithActivities) => {
@@ -154,7 +219,7 @@ export default function RoomPlannerPage() {
   );
 
   return (
-    <div className="flex flex-col gap-4 px-6 pt-2 pb-2">
+    <div className="flex flex-col gap-4 px-1 sm:px-2 md:px-3 lg:px-4 pt-2 pb-2">
       {/* Верхний заголовок с табами */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-4 min-h-8">
@@ -204,6 +269,35 @@ export default function RoomPlannerPage() {
               : formatWeekRange(getWeekStart(date))
             }
           </span>
+        )}
+
+        {/* Контролы масштабирования для режима шахматки */}
+        {activeTab === 'chess' && (
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={decreaseScale}
+              disabled={scale <= 0.9}
+              className="h-7 px-2"
+              title="Уменьшить масштаб"
+            >
+              <ZoomOut className="h-3.5 w-3.5" />
+            </Button>
+            <span className="text-xs font-medium text-muted-foreground min-w-[3rem] text-center">
+              {Math.round(scale * 100)}%
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={increaseScale}
+              disabled={scale >= 1.3}
+              className="h-7 px-2"
+              title="Увеличить масштаб"
+            >
+              <ZoomIn className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         )}
 
         {/* Фильтры справа для режима шахматки */}
@@ -337,6 +431,7 @@ export default function RoomPlannerPage() {
           scheduleDate={selectedSchedule.date}
         />
       )}
+
     </div>
   );
 }

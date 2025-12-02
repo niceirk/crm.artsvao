@@ -30,6 +30,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useCreateRoom, useUpdateRoom } from '@/hooks/use-rooms';
 import { Room } from '@/lib/api/rooms';
 
@@ -48,6 +49,7 @@ const formSchema = z.object({
   hourlyRate: z.number().min(0, 'Минимум 0'),
   dailyRate: z.number().min(0, 'Минимум 0').optional(),
   equipment: z.string().optional(),
+  isCoworking: z.boolean().default(false),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -72,6 +74,7 @@ export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
       hourlyRate: 1000,
       dailyRate: 7000,
       equipment: '',
+      isCoworking: false,
     },
   });
 
@@ -85,6 +88,7 @@ export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
         hourlyRate: Number(room.hourlyRate),
         dailyRate: room.dailyRate ? Number(room.dailyRate) : undefined,
         equipment: room.equipment || '',
+        isCoworking: room.isCoworking || false,
       });
     } else {
       form.reset({
@@ -95,6 +99,7 @@ export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
         hourlyRate: 1000,
         dailyRate: 7000,
         equipment: '',
+        isCoworking: false,
       });
     }
   }, [room, form, open]);
@@ -273,6 +278,27 @@ export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
                     />
                   </FormControl>
                   <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="isCoworking"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
+                  <FormControl>
+                    <Checkbox
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                  </FormControl>
+                  <div className="space-y-1 leading-none">
+                    <FormLabel>Коворкинг</FormLabel>
+                    <FormDescription>
+                      Отметьте, если это помещение является коворкингом с рабочими местами для аренды
+                    </FormDescription>
+                  </div>
                 </FormItem>
               )}
             />

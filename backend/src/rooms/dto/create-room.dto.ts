@@ -1,4 +1,4 @@
-import { IsString, IsInt, IsEnum, IsOptional, IsNumber, Min } from 'class-validator';
+import { IsString, IsInt, IsEnum, IsOptional, IsNumber, Min, IsBoolean } from 'class-validator';
 import { RoomType } from '@prisma/client';
 
 export class CreateRoomDto {
@@ -28,4 +28,8 @@ export class CreateRoomDto {
   @IsString()
   @IsOptional()
   equipment?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isCoworking?: boolean;
 }

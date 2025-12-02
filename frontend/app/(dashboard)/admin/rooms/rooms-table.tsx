@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MoreHorizontal, Pencil, Trash2, Building2 } from 'lucide-react';
+import { MoreHorizontal, Pencil, Trash2, Building2, Laptop } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -127,7 +127,17 @@ export function RoomsTable({ rooms, isLoading }: RoomsTableProps) {
               <TableRow key={room.id}>
                 <TableCell className="font-medium">{room.name}</TableCell>
                 <TableCell>{room.number || '—'}</TableCell>
-                <TableCell>{roomTypeLabels[room.type]}</TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                    {roomTypeLabels[room.type]}
+                    {room.isCoworking && (
+                      <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                        <Laptop className="h-3 w-3 mr-1" />
+                        Коворкинг
+                      </Badge>
+                    )}
+                  </div>
+                </TableCell>
                 <TableCell>{room.capacity || '—'}</TableCell>
                 <TableCell>{Number(room.hourlyRate).toLocaleString()} ₽/ч</TableCell>
                 <TableCell>

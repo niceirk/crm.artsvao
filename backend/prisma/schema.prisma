@@ -35,6 +35,7 @@ model User {
   serviceSales     ServiceSale[]
   callLogs         CallLog[]
   createdMedicalCertificates MedicalCertificate[]
+  rentalApplications RentalApplication[]
 
   @@map("users")
 }
@@ -254,6 +255,7 @@ model Client {
   callLogs          CallLog[]
   notifications     Notification[]
   medicalCertificates MedicalCertificate[]
+  rentalApplications RentalApplication[]
 
   @@index([phone])
   @@index([email])
@@ -339,15 +341,46 @@ model Room {
   lastSyncedAt DateTime?     @map("last_synced_at")
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
-  events       Event[]
-  groups       Group[]
-  invoiceItems InvoiceItem[]
-  rentals      Rental[]
-  reservations Reservation[]
-  schedules    Schedule[]
-  services     Service[]
+
+  // Коворкинг
+  isCoworking          Boolean  @default(false) @map("is_coworking")
+  dailyRateCoworking   Decimal? @map("daily_rate_coworking") @db.Decimal(10, 2)
+  weeklyRateCoworking  Decimal? @map("weekly_rate_coworking") @db.Decimal(10, 2)
+  monthlyRateCoworking Decimal? @map("monthly_rate_coworking") @db.Decimal(10, 2)
+
+  events             Event[]
+  groups             Group[]
+  invoiceItems       InvoiceItem[]
+  rentals            Rental[]
+  reservations       Reservation[]
+  schedules          Schedule[]
+  services           Service[]
+  workspaces         Workspace[]
+  rentalApplications RentalApplication[]
 
   @@map("rooms")
+}
+
+model Workspace {
+  id          String          @id @default(uuid())
+  roomId      String          @map("room_id")
+  name        String
+  number      String?
+  dailyRate   Decimal         @map("daily_rate") @db.Decimal(10, 2)
+  weeklyRate  Decimal?        @map("weekly_rate") @db.Decimal(10, 2)
+  monthlyRate Decimal         @map("monthly_rate") @db.Decimal(10, 2)
+  status      WorkspaceStatus @default(AVAILABLE)
+  description String?
+  amenities   String?
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  room               Room                         @relation(fields: [roomId], references: [id])
+  rentalApplications RentalApplicationWorkspace[]
+
+  @@index([roomId])
+  @@index([status])
+  @@map("workspaces")
 }
 
 model Teacher {
@@ -612,17 +645,24 @@ model Rental {
   updatedAt   DateTime            @updatedAt @map("updated_at")
   status      CalendarEventStatus @default(PLANNED)
   clientId    String?             @map("client_id")
-  invoices    Invoice[]
-  payments    Payment[]
-  client      Client?             @relation(fields: [clientId], references: [id])
-  manager     User?               @relation(fields: [managerId], references: [id])
-  room        Room                @relation(fields: [roomId], references: [id])
+
+  // Связь с заявкой на аренду
+  rentalApplicationId String?     @map("rental_application_id")
+  rentalType          RentalType? @map("rental_type")
+
+  invoices          Invoice[]
+  payments          Payment[]
+  client            Client?             @relation(fields: [clientId], references: [id])
+  manager           User?               @relation(fields: [managerId], references: [id])
+  room              Room                @relation(fields: [roomId], references: [id])
+  rentalApplication RentalApplication?  @relation(fields: [rentalApplicationId], references: [id])
 
   @@index([date])
   @@index([roomId])
   @@index([clientId])
   @@index([managerId])
   @@index([status])
+  @@index([rentalApplicationId])
   @@map("rentals")
 }
 
@@ -764,13 +804,18 @@ model Invoice {
   createdBy      String?           @map("created_by")
   createdAt      DateTime          @default(now()) @map("created_at")
   updatedAt      DateTime          @updatedAt @map("updated_at")
-  auditLogs      InvoiceAuditLog[]
-  items          InvoiceItem[]
-  client         Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  creator        User?             @relation("InvoiceCreator", fields: [createdBy], references: [id])
-  rental         Rental?           @relation(fields: [rentalId], references: [id])
-  subscription   Subscription?     @relation(fields: [subscriptionId], references: [id])
-  payments       Payment[]
+
+  // Связь с заявкой на аренду
+  rentalApplicationId String?      @map("rental_application_id")
+
+  auditLogs         InvoiceAuditLog[]
+  items             InvoiceItem[]
+  client            Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  creator           User?             @relation("InvoiceCreator", fields: [createdBy], references: [id])
+  rental            Rental?           @relation(fields: [rentalId], references: [id])
+  subscription      Subscription?     @relation(fields: [subscriptionId], references: [id])
+  payments          Payment[]
+  rentalApplication RentalApplication? @relation(fields: [rentalApplicationId], references: [id])
 
   @@index([clientId])
   @@index([subscriptionId])
@@ -779,6 +824,7 @@ model Invoice {
   @@index([issuedAt])
   @@index([dueDate])
   @@index([subscriptionId, status])
+  @@index([rentalApplicationId])
   @@map("invoices")
 }
 
@@ -1476,4 +1522,144 @@ model MedicalCertificateSchedule {
   @@index([compensationMonth])
   @@index([subscriptionId, compensationAmount])
   @@map("medical_certificate_schedules")
+}
+
+// ============================================
+// Rental Applications (Заявки на аренду)
+// ============================================
+
+model RentalApplication {
+  id                String                   @id @default(uuid())
+  version           Int                      @default(1)
+  applicationNumber String                   @unique @map("application_number")
+
+  // Тип аренды
+  rentalType        RentalType               @map("rental_type")
+
+  // Объект аренды
+  roomId            String?                  @map("room_id")
+
+  // Клиент
+  clientId          String                   @map("client_id")
+
+  // Период аренды
+  periodType        RentalPeriodType         @map("period_type")
+  startDate         DateTime                 @map("start_date") @db.Date
+  endDate           DateTime?                @map("end_date") @db.Date
+  startTime         DateTime?                @map("start_time") @db.Time(6)
+  endTime           DateTime?                @map("end_time") @db.Time(6)
+
+  // Ценообразование
+  basePrice         Decimal                  @map("base_price") @db.Decimal(10, 2)
+  adjustedPrice     Decimal?                 @map("adjusted_price") @db.Decimal(10, 2)
+  totalPrice        Decimal                  @map("total_price") @db.Decimal(10, 2)
+  priceUnit         PriceUnit                @map("price_unit")
+  quantity          Decimal                  @default(1) @db.Decimal(10, 2)
+  adjustmentReason  String?                  @map("adjustment_reason")
+
+  // Оплата
+  paymentType       RentalPaymentType        @default(PREPAYMENT) @map("payment_type")
+
+  // Статус
+  status            RentalApplicationStatus  @default(DRAFT)
+
+  // Метаданные
+  managerId         String?                  @map("manager_id")
+  notes             String?
+  eventType         String?                  @map("event_type")
+  createdAt         DateTime                 @default(now()) @map("created_at")
+  updatedAt         DateTime                 @updatedAt @map("updated_at")
+  confirmedAt       DateTime?                @map("confirmed_at")
+
+  // Связи
+  room              Room?                    @relation(fields: [roomId], references: [id])
+  client            Client                   @relation(fields: [clientId], references: [id])
+  manager           User?                    @relation(fields: [managerId], references: [id])
+  invoices          Invoice[]
+  rentals           Rental[]
+  workspaces        RentalApplicationWorkspace[]
+  selectedDays      RentalApplicationDay[]
+
+  @@index([clientId])
+  @@index([roomId])
+  @@index([status])
+  @@index([startDate, endDate])
+  @@index([createdAt])
+  @@map("rental_applications")
+}
+
+model RentalApplicationWorkspace {
+  id                  String            @id @default(uuid())
+  rentalApplicationId String            @map("rental_application_id")
+  workspaceId         String            @map("workspace_id")
+
+  rentalApplication   RentalApplication @relation(fields: [rentalApplicationId], references: [id], onDelete: Cascade)
+  workspace           Workspace         @relation(fields: [workspaceId], references: [id])
+
+  @@unique([rentalApplicationId, workspaceId])
+  @@index([rentalApplicationId])
+  @@index([workspaceId])
+  @@map("rental_application_workspaces")
+}
+
+model RentalApplicationDay {
+  id                  String            @id @default(uuid())
+  rentalApplicationId String            @map("rental_application_id")
+  date                DateTime          @db.Date
+
+  rentalApplication   RentalApplication @relation(fields: [rentalApplicationId], references: [id], onDelete: Cascade)
+
+  @@unique([rentalApplicationId, date])
+  @@index([rentalApplicationId])
+  @@index([date])
+  @@map("rental_application_days")
+}
+
+// ============================================
+// Rental Enums (Перечисления для аренды)
+// ============================================
+
+enum WorkspaceStatus {
+  AVAILABLE
+  OCCUPIED
+  MAINTENANCE
+}
+
+enum RentalType {
+  HOURLY            // Почасовая аренда помещения
+  WORKSPACE_DAILY   // Рабочее место на день
+  WORKSPACE_WEEKLY  // Рабочее место на неделю
+  WORKSPACE_MONTHLY // Рабочее место на месяц
+  ROOM_DAILY        // Кабинет целиком на день
+  ROOM_WEEKLY       // Кабинет целиком на неделю
+  ROOM_MONTHLY      // Кабинет целиком на месяц
+}
+
+enum RentalPeriodType {
+  HOURLY            // Дата + время
+  SPECIFIC_DAYS     // Конкретные выбранные дни
+  WEEKLY            // Недельный период (7 дней)
+  CALENDAR_MONTH    // Календарный месяц (1-30/31)
+  SLIDING_MONTH     // Скользящий месяц (30 дней с любой даты)
+}
+
+enum PriceUnit {
+  HOUR
+  DAY
+  WEEK
+  MONTH
+}
+
+enum RentalPaymentType {
+  PREPAYMENT        // Предоплата
+  POSTPAYMENT       // Постоплата
+}
+
+enum RentalApplicationStatus {
+  DRAFT             // Черновик
+  PENDING           // Ожидает подтверждения
+  CONFIRMED         // Подтверждена
+  ACTIVE            // Активна (период начался)
+  COMPLETED         // Завершена
+  CANCELLED         // Отменена
 }

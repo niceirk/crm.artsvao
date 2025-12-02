@@ -15,6 +15,10 @@ export class CreateInvoiceDto {
   @IsOptional()
   rentalId?: string;
 
+  @IsString()
+  @IsOptional()
+  rentalApplicationId?: string;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => CreateInvoiceItemDto)

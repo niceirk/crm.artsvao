@@ -9,6 +9,7 @@ export interface ConflictCheckParams {
   teacherId?: string; // Optional teacher ID (only for schedules)
   excludeScheduleId?: string;
   excludeRentalId?: string;
+  excludeApplicationId?: string; // Exclude rentals by rentalApplicationId
   excludeEventId?: string;
   excludeReservationId?: string;
 }
@@ -31,6 +32,7 @@ export class ConflictCheckerService {
       teacherId,
       excludeScheduleId,
       excludeRentalId,
+      excludeApplicationId,
       excludeEventId,
       excludeReservationId,
     } = params;
@@ -59,6 +61,7 @@ export class ConflictCheckerService {
           date: checkDate,
           roomId: { in: roomIds },
           id: excludeRentalId ? { not: excludeRentalId } : undefined,
+          rentalApplicationId: excludeApplicationId ? { not: excludeApplicationId } : undefined,
           status: { not: 'CANCELLED' },
         },
         include: {

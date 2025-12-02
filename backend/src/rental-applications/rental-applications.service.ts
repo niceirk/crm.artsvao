@@ -1,0 +1,1118 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { ConflictCheckerService } from '../shared/conflict-checker.service';
+import { InvoicesService } from '../invoices/invoices.service';
+import {
+  CreateRentalApplicationDto,
+  UpdateRentalApplicationDto,
+  CheckAvailabilityDto,
+  CalculatePriceDto,
+  ExtendRentalDto,
+  CancelRentalDto,
+} from './dto';
+import {
+  RentalType,
+  RentalPeriodType,
+  PriceUnit,
+  RentalApplicationStatus,
+  CalendarEventStatus,
+  ServiceType,
+  WriteOffTiming,
+  Prisma,
+} from '@prisma/client';
+import { AvailabilityResult, PriceCalculation, ConflictInfo } from './types';
+
+@Injectable()
+export class RentalApplicationsService {
+  constructor(
+    private prisma: PrismaService,
+    private conflictChecker: ConflictCheckerService,
+    private invoicesService: InvoicesService,
+  ) {}
+
+  /**
+   * Генерация номера заявки
+   */
+  private async generateApplicationNumber(): Promise<string> {
+    const year = new Date().getFullYear().toString().slice(-2);
+    const prefix = `АР-${year}-`;
+
+    const lastApplication = await this.prisma.rentalApplication.findFirst({
+      where: {
+        applicationNumber: { startsWith: prefix },
+      },
+      orderBy: { applicationNumber: 'desc' },
+    });
+
+    let nextNumber = 1;
+    if (lastApplication) {
+      const lastNumber = parseInt(lastApplication.applicationNumber.split('-').pop() || '0');
+      nextNumber = lastNumber + 1;
+    }
+
+    return `${prefix}${nextNumber.toString().padStart(6, '0')}`;
+  }
+
+  /**
+   * Расчет цены аренды
+   */
+  async calculatePrice(dto: CalculatePriceDto): Promise<PriceCalculation> {
+    const { rentalType, roomId, workspaceIds, periodType, startDate, endDate, startTime, endTime, selectedDays } = dto;
+
+    let basePrice = 0;
+    let quantity = 1;
+    let priceUnit: PriceUnit = PriceUnit.DAY;
+    const breakdown: { date?: string; price: number }[] = [];
+
+    // Получаем ставки в зависимости от типа аренды
+    if (rentalType === RentalType.HOURLY) {
+      // Почасовая аренда
+      if (!roomId) throw new BadRequestException('roomId обязателен для почасовой аренды');
+      if (!startTime || !endTime) throw new BadRequestException('startTime и endTime обязательны для почасовой аренды');
+
+      const room = await this.prisma.room.findUnique({ where: { id: roomId } });
+      if (!room) throw new NotFoundException('Помещение не найдено');
+
+      basePrice = Number(room.hourlyRate);
+      priceUnit = PriceUnit.HOUR;
+
+      // Расчет количества часов
+      const [startH, startM] = startTime.split(':').map(Number);
+      const [endH, endM] = endTime.split(':').map(Number);
+      const startMinutes = startH * 60 + startM;
+      const endMinutes = endH * 60 + endM;
+      quantity = Math.ceil((endMinutes - startMinutes) / 60);
+
+    } else if (rentalType.startsWith('WORKSPACE_')) {
+      // Аренда рабочих мест
+      if (!workspaceIds?.length) throw new BadRequestException('workspaceIds обязателен для аренды рабочих мест');
+
+      const workspaces = await this.prisma.workspace.findMany({
+        where: { id: { in: workspaceIds } },
+      });
+
+      if (workspaces.length !== workspaceIds.length) {
+        throw new NotFoundException('Некоторые рабочие места не найдены');
+      }
+
+      if (rentalType === RentalType.WORKSPACE_DAILY) {
+        priceUnit = PriceUnit.DAY;
+        basePrice = workspaces.reduce((sum, w) => sum + Number(w.dailyRate), 0);
+        quantity = this.calculateDaysCount(periodType, startDate, endDate, selectedDays);
+      } else if (rentalType === RentalType.WORKSPACE_WEEKLY) {
+        priceUnit = PriceUnit.WEEK;
+        basePrice = workspaces.reduce((sum, w) => sum + Number(w.weeklyRate || Number(w.dailyRate) * 7), 0);
+        quantity = this.calculateWeeksCount(startDate, endDate);
+      } else if (rentalType === RentalType.WORKSPACE_MONTHLY) {
+        priceUnit = PriceUnit.MONTH;
+        basePrice = workspaces.reduce((sum, w) => sum + Number(w.monthlyRate), 0);
+        quantity = this.calculateMonthsCount(periodType, startDate, endDate);
+      }
+
+    } else if (rentalType.startsWith('ROOM_')) {
+      // Аренда кабинета целиком
+      if (!roomId) throw new BadRequestException('roomId обязателен для аренды кабинета');
+
+      const room = await this.prisma.room.findUnique({ where: { id: roomId } });
+      if (!room) throw new NotFoundException('Помещение не найдено');
+      if (!room.isCoworking) throw new BadRequestException('Помещение не является коворкингом');
+
+      if (rentalType === RentalType.ROOM_DAILY) {
+        priceUnit = PriceUnit.DAY;
+        basePrice = Number(room.dailyRateCoworking || room.dailyRate || 0);
+        quantity = this.calculateDaysCount(periodType, startDate, endDate, selectedDays);
+      } else if (rentalType === RentalType.ROOM_WEEKLY) {
+        priceUnit = PriceUnit.WEEK;
+        basePrice = Number(room.weeklyRateCoworking || Number(room.dailyRateCoworking || room.dailyRate || 0) * 7);
+        quantity = this.calculateWeeksCount(startDate, endDate);
+      } else if (rentalType === RentalType.ROOM_MONTHLY) {
+        priceUnit = PriceUnit.MONTH;
+        basePrice = Number(room.monthlyRateCoworking || 0);
+        quantity = this.calculateMonthsCount(periodType, startDate, endDate);
+      }
+    }
+
+    return {
+      basePrice,
+      quantity,
+      priceUnit,
+      totalPrice: basePrice * quantity,
+      breakdown,
+    };
+  }
+
+  /**
+   * Проверка доступности
+   */
+  async checkAvailability(dto: CheckAvailabilityDto): Promise<AvailabilityResult> {
+    const { rentalType, roomId, workspaceIds, periodType, startDate, endDate, startTime, endTime, selectedDays, excludeApplicationId } = dto;
+    const conflicts: ConflictInfo[] = [];
+
+    // Получаем все даты для проверки
+    const datesToCheck = this.getDatesToCheck(periodType, startDate, endDate, selectedDays);
+
+    // Определяем roomId для проверки
+    let roomIdToCheck = roomId;
+    if (workspaceIds?.length && !roomId) {
+      const workspace = await this.prisma.workspace.findFirst({
+        where: { id: workspaceIds[0] },
+        select: { roomId: true },
+      });
+      roomIdToCheck = workspace?.roomId;
+    }
+
+    if (!roomIdToCheck) {
+      throw new BadRequestException('Не удалось определить помещение для проверки');
+    }
+
+    // Проверяем каждую дату
+    for (const date of datesToCheck) {
+      try {
+        // Для почасовой аренды проверяем конкретное время
+        if (rentalType === RentalType.HOURLY && startTime && endTime) {
+          await this.conflictChecker.checkConflicts({
+            date,
+            startTime,
+            endTime,
+            roomIds: [roomIdToCheck],
+            excludeApplicationId,
+          });
+        } else {
+          // Для дневной/недельной/месячной аренды проверяем весь день
+          await this.conflictChecker.checkConflicts({
+            date,
+            startTime: '00:00',
+            endTime: '23:59',
+            roomIds: [roomIdToCheck],
+            excludeApplicationId,
+          });
+        }
+      } catch (error) {
+        if (error instanceof ConflictException) {
+          conflicts.push({
+            date,
+            type: 'schedule',
+            description: error.message,
+            startTime,
+            endTime,
+          });
+        }
+      }
+    }
+
+    // Проверяем существующие заявки на аренду рабочих мест
+    if (workspaceIds?.length) {
+      const existingApplications = await this.prisma.rentalApplication.findMany({
+        where: {
+          id: excludeApplicationId ? { not: excludeApplicationId } : undefined,
+          status: { in: [RentalApplicationStatus.CONFIRMED, RentalApplicationStatus.ACTIVE] },
+          workspaces: { some: { workspaceId: { in: workspaceIds } } },
+          OR: datesToCheck.map(date => ({
+            AND: [
+              { startDate: { lte: new Date(date) } },
+              { OR: [{ endDate: { gte: new Date(date) } }, { endDate: null }] },
+            ],
+          })),
+        },
+        include: {
+          workspaces: { include: { workspace: true } },
+        },
+      });
+
+      for (const app of existingApplications) {
+        for (const date of datesToCheck) {
+          const appStart = new Date(app.startDate);
+          const appEnd = app.endDate ? new Date(app.endDate) : appStart;
+          const checkDate = new Date(date);
+
+          if (checkDate >= appStart && checkDate <= appEnd) {
+            const workspaceNames = app.workspaces.map(w => w.workspace.name).join(', ');
+            conflicts.push({
+              date,
+              type: 'rental',
+              description: `Рабочие места (${workspaceNames}) уже забронированы заявкой ${app.applicationNumber}`,
+            });
+          }
+        }
+      }
+    }
+
+    return {
+      available: conflicts.length === 0,
+      conflicts,
+    };
+  }
+
+  /**
+   * Создание заявки
+   */
+  async create(dto: CreateRentalApplicationDto, managerId: string) {
+    // Валидация клиента
+    const client = await this.prisma.client.findUnique({ where: { id: dto.clientId } });
+    if (!client) throw new NotFoundException('Клиент не найден');
+
+    // Валидация помещения
+    if (dto.roomId) {
+      const room = await this.prisma.room.findUnique({ where: { id: dto.roomId } });
+      if (!room) throw new NotFoundException('Помещение не найдено');
+    }
+
+    // Валидация рабочих мест
+    if (dto.workspaceIds?.length) {
+      const workspaces = await this.prisma.workspace.findMany({
+        where: { id: { in: dto.workspaceIds } },
+      });
+      if (workspaces.length !== dto.workspaceIds.length) {
+        throw new NotFoundException('Некоторые рабочие места не найдены');
+      }
+    }
+
+    // Проверка доступности (если не игнорируем конфликты)
+    if (!dto.ignoreConflicts) {
+      const availability = await this.checkAvailability({
+        rentalType: dto.rentalType,
+        roomId: dto.roomId,
+        workspaceIds: dto.workspaceIds,
+        periodType: dto.periodType,
+        startDate: dto.startDate,
+        endDate: dto.endDate,
+        startTime: dto.startTime,
+        endTime: dto.endTime,
+        selectedDays: dto.selectedDays,
+      });
+
+      if (!availability.available) {
+        throw new ConflictException({
+          message: 'Обнаружены конфликты бронирования',
+          conflicts: availability.conflicts,
+        });
+      }
+    }
+
+    // Расчет цены
+    const priceCalculation = await this.calculatePrice({
+      rentalType: dto.rentalType,
+      roomId: dto.roomId,
+      workspaceIds: dto.workspaceIds,
+      periodType: dto.periodType,
+      startDate: dto.startDate,
+      endDate: dto.endDate,
+      startTime: dto.startTime,
+      endTime: dto.endTime,
+      selectedDays: dto.selectedDays,
+    });
+
+    const applicationNumber = await this.generateApplicationNumber();
+    const effectivePrice = dto.adjustedPrice ?? dto.basePrice ?? priceCalculation.basePrice;
+    const totalPrice = effectivePrice * (dto.quantity ?? priceCalculation.quantity);
+
+    // Создание в транзакции
+    return this.prisma.$transaction(async (tx) => {
+      const application = await tx.rentalApplication.create({
+        data: {
+          applicationNumber,
+          rentalType: dto.rentalType,
+          roomId: dto.roomId,
+          clientId: dto.clientId,
+          periodType: dto.periodType,
+          startDate: new Date(dto.startDate),
+          endDate: dto.endDate ? new Date(dto.endDate) : null,
+          startTime: dto.startTime ? this.timeStringToDate(dto.startTime) : null,
+          endTime: dto.endTime ? this.timeStringToDate(dto.endTime) : null,
+          basePrice: dto.basePrice ?? priceCalculation.basePrice,
+          adjustedPrice: dto.adjustedPrice,
+          totalPrice,
+          priceUnit: dto.priceUnit ?? priceCalculation.priceUnit,
+          quantity: dto.quantity ?? priceCalculation.quantity,
+          adjustmentReason: dto.adjustmentReason,
+          paymentType: dto.paymentType,
+          status: RentalApplicationStatus.DRAFT,
+          managerId,
+          notes: dto.notes,
+          eventType: dto.eventType,
+        },
+      });
+
+      // Связь с рабочими местами
+      if (dto.workspaceIds?.length) {
+        await tx.rentalApplicationWorkspace.createMany({
+          data: dto.workspaceIds.map(workspaceId => ({
+            rentalApplicationId: application.id,
+            workspaceId,
+          })),
+        });
+      }
+
+      // Связь с выбранными днями
+      if (dto.selectedDays?.length) {
+        await tx.rentalApplicationDay.createMany({
+          data: dto.selectedDays.map(date => ({
+            rentalApplicationId: application.id,
+            date: new Date(date),
+          })),
+        });
+      }
+
+      // Создаем записи Rental для блокировки в календаре
+      const datesToBlock = this.getDatesToCheck(
+        dto.periodType,
+        dto.startDate,
+        dto.endDate,
+        dto.selectedDays,
+      );
+
+      // Определяем помещение (либо напрямую из roomId, либо из первого workspace)
+      let roomId = dto.roomId;
+      if (!roomId && dto.workspaceIds?.length) {
+        const firstWorkspace = await tx.workspace.findUnique({
+          where: { id: dto.workspaceIds[0] },
+        });
+        roomId = firstWorkspace?.roomId;
+      }
+
+      if (roomId) {
+        const clientName = `${client.lastName} ${client.firstName}`;
+
+        for (const date of datesToBlock) {
+          await tx.rental.create({
+            data: {
+              roomId,
+              clientId: dto.clientId,
+              clientName,
+              clientPhone: client.phone,
+              clientEmail: client.email,
+              eventType: dto.eventType || this.getRentalTypeLabel(dto.rentalType),
+              date: new Date(date),
+              startTime: dto.startTime ? this.timeStringToDate(dto.startTime) : this.timeStringToDate('00:00'),
+              endTime: dto.endTime ? this.timeStringToDate(dto.endTime) : this.timeStringToDate('23:59'),
+              totalPrice: Number(totalPrice) / datesToBlock.length,
+              managerId,
+              notes: dto.notes,
+              status: CalendarEventStatus.PLANNED,
+              rentalApplicationId: application.id,
+              rentalType: dto.rentalType,
+            },
+          });
+        }
+      }
+
+      // Возвращаем заявку с полными данными
+      return tx.rentalApplication.findUnique({
+        where: { id: application.id },
+        include: {
+          room: { select: { id: true, name: true, number: true, hourlyRate: true, dailyRateCoworking: true, weeklyRateCoworking: true, monthlyRateCoworking: true } },
+          client: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } },
+          manager: { select: { id: true, firstName: true, lastName: true } },
+          workspaces: { include: { workspace: true } },
+          selectedDays: true,
+          invoices: true,
+          rentals: true,
+        },
+      });
+    });
+  }
+
+  /**
+   * Получение списка заявок
+   */
+  async findAll(filters?: {
+    status?: RentalApplicationStatus;
+    rentalType?: RentalType;
+    clientId?: string;
+    roomId?: string;
+    startDate?: string;
+    endDate?: string;
+    search?: string;
+  }) {
+    const where: Prisma.RentalApplicationWhereInput = {};
+
+    if (filters?.status) where.status = filters.status;
+    if (filters?.rentalType) where.rentalType = filters.rentalType;
+    if (filters?.clientId) where.clientId = filters.clientId;
+    if (filters?.roomId) where.roomId = filters.roomId;
+
+    if (filters?.startDate && filters?.endDate) {
+      where.OR = [
+        { startDate: { gte: new Date(filters.startDate), lte: new Date(filters.endDate) } },
+        { endDate: { gte: new Date(filters.startDate), lte: new Date(filters.endDate) } },
+      ];
+    }
+
+    if (filters?.search) {
+      where.OR = [
+        { applicationNumber: { contains: filters.search, mode: 'insensitive' } },
+        { client: { firstName: { contains: filters.search, mode: 'insensitive' } } },
+        { client: { lastName: { contains: filters.search, mode: 'insensitive' } } },
+      ];
+    }
+
+    return this.prisma.rentalApplication.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        room: { select: { id: true, name: true, number: true } },
+        client: { select: { id: true, firstName: true, lastName: true, phone: true } },
+        manager: { select: { id: true, firstName: true, lastName: true } },
+        workspaces: { include: { workspace: true } },
+        selectedDays: true,
+        invoices: { select: { id: true, invoiceNumber: true, status: true, totalAmount: true } },
+        _count: { select: { rentals: true, invoices: true } },
+      },
+    });
+  }
+
+  /**
+   * Получение заявки по ID
+   */
+  async findOne(id: string) {
+    const application = await this.prisma.rentalApplication.findUnique({
+      where: { id },
+      include: {
+        room: { select: { id: true, name: true, number: true, hourlyRate: true, dailyRateCoworking: true, weeklyRateCoworking: true, monthlyRateCoworking: true } },
+        client: { select: { id: true, firstName: true, lastName: true, phone: true, email: true } },
+        manager: { select: { id: true, firstName: true, lastName: true } },
+        workspaces: { include: { workspace: true } },
+        selectedDays: true,
+        invoices: true,
+        rentals: true,
+      },
+    });
+
+    if (!application) {
+      throw new NotFoundException('Заявка на аренду не найдена');
+    }
+
+    return application;
+  }
+
+  /**
+   * Обновление заявки
+   */
+  async update(id: string, dto: UpdateRentalApplicationDto, managerId: string) {
+    const existing = await this.findOne(id);
+
+    // 1. Для CANCELLED и COMPLETED - всегда запрет
+    if (
+      existing.status === RentalApplicationStatus.CANCELLED ||
+      existing.status === RentalApplicationStatus.COMPLETED
+    ) {
+      throw new BadRequestException('Невозможно редактировать отменённую или завершённую заявку');
+    }
+
+    // 2. Для CONFIRMED/ACTIVE - проверяем связанный счёт
+    let linkedInvoice: any = null;
+    if (existing.status !== RentalApplicationStatus.DRAFT) {
+      const editCheck = await this.checkEditability(id);
+      if (!editCheck.canEdit) {
+        throw new BadRequestException(editCheck.reason);
+      }
+      linkedInvoice = editCheck.invoice;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Обновляем основные данные
+      const updateData: Prisma.RentalApplicationUpdateInput = {};
+
+      if (dto.rentalType !== undefined) updateData.rentalType = dto.rentalType;
+      if (dto.roomId !== undefined) updateData.room = { connect: { id: dto.roomId } };
+      if (dto.clientId !== undefined) updateData.client = { connect: { id: dto.clientId } };
+      if (dto.periodType !== undefined) updateData.periodType = dto.periodType;
+      if (dto.startDate !== undefined) updateData.startDate = new Date(dto.startDate);
+      if (dto.endDate !== undefined) updateData.endDate = new Date(dto.endDate);
+      if (dto.startTime !== undefined) updateData.startTime = this.timeStringToDate(dto.startTime);
+      if (dto.endTime !== undefined) updateData.endTime = this.timeStringToDate(dto.endTime);
+      if (dto.basePrice !== undefined) updateData.basePrice = dto.basePrice;
+      if (dto.adjustedPrice !== undefined) updateData.adjustedPrice = dto.adjustedPrice;
+      if (dto.adjustmentReason !== undefined) updateData.adjustmentReason = dto.adjustmentReason;
+      if (dto.priceUnit !== undefined) updateData.priceUnit = dto.priceUnit;
+      if (dto.quantity !== undefined) updateData.quantity = dto.quantity;
+      if (dto.paymentType !== undefined) updateData.paymentType = dto.paymentType;
+      if (dto.notes !== undefined) updateData.notes = dto.notes;
+      if (dto.eventType !== undefined) updateData.eventType = dto.eventType;
+      if (dto.status !== undefined) updateData.status = dto.status;
+
+      // Пересчет totalPrice
+      if (dto.basePrice !== undefined || dto.adjustedPrice !== undefined || dto.quantity !== undefined) {
+        const price = dto.adjustedPrice ?? dto.basePrice ?? Number(existing.adjustedPrice ?? existing.basePrice);
+        const qty = dto.quantity ?? Number(existing.quantity);
+        updateData.totalPrice = price * qty;
+      }
+
+      await tx.rentalApplication.update({
+        where: { id },
+        data: updateData,
+      });
+
+      // Обновляем рабочие места
+      if (dto.workspaceIds !== undefined) {
+        await tx.rentalApplicationWorkspace.deleteMany({ where: { rentalApplicationId: id } });
+        if (dto.workspaceIds.length > 0) {
+          await tx.rentalApplicationWorkspace.createMany({
+            data: dto.workspaceIds.map(workspaceId => ({
+              rentalApplicationId: id,
+              workspaceId,
+            })),
+          });
+        }
+      }
+
+      // Обновляем выбранные дни
+      if (dto.selectedDays !== undefined) {
+        await tx.rentalApplicationDay.deleteMany({ where: { rentalApplicationId: id } });
+        if (dto.selectedDays.length > 0) {
+          await tx.rentalApplicationDay.createMany({
+            data: dto.selectedDays.map(date => ({
+              rentalApplicationId: id,
+              date: new Date(date),
+            })),
+          });
+        }
+      }
+
+      // Пересоздаем Rental записи если изменились параметры расписания
+      const needsRentalRecreation =
+        dto.startDate !== undefined ||
+        dto.endDate !== undefined ||
+        dto.startTime !== undefined ||
+        dto.endTime !== undefined ||
+        dto.roomId !== undefined ||
+        dto.periodType !== undefined ||
+        dto.selectedDays !== undefined ||
+        dto.workspaceIds !== undefined;
+
+      if (needsRentalRecreation) {
+        // Удаляем старые Rental записи
+        await tx.rental.deleteMany({
+          where: { rentalApplicationId: id },
+        });
+
+        // Получаем обновленные данные заявки для создания новых Rental
+        const updatedApplication = await tx.rentalApplication.findUnique({
+          where: { id },
+          include: {
+            client: true,
+            selectedDays: true,
+            workspaces: { include: { workspace: true } },
+          },
+        });
+
+        if (updatedApplication) {
+          const datesToBlock = this.getDatesToCheck(
+            updatedApplication.periodType,
+            updatedApplication.startDate.toISOString().split('T')[0],
+            updatedApplication.endDate?.toISOString().split('T')[0],
+            updatedApplication.selectedDays.map(d => d.date.toISOString().split('T')[0]),
+          );
+
+          // Определяем помещение
+          let roomId = updatedApplication.roomId;
+          if (!roomId && updatedApplication.workspaces.length) {
+            roomId = updatedApplication.workspaces[0].workspace.roomId;
+          }
+
+          if (roomId) {
+            const clientName = `${updatedApplication.client.lastName} ${updatedApplication.client.firstName}`;
+
+            for (const date of datesToBlock) {
+              await tx.rental.create({
+                data: {
+                  roomId,
+                  clientId: updatedApplication.clientId,
+                  clientName,
+                  clientPhone: updatedApplication.client.phone,
+                  clientEmail: updatedApplication.client.email,
+                  eventType: updatedApplication.eventType || this.getRentalTypeLabel(updatedApplication.rentalType),
+                  date: new Date(date),
+                  startTime: updatedApplication.startTime || this.timeStringToDate('00:00'),
+                  endTime: updatedApplication.endTime || this.timeStringToDate('23:59'),
+                  totalPrice: Number(updatedApplication.totalPrice) / datesToBlock.length,
+                  managerId,
+                  notes: updatedApplication.notes,
+                  status: CalendarEventStatus.PLANNED,
+                  rentalApplicationId: updatedApplication.id,
+                  rentalType: updatedApplication.rentalType,
+                },
+              });
+            }
+          }
+        }
+      }
+
+      return id; // Возвращаем id для дальнейшей обработки
+    });
+
+    // Обновить связанный счёт если он есть (вне основной транзакции)
+    if (linkedInvoice) {
+      const updatedApp = await this.findOne(id);
+      await this.updateLinkedInvoice(linkedInvoice.id, updatedApp, dto);
+    }
+
+    return this.findOne(id);
+  }
+
+  /**
+   * Подтверждение заявки
+   */
+  async confirm(id: string, managerId: string) {
+    const application = await this.findOne(id);
+
+    if (application.status !== RentalApplicationStatus.DRAFT && application.status !== RentalApplicationStatus.PENDING) {
+      throw new BadRequestException('Можно подтвердить только черновик или ожидающую заявку');
+    }
+
+    // Повторная проверка доступности
+    const availability = await this.checkAvailability({
+      rentalType: application.rentalType,
+      roomId: application.roomId,
+      workspaceIds: application.workspaces.map(w => w.workspaceId),
+      periodType: application.periodType,
+      startDate: application.startDate.toISOString().split('T')[0],
+      endDate: application.endDate?.toISOString().split('T')[0],
+      startTime: application.startTime ? this.dateToTimeString(application.startTime) : undefined,
+      endTime: application.endTime ? this.dateToTimeString(application.endTime) : undefined,
+      selectedDays: application.selectedDays.map(d => d.date.toISOString().split('T')[0]),
+      excludeApplicationId: id,
+    });
+
+    if (!availability.available) {
+      throw new ConflictException({
+        message: 'Обнаружены конфликты при подтверждении',
+        conflicts: availability.conflicts,
+      });
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Rental записи уже созданы при создании DRAFT заявки, поэтому просто создаем счет
+
+      // Определяем помещение для Invoice
+      const roomId = application.roomId || application.workspaces[0]?.workspace.roomId;
+      const room = application.room || (roomId ? await tx.room.findUnique({ where: { id: roomId } }) : null);
+
+      await this.invoicesService.create({
+        clientId: application.clientId,
+        rentalApplicationId: application.id,
+        items: [{
+          serviceType: ServiceType.RENTAL,
+          serviceName: this.getInvoiceItemName(application, room),
+          serviceDescription: this.getInvoiceItemDescription(application),
+          roomId,
+          quantity: Number(application.quantity),
+          basePrice: Number(application.adjustedPrice ?? application.basePrice),
+          unitPrice: Number(application.adjustedPrice ?? application.basePrice),
+          vatRate: 0,
+          discountPercent: 0,
+          writeOffTiming: WriteOffTiming.ON_SALE,
+          isPriceAdjusted: !!application.adjustedPrice,
+          adjustmentReason: application.adjustmentReason,
+        }],
+        notes: application.notes,
+      }, managerId);
+
+      // Обновляем статус заявки
+      return tx.rentalApplication.update({
+        where: { id },
+        data: {
+          status: RentalApplicationStatus.CONFIRMED,
+          confirmedAt: new Date(),
+        },
+        include: {
+          room: true,
+          client: true,
+          manager: true,
+          workspaces: { include: { workspace: true } },
+          selectedDays: true,
+          invoices: true,
+          rentals: true,
+        },
+      });
+    });
+  }
+
+  /**
+   * Продление аренды
+   */
+  async extend(id: string, dto: ExtendRentalDto, managerId: string) {
+    const original = await this.findOne(id);
+
+    // Создаем новую заявку на основе существующей
+    const newApplication = await this.create({
+      rentalType: original.rentalType,
+      roomId: original.roomId,
+      workspaceIds: original.workspaces.map(w => w.workspaceId),
+      clientId: original.clientId,
+      periodType: original.periodType,
+      startDate: dto.newStartDate,
+      endDate: dto.newEndDate,
+      startTime: dto.startTime || (original.startTime ? this.dateToTimeString(original.startTime) : undefined),
+      endTime: dto.endTime || (original.endTime ? this.dateToTimeString(original.endTime) : undefined),
+      basePrice: Number(original.adjustedPrice ?? original.basePrice),
+      adjustedPrice: dto.adjustedPrice,
+      adjustmentReason: dto.adjustmentReason || `Продление заявки ${original.applicationNumber}`,
+      priceUnit: original.priceUnit,
+      paymentType: original.paymentType,
+      eventType: original.eventType,
+      notes: `Продление заявки ${original.applicationNumber}. ${original.notes || ''}`.trim(),
+    }, managerId);
+
+    return newApplication;
+  }
+
+  /**
+   * Отмена заявки
+   */
+  async cancel(id: string, dto: CancelRentalDto, managerId: string) {
+    const application = await this.findOne(id);
+
+    if (application.status === RentalApplicationStatus.CANCELLED) {
+      throw new BadRequestException('Заявка уже отменена');
+    }
+
+    if (application.status === RentalApplicationStatus.COMPLETED) {
+      throw new BadRequestException('Нельзя отменить завершенную заявку');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // Отменяем связанные Rental записи
+      await tx.rental.updateMany({
+        where: { rentalApplicationId: id },
+        data: { status: CalendarEventStatus.CANCELLED },
+      });
+
+      // Отменяем неоплаченные счета
+      const invoices = await tx.invoice.findMany({
+        where: {
+          rentalApplicationId: id,
+          status: { in: ['DRAFT', 'PENDING'] },
+        },
+      });
+
+      for (const invoice of invoices) {
+        await tx.invoice.update({
+          where: { id: invoice.id },
+          data: { status: 'CANCELLED' },
+        });
+      }
+
+      // Обновляем статус заявки
+      return tx.rentalApplication.update({
+        where: { id },
+        data: {
+          status: RentalApplicationStatus.CANCELLED,
+          notes: dto.reason ? `${application.notes || ''}\n\nПричина отмены: ${dto.reason}`.trim() : application.notes,
+        },
+        include: {
+          room: true,
+          client: true,
+          manager: true,
+          workspaces: { include: { workspace: true } },
+          selectedDays: true,
+          invoices: true,
+          rentals: true,
+        },
+      });
+    });
+  }
+
+  /**
+   * Удаление заявки на аренду
+   * - Блокирует если есть оплаченные счета
+   * - Отменяет неоплаченные счета
+   * - Удаляет Rental записи из расписания
+   */
+  async remove(id: string) {
+    const application = await this.findOne(id);
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Проверяем оплаченные счета
+      const paidInvoices = await tx.invoice.findMany({
+        where: {
+          rentalApplicationId: id,
+          status: { in: ['PAID', 'PARTIALLY_PAID'] },
+        },
+        select: { invoiceNumber: true },
+      });
+
+      if (paidInvoices.length > 0) {
+        const numbers = paidInvoices.map((i) => i.invoiceNumber).join(', ');
+        throw new BadRequestException(
+          `Невозможно удалить заявку: есть оплаченные счета (${numbers}). Сначала выполните возврат средств.`,
+        );
+      }
+
+      // 2. Отменяем неоплаченные счета
+      await tx.invoice.updateMany({
+        where: {
+          rentalApplicationId: id,
+          status: { in: ['PENDING', 'OVERDUE', 'DRAFT'] },
+        },
+        data: { status: 'CANCELLED' },
+      });
+
+      // 3. Удаляем Rental записи (бронирования)
+      await tx.rental.deleteMany({
+        where: { rentalApplicationId: id },
+      });
+
+      // 4. Удаляем заявку (каскадно удалятся workspaces и days)
+      return tx.rentalApplication.delete({ where: { id } });
+    });
+  }
+
+  // === Вспомогательные методы ===
+
+  /**
+   * Проверка возможности редактирования заявки с учётом связанных счетов
+   */
+  private async checkEditability(applicationId: string): Promise<{
+    canEdit: boolean;
+    invoice?: any;
+    reason?: string;
+  }> {
+    const invoice = await this.prisma.invoice.findFirst({
+      where: {
+        rentalApplicationId: applicationId,
+        status: { not: 'CANCELLED' },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!invoice) {
+      return { canEdit: true };
+    }
+
+    if (invoice.status === 'PAID' || invoice.status === 'PARTIALLY_PAID') {
+      return {
+        canEdit: false,
+        invoice,
+        reason: `Невозможно редактировать: счёт ${invoice.invoiceNumber} ${
+          invoice.status === 'PAID' ? 'оплачен' : 'частично оплачен'
+        }`,
+      };
+    }
+
+    return { canEdit: true, invoice };
+  }
+
+  /**
+   * Получить статус возможности редактирования заявки
+   */
+  async getEditStatus(id: string): Promise<{
+    canEdit: boolean;
+    reason?: string;
+    invoiceStatus?: string;
+    invoiceNumber?: string;
+  }> {
+    const application = await this.findOne(id);
+
+    if (application.status === RentalApplicationStatus.CANCELLED) {
+      return { canEdit: false, reason: 'Заявка отменена' };
+    }
+    if (application.status === RentalApplicationStatus.COMPLETED) {
+      return { canEdit: false, reason: 'Заявка завершена' };
+    }
+    if (application.status === RentalApplicationStatus.DRAFT) {
+      return { canEdit: true };
+    }
+
+    const editCheck = await this.checkEditability(id);
+
+    return {
+      canEdit: editCheck.canEdit,
+      reason: editCheck.reason,
+      invoiceStatus: editCheck.invoice?.status,
+      invoiceNumber: editCheck.invoice?.invoiceNumber,
+    };
+  }
+
+  /**
+   * Обновить позиции в связанном счёте при редактировании подтверждённой заявки
+   */
+  private async updateLinkedInvoice(
+    invoiceId: string,
+    application: any,
+    dto: UpdateRentalApplicationDto,
+  ): Promise<void> {
+    const needsUpdate =
+      dto.basePrice !== undefined ||
+      dto.adjustedPrice !== undefined ||
+      dto.quantity !== undefined ||
+      dto.startDate !== undefined ||
+      dto.endDate !== undefined ||
+      dto.selectedDays !== undefined ||
+      dto.workspaceIds !== undefined ||
+      dto.roomId !== undefined;
+
+    if (!needsUpdate) return;
+
+    const room =
+      application.room ||
+      (application.roomId
+        ? await this.prisma.room.findUnique({ where: { id: application.roomId } })
+        : null);
+
+    const newBasePrice =
+      dto.adjustedPrice ?? dto.basePrice ?? Number(application.adjustedPrice ?? application.basePrice);
+    const newQuantity = dto.quantity ?? Number(application.quantity);
+    const totalPrice = newBasePrice * newQuantity;
+
+    await this.prisma.$transaction(async (tx) => {
+      // Удалить старые позиции
+      await tx.invoiceItem.deleteMany({ where: { invoiceId } });
+
+      // Создать новую позицию с обновлёнными данными
+      await tx.invoiceItem.create({
+        data: {
+          invoiceId,
+          serviceType: 'RENTAL',
+          serviceName: this.getInvoiceItemName(application, room),
+          serviceDescription: this.getInvoiceItemDescription({
+            ...application,
+            startDate: dto.startDate ? new Date(dto.startDate) : application.startDate,
+            endDate: dto.endDate ? new Date(dto.endDate) : application.endDate,
+            startTime: dto.startTime ? this.timeStringToDate(dto.startTime) : application.startTime,
+            endTime: dto.endTime ? this.timeStringToDate(dto.endTime) : application.endTime,
+          }),
+          roomId: dto.roomId ?? application.roomId,
+          quantity: newQuantity,
+          basePrice: newBasePrice,
+          unitPrice: newBasePrice,
+          vatRate: 0,
+          vatAmount: 0,
+          discountPercent: 0,
+          discountAmount: 0,
+          totalPrice,
+          writeOffTiming: 'ON_SALE',
+          isPriceAdjusted: !!(dto.adjustedPrice || application.adjustedPrice),
+          adjustmentReason: dto.adjustmentReason ?? application.adjustmentReason,
+        },
+      });
+
+      // Обновить суммы счёта
+      await tx.invoice.update({
+        where: { id: invoiceId },
+        data: { subtotal: totalPrice, totalAmount: totalPrice },
+      });
+    });
+  }
+
+  private timeStringToDate(time: string): Date {
+    const [hour, min] = time.split(':').map(Number);
+    return new Date(Date.UTC(1970, 0, 1, hour, min, 0));
+  }
+
+  private dateToTimeString(date: Date): string {
+    const hours = date.getUTCHours().toString().padStart(2, '0');
+    const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+    return `${hours}:${minutes}`;
+  }
+
+  private calculateDaysCount(
+    periodType: RentalPeriodType,
+    startDate: string,
+    endDate?: string,
+    selectedDays?: string[],
+  ): number {
+    if (periodType === RentalPeriodType.SPECIFIC_DAYS && selectedDays?.length) {
+      return selectedDays.length;
+    }
+
+    if (!endDate) return 1;
+
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    return Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  }
+
+  private calculateWeeksCount(startDate: string, endDate?: string): number {
+    if (!endDate) return 1;
+
+    const days = this.calculateDaysCount(RentalPeriodType.SPECIFIC_DAYS, startDate, endDate);
+    return Math.ceil(days / 7);
+  }
+
+  private calculateMonthsCount(periodType: RentalPeriodType, startDate: string, endDate?: string): number {
+    if (!endDate) return 1;
+
+    if (periodType === RentalPeriodType.SLIDING_MONTH) {
+      // Для скользящего месяца всегда 1 месяц (30 дней от даты начала)
+      return 1;
+    }
+
+    // Календарные месяцы
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    return (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) + 1;
+  }
+
+  private getDatesToCheck(
+    periodType: RentalPeriodType,
+    startDate: string,
+    endDate?: string,
+    selectedDays?: string[],
+  ): string[] {
+    if (periodType === RentalPeriodType.SPECIFIC_DAYS && selectedDays?.length) {
+      return selectedDays;
+    }
+
+    const dates: string[] = [];
+    const start = new Date(startDate);
+    const end = endDate ? new Date(endDate) : start;
+
+    const current = new Date(start);
+    while (current <= end) {
+      dates.push(current.toISOString().split('T')[0]);
+      current.setDate(current.getDate() + 1);
+    }
+
+    return dates;
+  }
+
+  private getRentalTypeLabel(type: RentalType): string {
+    const labels: Record<RentalType, string> = {
+      HOURLY: 'Почасовая аренда',
+      WORKSPACE_DAILY: 'Рабочее место (день)',
+      WORKSPACE_WEEKLY: 'Рабочее место (неделя)',
+      WORKSPACE_MONTHLY: 'Рабочее место (месяц)',
+      ROOM_DAILY: 'Кабинет (день)',
+      ROOM_WEEKLY: 'Кабинет (неделя)',
+      ROOM_MONTHLY: 'Кабинет (месяц)',
+    };
+    return labels[type] || type;
+  }
+
+  private getInvoiceItemName(application: any, room: any): string {
+    const typeName = this.getRentalTypeLabel(application.rentalType);
+    const roomName = room ? `${room.name}${room.number ? ` №${room.number}` : ''}` : '';
+
+    if (application.workspaces?.length) {
+      const workspaceNames = application.workspaces.map((w: any) => w.workspace.name).join(', ');
+      return `${typeName}: ${workspaceNames}`;
+    }
+
+    return `${typeName}: ${roomName}`;
+  }
+
+  private getInvoiceItemDescription(application: any): string {
+    const startDate = application.startDate.toLocaleDateString('ru-RU');
+    const endDate = application.endDate?.toLocaleDateString('ru-RU');
+
+    let period = startDate;
+    if (endDate && endDate !== startDate) {
+      period = `${startDate} - ${endDate}`;
+    }
+
+    if (application.startTime && application.endTime) {
+      const startTime = this.dateToTimeString(application.startTime);
+      const endTime = this.dateToTimeString(application.endTime);
+      period += ` (${startTime}-${endTime})`;
+    }
+
+    return `Заявка ${application.applicationNumber}. Период: ${period}`;
+  }
+}

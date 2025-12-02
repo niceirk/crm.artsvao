@@ -83,6 +83,12 @@ export const navigationConfig: NavGroup[] = [
         description: 'Управление платежами',
       },
       {
+        title: 'Аренда',
+        href: '/rentals',
+        icon: Building2,
+        description: 'Заявки на аренду помещений и коворкинга',
+      },
+      {
         title: 'Табели',
         href: '/timesheets',
         icon: CalendarClock,

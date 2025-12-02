@@ -158,6 +158,23 @@ export class RentalsService {
             id: true,
             firstName: true,
             lastName: true,
+            email: true,
+          },
+        },
+        rentalApplication: {
+          select: {
+            id: true,
+            applicationNumber: true,
+            status: true,
+            invoices: {
+              select: {
+                id: true,
+                invoiceNumber: true,
+                status: true,
+                totalAmount: true,
+                paidAt: true,
+              },
+            },
           },
         },
         _count: {
@@ -185,6 +202,23 @@ export class RentalsService {
             id: true,
             firstName: true,
             lastName: true,
+            email: true,
+          },
+        },
+        rentalApplication: {
+          select: {
+            id: true,
+            applicationNumber: true,
+            status: true,
+            invoices: {
+              select: {
+                id: true,
+                invoiceNumber: true,
+                status: true,
+                totalAmount: true,
+                paidAt: true,
+              },
+            },
           },
         },
         _count: {

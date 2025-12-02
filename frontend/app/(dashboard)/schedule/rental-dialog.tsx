@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import Link from 'next/link';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 import {
   Form,
   FormControl,
@@ -40,6 +42,53 @@ const statusOptions = [
   { value: 'COMPLETED', label: 'Завершено' },
   { value: 'CANCELLED', label: 'Отменено' },
 ] as const;
+
+// Функции маппинга статусов заявок
+const getApplicationStatusVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
+  switch(status) {
+    case 'DRAFT': return 'secondary';
+    case 'CONFIRMED': return 'default';
+    case 'ACTIVE': return 'default';
+    case 'COMPLETED': return 'outline';
+    case 'CANCELLED': return 'destructive';
+    default: return 'default';
+  }
+};
+
+const getApplicationStatusLabel = (status: string) => {
+  const labels: Record<string, string> = {
+    'DRAFT': 'Черновик',
+    'PENDING': 'Ожидает',
+    'CONFIRMED': 'Подтверждена',
+    'ACTIVE': 'Активна',
+    'COMPLETED': 'Завершена',
+    'CANCELLED': 'Отменена',
+  };
+  return labels[status] || status;
+};
+
+// Функции маппинга статусов счетов
+const getInvoiceStatusVariant = (status: string, paidAt: string | null): "default" | "secondary" | "destructive" | "outline" => {
+  if (paidAt) return 'default';
+  switch(status) {
+    case 'DRAFT': return 'secondary';
+    case 'PENDING': return 'outline';
+    case 'PAID': return 'default';
+    case 'CANCELLED': return 'destructive';
+    default: return 'outline';
+  }
+};
+
+const getInvoiceStatusLabel = (status: string) => {
+  const labels: Record<string, string> = {
+    'DRAFT': 'Черновик',
+    'PENDING': 'Ожидает оплаты',
+    'PAID': 'Оплачено',
+    'OVERDUE': 'Просрочено',
+    'CANCELLED': 'Отменено',
+  };
+  return labels[status] || status;
+};
 
 const formSchema = z.object({
   roomId: z.string().min(1, 'Выберите помещение'),
@@ -176,6 +225,46 @@ export function RentalDialog({ open, onOpenChange, rental, initialData }: Rental
               : 'Заполните информацию о новой аренде'}
           </DialogDescription>
         </DialogHeader>
+
+        {rental?.rentalApplication && (
+          <div className="space-y-2 p-4 bg-muted/50 rounded-lg">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Заявка:</span>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/rentals/${rental.rentalApplication.id}`}
+                  className="text-sm text-primary hover:underline"
+                >
+                  {rental.rentalApplication.applicationNumber}
+                </Link>
+                <Badge variant={getApplicationStatusVariant(rental.rentalApplication.status)}>
+                  {getApplicationStatusLabel(rental.rentalApplication.status)}
+                </Badge>
+              </div>
+            </div>
+
+            {rental.rentalApplication.invoices && rental.rentalApplication.invoices.length > 0 && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Оплата:</span>
+                <div className="flex flex-col gap-1">
+                  {rental.rentalApplication.invoices.map(invoice => (
+                    <div key={invoice.id} className="flex items-center gap-2 justify-end">
+                      <Link
+                        href={`/invoices/${invoice.id}`}
+                        className="text-sm text-primary hover:underline"
+                      >
+                        {invoice.invoiceNumber}
+                      </Link>
+                      <Badge variant={getInvoiceStatusVariant(invoice.status, invoice.paidAt)}>
+                        {invoice.paidAt ? 'Оплачено' : getInvoiceStatusLabel(invoice.status)}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
