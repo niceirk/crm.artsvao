@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -43,18 +43,24 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
+import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 import { useCreateSchedule, useUpdateSchedule, useDeleteSchedule } from '@/hooks/use-schedules';
 import { useCreateRental, useUpdateRental, useDeleteRental } from '@/hooks/use-rentals';
 import { useCreateEvent, useUpdateEvent, useDeleteEvent, useEvents } from '@/hooks/use-events';
 import { useCreateReservation, useUpdateReservation, useDeleteReservation } from '@/hooks/use-reservations';
+import { useCreateRentalApplication } from '@/hooks/use-rental-applications';
 import { useGroups } from '@/hooks/use-groups';
 import { useTeachers } from '@/hooks/use-teachers';
 import { useRooms } from '@/hooks/use-rooms';
 import { useEventTypes } from '@/hooks/use-event-types';
+import { RoomDialog } from '@/app/(dashboard)/admin/rooms/room-dialog';
+import { ClientSearch } from '@/components/clients/client-search';
 import type { Schedule } from '@/lib/api/schedules';
 import type { Rental } from '@/lib/api/rentals';
 import type { Event } from '@/lib/api/events';
 import type { Reservation } from '@/lib/api/reservations';
+import type { Client } from '@/lib/types/clients';
 
 type EventType = 'schedule' | 'rental' | 'event' | 'reservation';
 
@@ -84,11 +90,12 @@ const scheduleFormSchema = z.object({
 
 const rentalFormSchema = z.object({
   roomId: z.string().min(1, 'Выберите помещение'),
-  clientName: z.string().min(1, 'Введите имя арендатора'),
+  clientId: z.string().optional(),
+  clientName: z.string().optional(),
   clientPhone: z.string().optional(),
   clientEmail: z.string().email('Неверный формат email').optional().or(z.literal('')),
   eventType: z.string().optional(),
-  totalPrice: z.number().optional(),
+  totalPrice: z.coerce.number().min(0).optional(),
   date: z.string().min(1, 'Выберите дату'),
   startTime: z.string().min(1, 'Введите время начала'),
   endTime: z.string().min(1, 'Введите время окончания'),
@@ -116,6 +123,86 @@ const reservationFormSchema = z.object({
   reservedBy: z.string().min(1, 'Введите имя'),
 });
 
+// Статусы заявки на аренду
+const RENTAL_APPLICATION_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Черновик',
+  PENDING: 'Ожидает',
+  CONFIRMED: 'Подтверждена',
+  ACTIVE: 'Активна',
+  COMPLETED: 'Завершена',
+  CANCELLED: 'Отменена',
+};
+
+const RENTAL_APPLICATION_STATUS_COLORS: Record<string, string> = {
+  DRAFT: 'bg-gray-100 text-gray-800',
+  PENDING: 'bg-yellow-100 text-yellow-800',
+  CONFIRMED: 'bg-blue-100 text-blue-800',
+  ACTIVE: 'bg-green-100 text-green-800',
+  COMPLETED: 'bg-purple-100 text-purple-800',
+  CANCELLED: 'bg-red-100 text-red-800',
+};
+
+// Статусы оплаты счёта
+const INVOICE_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Черновик',
+  PENDING: 'Ожидает оплаты',
+  PAID: 'Оплачено',
+  PARTIALLY_PAID: 'Частично оплачено',
+  OVERDUE: 'Просрочен',
+  CANCELLED: 'Отменён',
+};
+
+const INVOICE_STATUS_COLORS: Record<string, string> = {
+  DRAFT: 'bg-gray-100 text-gray-800',
+  PENDING: 'bg-yellow-100 text-yellow-800',
+  PAID: 'bg-green-100 text-green-800',
+  PARTIALLY_PAID: 'bg-orange-100 text-orange-800',
+  OVERDUE: 'bg-red-100 text-red-800',
+  CANCELLED: 'bg-gray-100 text-gray-800',
+};
+
+// Функция расчёта стоимости аренды
+function calculateRentalPrice(
+  rooms: { id: string; hourlyRate: number; dailyRateCoworking?: number; isCoworking?: boolean }[] | undefined,
+  roomId: string | undefined,
+  startTime: string | undefined,
+  endTime: string | undefined,
+  isCoworkingWithoutWorkspaces: boolean = false
+): { hours: number; hourlyRate: number; total: number; isDaily: boolean; dailyRate?: number } | null {
+  if (!rooms || !roomId || !startTime || !endTime) return null;
+
+  const room = rooms.find(r => r.id === roomId);
+  if (!room) return null;
+
+  // Для коворкинга без рабочих мест - дневной тариф
+  if (isCoworkingWithoutWorkspaces && room.dailyRateCoworking) {
+    const dailyRate = Number(room.dailyRateCoworking) || 0;
+    return {
+      hours: 0,
+      hourlyRate: 0,
+      total: dailyRate,
+      isDaily: true,
+      dailyRate,
+    };
+  }
+
+  const startParts = startTime.split(':');
+  const endParts = endTime.split(':');
+  const startMinutes = parseInt(startParts[0]) * 60 + parseInt(startParts[1] || '0');
+  const endMinutes = parseInt(endParts[0]) * 60 + parseInt(endParts[1] || '0');
+  const hours = (endMinutes - startMinutes) / 60;
+
+  if (hours <= 0) return null;
+
+  const hourlyRate = Number(room.hourlyRate) || 0;
+  return {
+    hours,
+    hourlyRate,
+    total: Math.round(hours * hourlyRate),
+    isDaily: false,
+  };
+}
+
 export function CalendarEventDialog({
   open,
   onOpenChange,
@@ -131,6 +218,9 @@ export function CalendarEventDialog({
     initialEventType || 'schedule'
   );
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [isFullDayMode, setIsFullDayMode] = useState(false);
+  const [showRoomDialog, setShowRoomDialog] = useState(false);
 
   const createSchedule = useCreateSchedule();
   const updateSchedule = useUpdateSchedule();
@@ -138,6 +228,7 @@ export function CalendarEventDialog({
   const createRental = useCreateRental();
   const updateRental = useUpdateRental();
   const deleteRental = useDeleteRental();
+  const createRentalApplication = useCreateRentalApplication();
   const createEvent = useCreateEvent();
   const updateEvent = useUpdateEvent();
   const deleteEvent = useDeleteEvent();
@@ -169,6 +260,29 @@ export function CalendarEventDialog({
     resolver: zodResolver(getFormSchema()),
     defaultValues: {},
   });
+
+  // Следим за значениями полей для расчёта стоимости аренды
+  const watchedRoomId = form.watch('roomId');
+  const watchedStartTime = form.watch('startTime');
+  const watchedEndTime = form.watch('endTime');
+
+  // Определяем выбранную комнату
+  const selectedRoom = useMemo(() => {
+    if (!watchedRoomId || !rooms) return null;
+    return rooms.find(r => r.id === watchedRoomId) || null;
+  }, [watchedRoomId, rooms]);
+
+  // Проверяем, является ли помещение коворкингом без рабочих мест
+  const isCoworkingWithoutWorkspaces = useMemo(() => {
+    if (!selectedRoom) return false;
+    return selectedRoom.isCoworking === true && (selectedRoom._count?.workspaces ?? 0) === 0;
+  }, [selectedRoom]);
+
+  // Автоматический расчёт стоимости аренды
+  const calculatedRentalPrice = useMemo(() => {
+    if (selectedEventType !== 'rental') return null;
+    return calculateRentalPrice(rooms, watchedRoomId, watchedStartTime, watchedEndTime, isCoworkingWithoutWorkspaces);
+  }, [selectedEventType, rooms, watchedRoomId, watchedStartTime, watchedEndTime, isCoworkingWithoutWorkspaces]);
 
   // Сбрасываем форму при смене типа события или открытии диалога
   useEffect(() => {
@@ -279,9 +393,12 @@ export function CalendarEventDialog({
           case 'rental':
             form.reset({
               ...baseData,
+              clientId: '',
               clientName: '',
               eventType: '',
+              totalPrice: 0,
             });
+            setSelectedClient(null);
             break;
           case 'event':
             form.reset({
@@ -300,6 +417,26 @@ export function CalendarEventDialog({
     }
   }, [open, schedule, rental, event, reservation, initialData, form, selectedEventType]);
 
+  // Автоустановка времени при режиме "Весь день"
+  useEffect(() => {
+    if (isFullDayMode && isCoworkingWithoutWorkspaces) {
+      form.setValue('startTime', '08:00');
+      form.setValue('endTime', '22:00');
+    }
+  }, [isFullDayMode, isCoworkingWithoutWorkspaces, form]);
+
+  // Сброс режима "Весь день" при смене помещения
+  useEffect(() => {
+    setIsFullDayMode(false);
+  }, [watchedRoomId]);
+
+  // Сброс режима "Весь день" при открытии диалога
+  useEffect(() => {
+    if (open) {
+      setIsFullDayMode(false);
+    }
+  }, [open]);
+
   const onSubmit = async (values: any) => {
     try {
       switch (selectedEventType) {
@@ -311,10 +448,61 @@ export function CalendarEventDialog({
           }
           break;
         case 'rental':
+          // Используем рассчитанную стоимость
+          const rentalPrice = calculatedRentalPrice?.total || 0;
+
           if (rental) {
-            await updateRental.mutateAsync({ id: rental.id, data: values });
+            // Обновление существующей аренды
+            await updateRental.mutateAsync({
+              id: rental.id,
+              data: { ...values, totalPrice: rentalPrice }
+            });
           } else {
-            await createRental.mutateAsync(values);
+            // Создание новой аренды
+            if (values.clientId) {
+              // Если выбран клиент - создаем заявку на аренду (в статусе DRAFT)
+              const room = rooms?.find(r => r.id === values.roomId);
+
+              // Для коворкинга без рабочих мест - используем дневной тариф
+              const isCoworkingRoom = room?.isCoworking === true && (room._count?.workspaces ?? 0) === 0;
+
+              if (isCoworkingRoom && room.dailyRateCoworking) {
+                await createRentalApplication.mutateAsync({
+                  rentalType: 'ROOM_DAILY',
+                  periodType: 'SPECIFIC_DAYS',
+                  roomId: values.roomId,
+                  clientId: values.clientId,
+                  startDate: values.date,
+                  startTime: values.startTime,
+                  endTime: values.endTime,
+                  basePrice: Number(room.dailyRateCoworking),
+                  priceUnit: 'DAY',
+                  eventType: values.eventType || 'Аренда коворкинга',
+                  notes: values.notes,
+                  ignoreConflicts: true,
+                });
+              } else {
+                // Почасовая аренда
+                const hourlyRate = Number(room?.hourlyRate) || calculatedRentalPrice?.hourlyRate || 0;
+                await createRentalApplication.mutateAsync({
+                  rentalType: 'HOURLY',
+                  periodType: 'HOURLY',
+                  roomId: values.roomId,
+                  clientId: values.clientId,
+                  startDate: values.date,
+                  startTime: values.startTime,
+                  endTime: values.endTime,
+                  basePrice: hourlyRate,
+                  priceUnit: 'HOUR',
+                  eventType: values.eventType || 'Аренда',
+                  notes: values.notes,
+                  ignoreConflicts: true,
+                });
+              }
+            } else {
+              // Если клиент не выбран - создаем только Rental (как раньше)
+              await createRental.mutateAsync({ ...values, totalPrice: rentalPrice });
+            }
           }
           break;
         case 'event':
@@ -363,7 +551,7 @@ export function CalendarEventDialog({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>
             {isEditing ? 'Редактировать событие' : 'Создать событие'}
@@ -522,36 +710,30 @@ export function CalendarEventDialog({
 
             {/* Поля для Аренды */}
             {selectedEventType === 'rental' && (
-              <>
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="clientName"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Имя арендатора *</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Иван Иванов" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="eventType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Тип мероприятия</FormLabel>
-                        <FormControl>
-                          <Input placeholder="День рождения, Корпоратив, Съёмка..." {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+              <div className="grid grid-cols-3 gap-4">
+                <FormField
+                  control={form.control}
+                  name="clientId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Клиент</FormLabel>
+                      <FormControl>
+                        <ClientSearch
+                          value={field.value}
+                          onValueChange={field.onChange}
+                          onClientSelect={(client) => {
+                            setSelectedClient(client);
+                            if (client) {
+                              form.setValue('clientName', `${client.lastName || ''} ${client.firstName || ''}`.trim());
+                            }
+                          }}
+                          placeholder="Выберите клиента"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={form.control}
@@ -562,15 +744,22 @@ export function CalendarEventDialog({
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Выберите помещение" />
+                            <SelectValue placeholder="Выберите" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {rooms?.map((room) => (
-                            <SelectItem key={room.id} value={room.id}>
-                              {room.name} {room.number ? `(${room.number})` : ''}
-                            </SelectItem>
-                          ))}
+                          {rooms?.map((room) => {
+                            const isCoworkingNoWorkspaces = room.isCoworking && (room._count?.workspaces ?? 0) === 0;
+                            return (
+                              <SelectItem key={room.id} value={room.id}>
+                                {room.name} {room.number ? `(${room.number})` : ''} — {
+                                  isCoworkingNoWorkspaces && room.dailyRateCoworking
+                                    ? `${Number(room.dailyRateCoworking).toLocaleString('ru-RU')} ₽/день`
+                                    : `${room.hourlyRate.toLocaleString('ru-RU')} ₽/ч`
+                                }
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -587,7 +776,7 @@ export function CalendarEventDialog({
                       <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Выберите статус" />
+                            <SelectValue placeholder="Выберите" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -601,7 +790,50 @@ export function CalendarEventDialog({
                     </FormItem>
                   )}
                 />
-              </>
+              </div>
+            )}
+
+            {/* Блок для коворкинга без рабочих мест */}
+            {selectedEventType === 'rental' && isCoworkingWithoutWorkspaces && (
+              <div className="p-3 bg-blue-50 rounded-md border border-blue-200">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-blue-900">
+                    Коворкинг (дневной тариф)
+                  </span>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="fullDayMode"
+                      checked={isFullDayMode}
+                      onCheckedChange={(checked) => setIsFullDayMode(checked === true)}
+                    />
+                    <label htmlFor="fullDayMode" className="text-sm text-blue-700 cursor-pointer">
+                      Весь день (08:00 - 22:00)
+                    </label>
+                  </div>
+                </div>
+                {selectedRoom?.dailyRateCoworking && (
+                  <div className="text-lg font-semibold text-blue-900">
+                    {Number(selectedRoom.dailyRateCoworking).toLocaleString('ru-RU')} ₽ / день
+                  </div>
+                )}
+                {!selectedRoom?.dailyRateCoworking && (
+                  <div className="text-sm text-amber-700">
+                    Дневной тариф не настроен для этого помещения.{' '}
+                    <button
+                      type="button"
+                      onClick={() => setShowRoomDialog(true)}
+                      className="text-gray-500 border-b border-dashed border-gray-400 hover:text-gray-700 hover:border-gray-600"
+                    >
+                      Установить тарифы
+                    </button>
+                  </div>
+                )}
+                {!isFullDayMode && selectedRoom?.dailyRateCoworking && (
+                  <p className="text-xs text-blue-700 mt-1">
+                    Выберите интервал времени ниже. Стоимость фиксирована - дневной тариф.
+                  </p>
+                )}
+              </div>
             )}
 
             {/* Поля для Мероприятия */}
@@ -792,7 +1024,11 @@ export function CalendarEventDialog({
                   <FormItem>
                     <FormLabel>Время начала *</FormLabel>
                     <FormControl>
-                      <Input type="time" {...field} />
+                      <Input
+                        type="time"
+                        {...field}
+                        disabled={isFullDayMode && isCoworkingWithoutWorkspaces}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -806,13 +1042,76 @@ export function CalendarEventDialog({
                   <FormItem>
                     <FormLabel>Время окончания *</FormLabel>
                     <FormControl>
-                      <Input type="time" {...field} />
+                      <Input
+                        type="time"
+                        {...field}
+                        disabled={isFullDayMode && isCoworkingWithoutWorkspaces}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}
               />
             </div>
+
+            {/* Блок стоимости и связи с заявкой (только для аренды) */}
+            {selectedEventType === 'rental' && (
+              <div className="p-3 bg-muted rounded-md space-y-2">
+                {/* Стоимость - всегда видна */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Стоимость:</span>
+                  {calculatedRentalPrice ? (
+                    <div className="text-right">
+                      <span className="text-lg font-semibold">
+                        {calculatedRentalPrice.total.toLocaleString('ru-RU')} ₽
+                      </span>
+                      {calculatedRentalPrice.isDaily ? (
+                        <span className="text-xs text-muted-foreground ml-2">
+                          (дневной тариф коворкинга)
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground ml-2">
+                          ({calculatedRentalPrice.hours} ч × {calculatedRentalPrice.hourlyRate.toLocaleString('ru-RU')} ₽/ч)
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-sm text-muted-foreground">Выберите помещение и время</span>
+                  )}
+                </div>
+
+                {/* Заявка (если есть) */}
+                {rental?.rentalApplication && (
+                  <>
+                    <div className="border-t pt-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge className={RENTAL_APPLICATION_STATUS_COLORS[rental.rentalApplication.status]}>
+                          {RENTAL_APPLICATION_STATUS_LABELS[rental.rentalApplication.status]}
+                        </Badge>
+                        <Link href={`/rentals/${rental.rentalApplication.id}`} className="text-sm text-primary hover:underline">
+                          Заявка №{rental.rentalApplication.applicationNumber}
+                        </Link>
+                      </div>
+                    </div>
+
+                    {/* Счёт (если есть) */}
+                    {rental.rentalApplication.invoices?.[0] && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge className={INVOICE_STATUS_COLORS[rental.rentalApplication.invoices[0].status]}>
+                          {INVOICE_STATUS_LABELS[rental.rentalApplication.invoices[0].status]}
+                        </Badge>
+                        <Link href={`/invoices/${rental.rentalApplication.invoices[0].id}`} className="text-sm text-primary hover:underline">
+                          Счёт №{rental.rentalApplication.invoices[0].invoiceNumber}
+                        </Link>
+                        <span className="text-sm font-medium ml-auto">
+                          {rental.rentalApplication.invoices[0].totalAmount.toLocaleString('ru-RU')} ₽
+                        </span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
 
             <FormField
               control={form.control}
@@ -979,6 +1278,13 @@ export function CalendarEventDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    {/* Диалог редактирования помещения */}
+    <RoomDialog
+      open={showRoomDialog}
+      onOpenChange={setShowRoomDialog}
+      room={selectedRoom || undefined}
+    />
     </>
   );
 }

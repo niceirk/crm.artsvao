@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { format, addMonths, addDays, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Calendar as CalendarIcon, ArrowLeft, AlertTriangle, Check, Loader2, Building2, Clock, Briefcase, DoorOpen } from 'lucide-react';
@@ -107,8 +107,23 @@ const initialFormData: FormData = {
 
 export default function NewRentalPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { sidebarCollapsed } = useNavigationStore();
-  const [formData, setFormData] = useState<FormData>(initialFormData);
+
+  // Получаем параметры предзаполнения из URL
+  const prefilledCategory = searchParams.get('category') as RentalCategory | null;
+  const prefilledPeriodUnit = searchParams.get('periodUnit') as 'day' | 'month' | null;
+  const prefilledRoomId = searchParams.get('roomId');
+  const prefilledWorkspaceId = searchParams.get('workspaceId');
+  const prefilledDate = searchParams.get('date');
+
+  // Инициализация формы с учётом предзаполненных данных
+  const [formData, setFormData] = useState<FormData>(() => ({
+    ...initialFormData,
+    category: prefilledCategory || null,
+    periodUnit: prefilledPeriodUnit || null,
+    roomId: prefilledRoomId || null,
+  }));
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [conflicts, setConflicts] = useState<ConflictInfo[]>([]);
   const [ignoreConflicts, setIgnoreConflicts] = useState(false);
@@ -214,12 +229,41 @@ export default function NewRentalPage() {
     }
   }, [selectedSlots, formData.category, formData.periodUnit]);
 
+  // Флаг для отслеживания первичной загрузки с предзаполненными данными
+  const [isInitialPrefill, setIsInitialPrefill] = useState(
+    () => !!(prefilledWorkspaceId && prefilledDate && prefilledCategory === 'workspace' && prefilledPeriodUnit === 'day')
+  );
+
   // Сброс selectedSlots и конфликтов при смене категории/периода/коворкинга
   useEffect(() => {
+    // Не сбрасываем если это первичная загрузка с предзаполненными данными
+    if (isInitialPrefill) {
+      return;
+    }
     setSelectedSlots([]);
     setConflicts([]);
     setIgnoreConflicts(false);
-  }, [formData.category, formData.periodUnit, formData.roomId]);
+  }, [formData.category, formData.periodUnit, formData.roomId, isInitialPrefill]);
+
+  // Предзаполнение слота из URL параметров
+  useEffect(() => {
+    if (
+      prefilledWorkspaceId &&
+      prefilledDate &&
+      prefilledCategory === 'workspace' &&
+      prefilledPeriodUnit === 'day' &&
+      selectedSlots.length === 0 &&
+      isInitialPrefill
+    ) {
+      const date = new Date(prefilledDate);
+      if (!isNaN(date.getTime())) {
+        setSelectedSlots([{ workspaceId: prefilledWorkspaceId, date }]);
+        // Сбрасываем флаг после успешного предзаполнения
+        // Используем setTimeout чтобы сброс произошёл после синхронизации formData
+        setTimeout(() => setIsInitialPrefill(false), 100);
+      }
+    }
+  }, [prefilledWorkspaceId, prefilledDate, prefilledCategory, prefilledPeriodUnit, isInitialPrefill]);
 
   // Расчет цены при изменении параметров
   useEffect(() => {
@@ -421,6 +465,18 @@ export default function NewRentalPage() {
     createMutation.mutate(dto, {
       onSuccess: () => {
         router.push('/rentals');
+      },
+      onError: (error: any) => {
+        // Обрабатываем конфликты
+        if (error?.response?.status === 409) {
+          const conflictData = error?.response?.data?.conflicts;
+          if (conflictData && Array.isArray(conflictData)) {
+            setConflicts(conflictData);
+            toast.error('Обнаружены конфликты бронирования. Проверьте и подтвердите создание.');
+          } else {
+            toast.error(error?.response?.data?.message || 'Обнаружены конфликты бронирования');
+          }
+        }
       },
     });
   };

@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { Plus, RefreshCw, AlertCircle } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Plus, RefreshCw, AlertCircle, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -29,6 +29,26 @@ export default function RoomsPage() {
   const [isConflictDialogOpen, setIsConflictDialogOpen] = useState(false);
   const [eventTypeConflicts, setEventTypeConflicts] = useState<EventTypeConflict[]>([]);
   const [roomConflicts, setRoomConflicts] = useState<RoomConflict[]>([]);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  // Сортировка помещений по sortOrder, затем по имени
+  const sortedRooms = useMemo(() => {
+    if (!rooms) return [];
+    return [...rooms].sort((a, b) => {
+      const sortOrderA = a.sortOrder ?? 0;
+      const sortOrderB = b.sortOrder ?? 0;
+      if (sortOrderA !== sortOrderB) {
+        return sortDirection === 'asc'
+          ? sortOrderA - sortOrderB
+          : sortOrderB - sortOrderA;
+      }
+      return a.name.localeCompare(b.name);
+    });
+  }, [rooms, sortDirection]);
+
+  const toggleSortDirection = () => {
+    setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+  };
 
   const handleSync = async () => {
     setIsSyncing(true);
@@ -134,7 +154,12 @@ export default function RoomsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <RoomsTable rooms={rooms || []} isLoading={isLoading} />
+          <RoomsTable
+            rooms={sortedRooms}
+            isLoading={isLoading}
+            sortDirection={sortDirection}
+            onSortChange={toggleSortDirection}
+          />
         </CardContent>
       </Card>
 

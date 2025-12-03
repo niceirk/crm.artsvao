@@ -14,12 +14,14 @@ export interface Room {
   weeklyRateCoworking?: number;
   monthlyRateCoworking?: number;
   isCoworking?: boolean;
+  sortOrder?: number;
   status: 'AVAILABLE' | 'MAINTENANCE' | 'RETIRED';
   createdAt: string;
   updatedAt: string;
   _count?: {
     schedules: number;
     rentals: number;
+    workspaces: number;
   };
 }
 
@@ -32,6 +34,10 @@ export interface CreateRoomDto {
   dailyRate?: number;
   description?: string;
   equipment?: string;
+  isCoworking?: boolean;
+  dailyRateCoworking?: number;
+  monthlyRateCoworking?: number;
+  sortOrder?: number;
 }
 
 export interface UpdateRoomDto extends Partial<CreateRoomDto> {}

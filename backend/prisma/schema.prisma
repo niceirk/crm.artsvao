@@ -348,6 +348,9 @@ model Room {
   weeklyRateCoworking  Decimal? @map("weekly_rate_coworking") @db.Decimal(10, 2)
   monthlyRateCoworking Decimal? @map("monthly_rate_coworking") @db.Decimal(10, 2)
 
+  // Сортировка
+  sortOrder            Float    @default(0) @map("sort_order")
+
   events             Event[]
   groups             Group[]
   invoiceItems       InvoiceItem[]

@@ -15,6 +15,6 @@ export function useCalendarEvents(
   return useQuery({
     queryKey: ['calendar-events', filters],
     queryFn: () => getAllCalendarEvents(filters),
-    staleTime: 30 * 1000, // 30 секунд - для realtime данных календаря
+    staleTime: 30 * 1000, // 30 секунд - баланс актуальности и производительности
   });
 }

@@ -42,10 +42,30 @@ export interface WorkspaceAvailability {
   occupiedDates: string[];
 }
 
+export interface OccupancyInfo {
+  applicationId: string;
+  applicationNumber: string;
+  clientName: string;
+  status: string;
+}
+
+// Новый формат: workspaceId -> { date -> OccupancyInfo }
+export type BatchAvailabilityResponse = Record<string, Record<string, OccupancyInfo>>;
+
 export const workspacesApi = {
   getAll: async (roomId?: string): Promise<Workspace[]> => {
     const params = roomId ? `?roomId=${roomId}` : '';
     const { data } = await apiClient.get(`/workspaces${params}`);
+    return data;
+  },
+
+  getByRoomIds: async (roomIds: string[]): Promise<Workspace[]> => {
+    if (roomIds.length === 0) {
+      return [];
+    }
+    const { data } = await apiClient.get('/workspaces/by-rooms', {
+      params: { roomIds: roomIds.join(',') },
+    });
     return data;
   },
 
@@ -65,7 +85,7 @@ export const workspacesApi = {
     workspaceIds: string[],
     startDate: string,
     endDate: string
-  ): Promise<Record<string, string[]>> => {
+  ): Promise<BatchAvailabilityResponse> => {
     const { data } = await apiClient.post('/workspaces/batch-availability', {
       workspaceIds,
       startDate,

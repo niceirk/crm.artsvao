@@ -33,6 +33,12 @@ export class WorkspacesController {
     return this.workspacesService.findAll(roomId);
   }
 
+  @Get('by-rooms')
+  findByRooms(@Query('roomIds') roomIds: string) {
+    const ids = roomIds ? roomIds.split(',').filter(Boolean) : [];
+    return this.workspacesService.findByRoomIds(ids);
+  }
+
   @Post('batch-availability')
   getBatchAvailability(@Body(ValidationPipe) dto: BatchAvailabilityDto) {
     return this.workspacesService.getBatchAvailability(

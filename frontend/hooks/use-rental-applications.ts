@@ -42,6 +42,9 @@ export function useCreateRentalApplication() {
     mutationFn: (data: CreateRentalApplicationDto) => rentalApplicationsApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: ['rentals'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', 'batch-availability'] });
       toast.success('Заявка на аренду создана');
     },
     onError: (error: any) => {
@@ -82,6 +85,7 @@ export function useConfirmRentalApplication() {
       queryClient.invalidateQueries({ queryKey: ['rentals'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', 'batch-availability'] });
       toast.success('Заявка подтверждена. Счет создан.');
     },
     onError: (error: any) => {
@@ -127,6 +131,7 @@ export function useCancelRentalApplication() {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
       queryClient.invalidateQueries({ queryKey: ['rentals'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', 'batch-availability'] });
       toast.success('Заявка отменена');
     },
     onError: (error: any) => {
@@ -146,6 +151,7 @@ export function useDeleteRentalApplication() {
       queryClient.invalidateQueries({ queryKey: ['rentals'] });
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      queryClient.invalidateQueries({ queryKey: ['workspaces', 'batch-availability'] });
       toast.success('Заявка удалена');
     },
     onError: (error: any) => {

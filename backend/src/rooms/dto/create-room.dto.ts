@@ -32,4 +32,19 @@ export class CreateRoomDto {
   @IsBoolean()
   @IsOptional()
   isCoworking?: boolean;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  dailyRateCoworking?: number;
+
+  @IsNumber()
+  @Min(0)
+  @IsOptional()
+  monthlyRateCoworking?: number;
+
+  @IsNumber()
+  @IsOptional()
+  @Min(0)
+  sortOrder?: number;
 }

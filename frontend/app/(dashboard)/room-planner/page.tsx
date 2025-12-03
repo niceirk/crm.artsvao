@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { Calendar, CalendarDays, LayoutList, Grid3x3, Search, ZoomIn, ZoomOut } from 'lucide-react';
+import { Calendar, CalendarDays, LayoutList, Grid3x3, Search, ZoomIn, ZoomOut, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { getCurrentDate } from '@/lib/utils/time-slots';
@@ -17,6 +17,13 @@ import { CalendarEventDialog } from '../schedule/calendar-event-dialog';
 import { AttendanceSheet } from '../schedule/attendance-sheet';
 import { Button } from '@/components/ui/button';
 import { useRoomPlannerScaleStore } from '@/lib/stores/room-planner-scale-store';
+import { useRoomPlannerSortStore } from '@/lib/stores/room-planner-sort-store';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import type { Schedule } from '@/lib/api/schedules';
 import type { Rental } from '@/lib/api/rentals';
 import type { Event } from '@/lib/api/events';
@@ -120,6 +127,9 @@ export default function RoomPlannerPage() {
 
   // Масштаб для режима шахматки
   const { scale, increaseScale, decreaseScale } = useRoomPlannerScaleStore();
+
+  // Режим сортировки помещений
+  const { sortByIndex, toggleSortMode } = useRoomPlannerSortStore();
 
   // Обработчик клика по помещению
   const handleRoomClick = (roomWithActivities: RoomWithActivities) => {
@@ -271,9 +281,31 @@ export default function RoomPlannerPage() {
           </span>
         )}
 
-        {/* Контролы масштабирования для режима шахматки */}
+        {/* Контролы масштабирования и сортировки для режима шахматки */}
         {activeTab === 'chess' && (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
+            {/* Кнопка сортировки */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant={sortByIndex ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={toggleSortMode}
+                    className="h-7 px-2"
+                  >
+                    <ArrowUpDown className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{sortByIndex ? 'Сортировка по индексу' : 'Сортировка по занятости'}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+
+            <div className="h-5 w-px bg-border" />
+
+            {/* Масштаб */}
             <Button
               variant="outline"
               size="sm"

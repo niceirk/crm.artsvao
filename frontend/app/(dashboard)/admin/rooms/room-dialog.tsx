@@ -49,7 +49,10 @@ const formSchema = z.object({
   hourlyRate: z.number().min(0, 'Минимум 0'),
   dailyRate: z.number().min(0, 'Минимум 0').optional(),
   equipment: z.string().optional(),
-  isCoworking: z.boolean().default(false),
+  isCoworking: z.boolean().optional(),
+  dailyRateCoworking: z.number().min(0, 'Минимум 0').optional(),
+  monthlyRateCoworking: z.number().min(0, 'Минимум 0').optional(),
+  sortOrder: z.number().int().min(0, 'Минимум 0').optional(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -75,6 +78,9 @@ export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
       dailyRate: 7000,
       equipment: '',
       isCoworking: false,
+      dailyRateCoworking: undefined,
+      monthlyRateCoworking: undefined,
+      sortOrder: 0,
     },
   });
 
@@ -89,6 +95,9 @@ export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
         dailyRate: room.dailyRate ? Number(room.dailyRate) : undefined,
         equipment: room.equipment || '',
         isCoworking: room.isCoworking || false,
+        dailyRateCoworking: room.dailyRateCoworking ? Number(room.dailyRateCoworking) : undefined,
+        monthlyRateCoworking: room.monthlyRateCoworking ? Number(room.monthlyRateCoworking) : undefined,
+        sortOrder: room.sortOrder || 0,
       });
     } else {
       form.reset({
@@ -100,6 +109,9 @@ export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
         dailyRate: 7000,
         equipment: '',
         isCoworking: false,
+        dailyRateCoworking: undefined,
+        monthlyRateCoworking: undefined,
+        sortOrder: 0,
       });
     }
   }, [room, form, open]);
@@ -284,6 +296,31 @@ export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
 
             <FormField
               control={form.control}
+              name="sortOrder"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Порядок сортировки</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      value={field.value ?? 0}
+                      onChange={(e) => field.onChange(e.target.valueAsNumber || 0)}
+                      onBlur={field.onBlur}
+                      name={field.name}
+                      ref={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    Чем меньше число, тем выше помещение в списке (при включенной сортировке по индексу)
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
               name="isCoworking"
               render={({ field }) => (
                 <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4">
@@ -302,6 +339,56 @@ export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
                 </FormItem>
               )}
             />
+
+            {form.watch('isCoworking') && (
+              <div className="grid grid-cols-2 gap-4 ml-7 p-4 border rounded-md bg-muted/50">
+                <FormField
+                  control={form.control}
+                  name="dailyRateCoworking"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Дневной тариф коворкинга</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="1500"
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          ref={field.ref}
+                        />
+                      </FormControl>
+                      <FormDescription>Рублей в день (без рабочих мест)</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="monthlyRateCoworking"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Месячный тариф коворкинга</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="20000"
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          ref={field.ref}
+                        />
+                      </FormControl>
+                      <FormDescription>Рублей в месяц</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
 
             <div className="flex justify-end gap-2">
               <Button

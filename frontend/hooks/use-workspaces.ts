@@ -45,11 +45,16 @@ export function useWorkspacesAvailability(
   });
 
   // Создаем Map: workspaceId -> occupiedDates[]
+  // Новый формат данных: { workspaceId: { date: OccupancyInfo } }
+  // Преобразуем в массив дат для обратной совместимости
   const availabilityMap = useMemo(() => {
     const map = new Map<string, string[]>();
     if (query.data) {
-      Object.entries(query.data).forEach(([id, dates]) => {
-        map.set(id, dates as string[]);
+      Object.entries(query.data).forEach(([id, dateOccupancyMap]) => {
+        // dateOccupancyMap - это объект { date: OccupancyInfo }
+        // Извлекаем ключи (даты) и сортируем
+        const occupiedDates = Object.keys(dateOccupancyMap).sort();
+        map.set(id, occupiedDates);
       });
     }
     return map;

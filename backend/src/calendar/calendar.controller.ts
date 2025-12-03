@@ -41,4 +41,30 @@ export class CalendarController {
       eventTypeId,
     });
   }
+
+  /**
+   * GET /calendar/week-events
+   * Получить все события за диапазон дат ОДНИМ запросом
+   *
+   * Оптимизация для недельного режима шахматки:
+   * - Вместо 7 параллельных HTTP запросов (по одному на день)
+   * - Делается 1 запрос с диапазоном дат
+   * - Backend выполняет 4 SQL запроса вместо 28
+   *
+   * @param startDate - Начало диапазона (ISO date string)
+   * @param endDate - Конец диапазона (ISO date string)
+   * @param roomId - ID комнаты для фильтрации (опционально)
+   */
+  @Get('week-events')
+  getWeekEvents(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('roomId') roomId?: string | string[],
+  ) {
+    return this.calendarService.getWeekEvents({
+      startDate,
+      endDate,
+      roomId,
+    });
+  }
 }

@@ -332,23 +332,26 @@ build_images() {
 }
 
 # === ПРОВЕРКА ГОТОВНОСТИ БД ===
+# Примечание: приложение использует ОБЛАЧНУЮ БД (TWC), а не локальный postgres
+# Проверяем готовность через backend /api/health/liveness (без проверки БД)
 wait_for_db() {
-    local max_attempts=15  # Уменьшено с 30 до 15 (макс 30 сек)
+    local max_attempts=15
     local attempt=1
 
-    log "Ожидание готовности базы данных..."
+    log "Ожидание готовности backend..."
 
     while [[ $attempt -le $max_attempts ]]; do
-        if ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml exec -T postgres pg_isready -U postgres" 2>/dev/null; then
-            log "База данных готова (попытка $attempt)"
+        # Проверяем liveness endpoint (не требует БД)
+        if ssh_exec "docker exec artsvao-backend wget -q -O- --timeout=5 http://localhost:3000/api/health/liveness 2>/dev/null | grep -q ok"; then
+            log "Backend готов (попытка $attempt)"
             return 0
         fi
-        log "Попытка $attempt/$max_attempts: БД не готова, ждём..."
+        log "Попытка $attempt/$max_attempts: Backend не готов, ждём..."
         sleep 2
         ((attempt++))
     done
 
-    error "База данных не стала доступна за $max_attempts попыток"
+    error "Backend не стал доступен за $max_attempts попыток"
     return 1
 }
 
@@ -365,19 +368,19 @@ run_migrations() {
 
     log "Lock файл создан"
 
-    # Поднимаем postgres + backend вместе
-    log "Запуск postgres и backend..."
-    ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml up -d postgres backend"
+    # Запускаем только backend (он использует ОБЛАЧНУЮ БД, локальный postgres не нужен для миграций)
+    log "Запуск backend..."
+    ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml up -d backend"
 
-    # Ждём готовности БД
+    # Ждём готовности backend
     if ! wait_for_db; then
         ssh_exec "rm -f /tmp/artsvao-migration.lock"
         return 1
     fi
 
-    log "Запуск миграций внутри уже запущенного backend..."
+    log "Запуск миграций на облачной БД..."
 
-    # Используем exec вместо run --rm для ускорения (не создаём новый контейнер)
+    # Выполняем миграции
     if ! ssh_exec "cd $DEPLOY_PATH && docker compose -f docker-compose.prod.yml exec -T backend npx prisma migrate deploy"; then
         error "Миграция провалена!"
         ssh_exec "rm -f /tmp/artsvao-migration.lock"
@@ -423,10 +426,10 @@ health_check() {
     # Ждём немного для инициализации
     sleep 5
 
-    # Проверка backend
+    # Проверка backend (через docker exec, т.к. порт не проброшен на хост)
     log "Проверка backend..."
     while [[ $attempt -le $max_attempts ]]; do
-        if ssh_exec "curl -sf http://localhost:3000/api/health" >/dev/null 2>&1; then
+        if ssh_exec "docker exec artsvao-backend wget -qO- http://localhost:3000/api/health 2>/dev/null | grep -q ok"; then
             success "Backend работает"
             break
         fi
@@ -436,14 +439,14 @@ health_check() {
     done
 
     if [[ $attempt -gt $max_attempts ]]; then
-        warn "Backend health check не пройден (возможно, /api/health не существует)"
+        warn "Backend health check не пройден"
     fi
 
-    # Проверка frontend
+    # Проверка frontend (через docker exec, т.к. порт не проброшен на хост)
     attempt=1
     log "Проверка frontend..."
     while [[ $attempt -le $max_attempts ]]; do
-        if ssh_exec "curl -sf http://localhost:3001" >/dev/null 2>&1; then
+        if ssh_exec "docker exec artsvao-frontend wget -qO- http://127.0.0.1:3001 2>/dev/null | grep -q DOCTYPE"; then
             success "Frontend работает"
             break
         fi

@@ -65,3 +65,27 @@ export async function getAllCalendarEvents(filters?: CalendarFilters): Promise<C
   const { data } = await apiClient.get<CalendarEventsResponse>(url);
   return data;
 }
+
+/**
+ * Получить все события за диапазон дат ОДНИМ запросом
+ * Оптимизация для недельного режима шахматки:
+ * - 1 HTTP запрос вместо 7
+ * - 4 SQL запроса на backend вместо 28
+ */
+export async function getWeekCalendarEvents(
+  startDate: string,
+  endDate: string,
+  roomIds?: string[]
+): Promise<CalendarEventsResponse> {
+  const params = new URLSearchParams();
+  params.append('startDate', startDate);
+  params.append('endDate', endDate);
+
+  if (roomIds && roomIds.length > 0) {
+    roomIds.forEach(id => params.append('roomId', id));
+  }
+
+  const url = `/calendar/week-events?${params.toString()}`;
+  const { data } = await apiClient.get<CalendarEventsResponse>(url);
+  return data;
+}

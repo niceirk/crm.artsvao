@@ -8,6 +8,16 @@ import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import { Workspace, WorkspaceStatus } from '@prisma/client';
 
+/**
+ * Информация о занятости рабочего места на конкретную дату
+ */
+export interface OccupancyInfo {
+  applicationId: string;
+  applicationNumber: string;
+  clientName: string;
+  status: string;
+}
+
 @Injectable()
 export class WorkspacesService {
   constructor(private prisma: PrismaService) {}
@@ -186,13 +196,14 @@ export class WorkspacesService {
       throw new NotFoundException('Рабочее место не найдено');
     }
 
-    // Получаем все активные заявки на это рабочее место в указанном периоде
+    // Получаем все заявки на это рабочее место в указанном периоде
+    // Включаем DRAFT и PENDING - чтобы занятость отображалась сразу после создания заявки
     const applications = await this.prisma.rentalApplicationWorkspace.findMany({
       where: {
         workspaceId,
         rentalApplication: {
           status: {
-            in: ['CONFIRMED', 'ACTIVE'],
+            in: ['DRAFT', 'PENDING', 'CONFIRMED', 'ACTIVE'],
           },
           OR: [
             {
@@ -260,22 +271,24 @@ export class WorkspacesService {
   /**
    * Получение доступности для нескольких рабочих мест одним запросом
    * Оптимизировано для уменьшения количества запросов к БД
+   * Возвращает для каждого workspace массив занятых дат с информацией о заявке
    */
   async getBatchAvailability(
     workspaceIds: string[],
     startDate: string,
     endDate: string,
-  ): Promise<Record<string, string[]>> {
+  ): Promise<Record<string, Record<string, OccupancyInfo>>> {
     if (workspaceIds.length === 0) {
       return {};
     }
 
     // Один запрос для всех workspaces
+    // Включаем DRAFT и PENDING - чтобы занятость отображалась сразу после создания заявки
     const applications = await this.prisma.rentalApplicationWorkspace.findMany({
       where: {
         workspaceId: { in: workspaceIds },
         rentalApplication: {
-          status: { in: ['CONFIRMED', 'ACTIVE'] },
+          status: { in: ['DRAFT', 'PENDING', 'CONFIRMED', 'ACTIVE'] },
           OR: [
             {
               startDate: { lte: new Date(endDate) },
@@ -292,15 +305,19 @@ export class WorkspacesService {
         rentalApplication: {
           include: {
             selectedDays: true,
+            client: {
+              select: { firstName: true, lastName: true },
+            },
           },
         },
       },
     });
 
     // Инициализация результата для всех запрошенных workspaces
-    const result: Record<string, Set<string>> = {};
+    // Формат: { workspaceId: { date: OccupancyInfo } }
+    const result: Record<string, Record<string, OccupancyInfo>> = {};
     for (const wsId of workspaceIds) {
-      result[wsId] = new Set<string>();
+      result[wsId] = {};
     }
 
     // Группировка занятых дат по workspaceId
@@ -308,12 +325,19 @@ export class WorkspacesService {
       const app = appWorkspace.rentalApplication;
       const wsId = appWorkspace.workspaceId;
 
+      const occupancyInfo: OccupancyInfo = {
+        applicationId: app.id,
+        applicationNumber: app.applicationNumber,
+        clientName: `${app.client.lastName} ${app.client.firstName}`,
+        status: app.status,
+      };
+
       if (app.periodType === 'SPECIFIC_DAYS') {
         // Для конкретных дней - берём из selectedDays
         for (const day of app.selectedDays) {
           const dateStr = day.date.toISOString().split('T')[0];
           if (dateStr >= startDate && dateStr <= endDate) {
-            result[wsId].add(dateStr);
+            result[wsId][dateStr] = occupancyInfo;
           }
         }
       } else {
@@ -330,25 +354,41 @@ export class WorkspacesService {
 
         const current = new Date(rangeStart);
         while (current <= rangeEnd) {
-          result[wsId].add(current.toISOString().split('T')[0]);
+          const dateStr = current.toISOString().split('T')[0];
+          result[wsId][dateStr] = occupancyInfo;
           current.setDate(current.getDate() + 1);
         }
       }
     }
 
-    // Преобразование Set в отсортированные массивы
-    const finalResult: Record<string, string[]> = {};
-    for (const wsId of workspaceIds) {
-      finalResult[wsId] = Array.from(result[wsId]).sort();
-    }
-
-    return finalResult;
+    return result;
   }
 
   async findByRoom(roomId: string): Promise<Workspace[]> {
     return this.prisma.workspace.findMany({
       where: { roomId },
       orderBy: { name: 'asc' },
+    });
+  }
+
+  async findByRoomIds(roomIds: string[]): Promise<Workspace[]> {
+    if (roomIds.length === 0) {
+      return [];
+    }
+
+    return this.prisma.workspace.findMany({
+      where: { roomId: { in: roomIds } },
+      include: {
+        room: {
+          select: {
+            id: true,
+            name: true,
+            number: true,
+            isCoworking: true,
+          },
+        },
+      },
+      orderBy: [{ roomId: 'asc' }, { name: 'asc' }],
     });
   }
 }

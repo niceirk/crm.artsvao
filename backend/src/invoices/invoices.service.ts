@@ -118,6 +118,7 @@ export class InvoicesService {
         clientId: dto.clientId,
         subscriptionId: dto.subscriptionId,
         rentalId: dto.rentalId,
+        rentalApplicationId: dto.rentalApplicationId,
         subtotal,
         discountAmount: dto.discountAmount || 0,
         totalAmount,

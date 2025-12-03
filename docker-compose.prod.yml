@@ -34,11 +34,13 @@ services:
     networks:
       - artsvao-network
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      # Используем liveness вместо health, т.к. health проверяет БД и может зависнуть
+      # при проблемах с соединением к облачной PostgreSQL
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health/liveness"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s  # Increased for complex database migrations
+      start_period: 120s
 
   frontend:
     build:

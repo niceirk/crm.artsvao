@@ -193,16 +193,26 @@ function mapApplicationToFormData(app: RentalApplication): FormData {
     }
   }
 
-  // Для HOURLY - создать слоты
+  // Для HOURLY - создать слоты для каждого часа
   let selectedHourlySlots: HourlyTimeSlot[] = [];
   if (category === 'hourly') {
     const startHour = parseInt(startTime.split(':')[0]);
     const endHour = parseInt(endTime.split(':')[0]);
-    selectedHourlySlots = [{
-      date: startDate,
-      startHour,
-      endHour,
-    }];
+
+    // Получаем даты для создания слотов
+    const datesForSlots = selectedDays.length > 0 ? selectedDays : [startDate];
+
+    // Создаём отдельный слот для каждого часа на каждый день
+    datesForSlots.forEach(date => {
+      for (let hour = startHour; hour < endHour; hour++) {
+        selectedHourlySlots.push({
+          date,
+          startHour: hour,
+          endHour: hour + 1,
+        });
+      }
+    });
+
     console.log('HOURLY slots created:', selectedHourlySlots);
   }
 
@@ -1438,15 +1448,44 @@ export default function EditRentalPage() {
       )}>
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between gap-4">
-            {/* Режим просмотра - только кнопка Назад */}
+            {/* Режим просмотра - кнопка Назад и информация о стоимости */}
             {isViewMode ? (
-              <Button
-                variant="outline"
-                onClick={() => router.push('/rentals')}
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Назад к списку
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => router.push('/rentals')}
+                >
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Назад к списку
+                </Button>
+
+                {/* Информация о стоимости в режиме просмотра */}
+                <div className="flex items-center gap-6 ml-auto">
+                  {priceCalculation ? (
+                    <>
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-2xl font-bold">
+                          {formData.adjustedPrice
+                            ? (formData.adjustedPrice * priceCalculation.quantity).toLocaleString('ru-RU')
+                            : priceCalculation.totalPrice.toLocaleString('ru-RU')
+                          } ₽
+                        </span>
+                        {formData.adjustedPrice && (
+                          <span className="text-sm text-muted-foreground line-through">
+                            {priceCalculation.totalPrice.toLocaleString('ru-RU')} ₽
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {priceCalculation.basePrice.toLocaleString('ru-RU')} ₽ × {priceCalculation.quantity} {
+                          priceCalculation.priceUnit === 'HOUR' ? 'ч' :
+                          priceCalculation.priceUnit === 'DAY' ? 'д' : 'мес'
+                        }
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </>
             ) : (
               <>
                 {/* Режим редактирования - Выйти слева */}

@@ -13,6 +13,12 @@ export interface CalendarFilters {
   eventTypeId?: string | string[];
 }
 
+export interface WeekCalendarFilters {
+  startDate: string;
+  endDate: string;
+  roomId?: string | string[];
+}
+
 export interface CalendarResponse {
   schedules: any[];
   rentals: any[];
@@ -56,6 +62,45 @@ export class CalendarService {
         date: filters.date,
         roomId: filters.roomId,
         status: filters.status,
+      }),
+    ]);
+
+    return {
+      schedules,
+      rentals,
+      events,
+      reservations,
+    };
+  }
+
+  /**
+   * Получить все события за диапазон дат ОДНИМ запросом
+   * Оптимизация для недельного режима шахматки:
+   * - 4 SQL запроса вместо 28 (7 дней × 4 запроса)
+   */
+  async getWeekEvents(filters: WeekCalendarFilters): Promise<CalendarResponse> {
+    const { startDate, endDate, roomId } = filters;
+
+    // Выполняем все 4 запроса параллельно с диапазоном дат
+    const [schedules, rentals, events, reservations] = await Promise.all([
+      this.schedulesService.findAll({
+        startDate,
+        endDate,
+        roomId,
+      }),
+      this.rentalsService.findAll({
+        startDate,
+        endDate,
+        roomId,
+      }),
+      this.eventsService.findAll({
+        startDate,
+        endDate,
+      }),
+      this.reservationsService.findAll({
+        startDate,
+        endDate,
+        roomId,
       }),
     ]);
 

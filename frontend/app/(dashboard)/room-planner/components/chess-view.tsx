@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { Loader2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Tooltip,
@@ -9,7 +10,10 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useRoomPlanner, type Activity, type RoomWithActivities, type ActivityType } from '@/hooks/use-room-planner';
+import { useCoworkingWorkspaces, type CoworkingWorkspaceStatus } from '@/hooks/use-coworking-workspaces';
 import { ChessActivityCard } from './chess-activity-card';
+import { ChessCoworkingCard } from './chess-coworking-card';
+import { WorkspaceBookingSheet } from './workspace-booking-sheet';
 import {
   ChessGridLayout,
   type ChessColumn,
@@ -23,6 +27,8 @@ import {
 } from '@/lib/utils/chess-grid';
 import { isActivityCurrentlyActive } from '@/lib/utils/time-slots';
 import { useRoomPlannerScaleStore } from '@/lib/stores/room-planner-scale-store';
+import { useRoomPlannerSortStore } from '@/lib/stores/room-planner-sort-store';
+import type { Room } from '@/lib/api/rooms';
 
 interface ChessViewProps {
   date: string;
@@ -63,15 +69,46 @@ export function ChessView({
   onActivityClick,
   onEmptySlotClick,
 }: ChessViewProps) {
+  // Получаем масштаб и режим сортировки из stores
+  const scale = useRoomPlannerScaleStore((state) => state.scale);
+  const sortByIndex = useRoomPlannerSortStore((state) => state.sortByIndex);
+
   // Получаем данные
   const { roomsWithActivities, isLoading, isToday: isTodayDate } = useRoomPlanner({
     date,
     roomIds,
     activityTypes,
+    sortByIndex,
   });
 
-  // Получаем масштаб из store
-  const scale = useRoomPlannerScaleStore((state) => state.scale);
+  // Получаем ID коворкинг-помещений
+  const coworkingRoomIds = useMemo(() => {
+    return roomsWithActivities
+      .filter((rwa) => rwa.room.isCoworking)
+      .map((rwa) => rwa.room.id);
+  }, [roomsWithActivities]);
+
+  // Загружаем рабочие места для коворкингов
+  const { coworkingMap, isLoading: isLoadingCoworking } = useCoworkingWorkspaces(
+    coworkingRoomIds,
+    date
+  );
+
+  // Создаём map комнат для быстрого доступа
+  const roomsMap = useMemo(() => {
+    const map = new Map<string, Room>();
+    roomsWithActivities.forEach((rwa) => {
+      map.set(rwa.room.id, rwa.room);
+    });
+    return map;
+  }, [roomsWithActivities]);
+
+  // Состояние для Sheet бронирования рабочего места
+  const [selectedWorkspaceData, setSelectedWorkspaceData] = useState<{
+    workspace: CoworkingWorkspaceStatus;
+    room: Room;
+  } | null>(null);
+  const [isWorkspaceSheetOpen, setIsWorkspaceSheetOpen] = useState(false);
 
   // Позиция линии текущего времени (в процентах)
   const [currentTimePosition, setCurrentTimePosition] = useState<number | null>(null);
@@ -165,10 +202,70 @@ export function ChessView({
     return () => clearInterval(interval);
   }, [date]);
 
-  // Рендер контента колонки (карточки активностей)
+  // Обработчик клика по рабочему месту
+  const handleWorkspaceClick = useCallback(
+    (workspace: CoworkingWorkspaceStatus, room: Room) => {
+      setSelectedWorkspaceData({ workspace, room });
+      setIsWorkspaceSheetOpen(true);
+    },
+    []
+  );
+
+  // Рендер контента колонки (карточки активностей или коворкинг)
   const renderColumnContent = useCallback((column: ChessColumn) => {
+    const room = roomsMap.get(column.id);
     const activities = activitiesByRoom.get(column.id) || [];
 
+    // Для коворкинга С рабочими местами - специальный рендеринг
+    if (room?.isCoworking) {
+      // Показываем спиннер только пока идёт загрузка
+      if (isLoadingCoworking) {
+        return (
+          <div className="absolute inset-2 flex items-center justify-center">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          </div>
+        );
+      }
+
+      const coworkingStatus = coworkingMap.get(room.id);
+
+      // Если рабочих мест нет - показываем обычные активности (как для обычных помещений)
+      // Это позволяет создавать брони для коворкинга без рабочих мест
+      if (!coworkingStatus || coworkingStatus.totalWorkspaces === 0) {
+        // Рендерим как обычное помещение - с активностями
+        return activities.map((activity) => {
+          const position = getActivityPositionPercent(activity.startTime, activity.endTime);
+          const isCurrentlyActive = isTodayDate && isActivityCurrentlyActive(
+            activity.date,
+            activity.startTime,
+            activity.endTime,
+            date
+          );
+
+          return (
+            <ChessActivityCard
+              key={activity.id}
+              activity={activity}
+              style={getSimpleCardStyle(position.top, position.height)}
+              onClick={() => onActivityClick(activity)}
+              isCurrentlyActive={isCurrentlyActive}
+              scale={scale}
+            />
+          );
+        });
+      }
+
+      // Коворкинг с рабочими местами - специальная карточка
+      return (
+        <ChessCoworkingCard
+          coworkingStatus={coworkingStatus}
+          onWorkspaceClick={(ws) => handleWorkspaceClick(ws, room)}
+          scale={scale}
+        />
+      );
+    }
+
+    // Для обычных помещений - существующая логика
     return activities.map((activity) => {
       const position = getActivityPositionPercent(activity.startTime, activity.endTime);
       const isCurrentlyActive = isTodayDate && isActivityCurrentlyActive(
@@ -189,7 +286,7 @@ export function ChessView({
         />
       );
     });
-  }, [activitiesByRoom, isTodayDate, date, onActivityClick, scale]);
+  }, [roomsMap, coworkingMap, isLoadingCoworking, handleWorkspaceClick, activitiesByRoom, isTodayDate, date, onActivityClick, scale]);
 
   // Загрузка
   if (isLoading) {
@@ -210,18 +307,28 @@ export function ChessView({
   }
 
   return (
-    <TooltipProvider delayDuration={200}>
-      <ChessGridLayout
-        columns={columns}
-        containerHeight="calc(100vh - 70px)"
-        scale={scale}
-        onCellMouseDown={handleCellMouseDown}
-        onCellMouseEnter={handleCellMouseEnter}
-        onCellMouseUp={handleCellMouseUp}
-        isCellSelected={isCellSelected}
-        renderColumnContent={renderColumnContent}
-        currentTimePosition={currentTimePosition}
+    <>
+      <TooltipProvider delayDuration={200}>
+        <ChessGridLayout
+          columns={columns}
+          containerHeight="calc(100vh - 70px)"
+          scale={scale}
+          onCellMouseDown={handleCellMouseDown}
+          onCellMouseEnter={handleCellMouseEnter}
+          onCellMouseUp={handleCellMouseUp}
+          isCellSelected={isCellSelected}
+          renderColumnContent={renderColumnContent}
+          currentTimePosition={currentTimePosition}
+        />
+      </TooltipProvider>
+
+      <WorkspaceBookingSheet
+        open={isWorkspaceSheetOpen}
+        onOpenChange={setIsWorkspaceSheetOpen}
+        workspace={selectedWorkspaceData?.workspace ?? null}
+        room={selectedWorkspaceData?.room ?? null}
+        date={date}
       />
-    </TooltipProvider>
+    </>
   );
 }

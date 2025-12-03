@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
-import { useQueries } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useCalendarEvents } from './use-calendar';
 import { useRooms } from './use-rooms';
-import { getAllCalendarEvents } from '@/lib/api/calendar';
+import { getWeekCalendarEvents } from '@/lib/api/calendar';
 import { getWeekDates } from '@/lib/utils/chess-grid';
 import type { Room } from '@/lib/api/rooms';
 import type { Schedule } from '@/lib/api/schedules';
@@ -55,6 +55,7 @@ export interface RoomPlannerFilters {
   roomIds?: string[];
   activityTypes?: ActivityType[];
   showNowOnly?: boolean;
+  sortByIndex?: boolean; // true = по sortOrder, false = по занятости
 }
 
 // Цвета для типов активностей
@@ -172,7 +173,7 @@ function reservationToActivity(reservation: Reservation): Activity {
  * Основной хук для Room Planner
  */
 export function useRoomPlanner(filters: RoomPlannerFilters) {
-  const { date, roomIds, activityTypes, showNowOnly } = filters;
+  const { date, roomIds, activityTypes, showNowOnly, sortByIndex } = filters;
 
   // Получаем события календаря
   // Важно: передаем undefined если roomIds пустой, чтобы получить все события
@@ -305,7 +306,22 @@ export function useRoomPlanner(filters: RoomPlannerFilters) {
       return result.filter((r) => r.isOccupiedNow);
     }
 
-    // Сортируем: сначала с активностями, потом по имени
+    // Сортировка
+    if (sortByIndex) {
+      // Сортировка по индексу (sortOrder)
+      return result.sort((a, b) => {
+        const sortOrderA = a.room.sortOrder ?? 0;
+        const sortOrderB = b.room.sortOrder ?? 0;
+        // По sortOrder (меньше = выше)
+        if (sortOrderA !== sortOrderB) {
+          return sortOrderA - sortOrderB;
+        }
+        // При одинаковом sortOrder - по имени
+        return a.room.name.localeCompare(b.room.name);
+      });
+    }
+
+    // Сортировка по занятости (по умолчанию)
     return result.sort((a, b) => {
       // Сначала занятые сейчас (если сегодня)
       if (a.isOccupiedNow !== b.isOccupiedNow) {
@@ -322,7 +338,7 @@ export function useRoomPlanner(filters: RoomPlannerFilters) {
       // Потом по имени
       return a.room.name.localeCompare(b.room.name);
     });
-  }, [rooms, calendarData, date, roomIds, activityTypes, showNowOnly]);
+  }, [rooms, calendarData, date, roomIds, activityTypes, showNowOnly, sortByIndex]);
 
   // Статистика
   const totalRooms = roomsWithActivities.length;
@@ -478,7 +494,7 @@ export interface WeekActivities {
 
 /**
  * Хук для получения активностей за неделю (для недельного режима шахматки)
- * Делает 7 параллельных запросов для каждого дня недели
+ * ОПТИМИЗИРОВАНО: 1 HTTP запрос вместо 7, 4 SQL запроса вместо 28
  */
 export function useWeekActivities(filters: WeekActivitiesFilters) {
   const { weekStartDate, roomIds, activityTypes } = filters;
@@ -486,77 +502,75 @@ export function useWeekActivities(filters: WeekActivitiesFilters) {
   // Получаем массив из 7 дат недели
   const weekDates = useMemo(() => getWeekDates(weekStartDate), [weekStartDate]);
 
-  // Параллельные запросы для каждого дня
-  const queries = useQueries({
-    queries: weekDates.map((date) => ({
-      queryKey: ['calendar-events', { date, roomId: roomIds }],
-      queryFn: () =>
-        getAllCalendarEvents({
-          date,
-          roomId: roomIds && roomIds.length > 0 ? roomIds : undefined,
-        }),
-      staleTime: 30 * 1000,
-    })),
+  // Вычисляем endDate (последний день недели)
+  const endDate = weekDates[weekDates.length - 1];
+
+  // ОДИН запрос для всей недели вместо 7 параллельных
+  const { data: calendarData, isLoading, error } = useQuery({
+    queryKey: ['calendar-week-events', { startDate: weekStartDate, endDate, roomIds }],
+    queryFn: () => getWeekCalendarEvents(
+      weekStartDate,
+      endDate,
+      roomIds && roomIds.length > 0 ? roomIds : undefined
+    ),
+    staleTime: 30 * 1000, // 30 секунд - баланс актуальности и производительности
   });
 
-  // Обрабатываем данные
+  // Обрабатываем данные - группируем по дням
   const weekActivities = useMemo<WeekActivities>(() => {
     const result: WeekActivities = {};
+
+    // Инициализируем все дни пустыми массивами
+    weekDates.forEach((date) => {
+      result[date] = [];
+    });
+
+    if (!calendarData) return result;
 
     // Если фильтр типов не задан или пустой - показываем все типы
     const showAllTypes = !activityTypes || activityTypes.length === 0;
 
-    weekDates.forEach((date, index) => {
-      const query = queries[index];
+    // Преобразуем все события в Activity и группируем по дням
+    const allActivities: Activity[] = [];
 
-      if (!query.data) {
-        result[date] = [];
-        return;
+    // Schedules
+    if (showAllTypes || activityTypes?.includes('schedule')) {
+      allActivities.push(...calendarData.schedules.map(scheduleToActivity));
+    }
+
+    // Rentals
+    if (showAllTypes || activityTypes?.includes('rental')) {
+      allActivities.push(...calendarData.rentals.map(rentalToActivity));
+    }
+
+    // Events
+    if (showAllTypes || activityTypes?.includes('event')) {
+      allActivities.push(...calendarData.events.map(eventToActivity));
+    }
+
+    // Reservations
+    if (showAllTypes || activityTypes?.includes('reservation')) {
+      allActivities.push(...calendarData.reservations.map(reservationToActivity));
+    }
+
+    // Группируем по дате
+    allActivities.forEach((activity) => {
+      if (activity.status === 'CANCELLED') return;
+
+      // Нормализуем дату к формату YYYY-MM-DD (убираем время из ISO)
+      const activityDate = activity.date.split('T')[0];
+      if (result[activityDate]) {
+        result[activityDate].push(activity);
       }
+    });
 
-      const calendarData = query.data;
-      let activities: Activity[] = [];
-
-      // Schedules
-      if (showAllTypes || activityTypes?.includes('schedule')) {
-        activities.push(
-          ...calendarData.schedules.map(scheduleToActivity)
-        );
-      }
-
-      // Rentals
-      if (showAllTypes || activityTypes?.includes('rental')) {
-        activities.push(
-          ...calendarData.rentals.map(rentalToActivity)
-        );
-      }
-
-      // Events
-      if (showAllTypes || activityTypes?.includes('event')) {
-        activities.push(
-          ...calendarData.events.map(eventToActivity)
-        );
-      }
-
-      // Reservations
-      if (showAllTypes || activityTypes?.includes('reservation')) {
-        activities.push(
-          ...calendarData.reservations.map(reservationToActivity)
-        );
-      }
-
-      // Фильтруем отменённые и сортируем по времени
-      result[date] = activities
-        .filter((a) => a.status !== 'CANCELLED')
-        .sort((a, b) => a.startTime.localeCompare(b.startTime));
+    // Сортируем по времени в каждом дне
+    Object.keys(result).forEach((date) => {
+      result[date].sort((a, b) => a.startTime.localeCompare(b.startTime));
     });
 
     return result;
-  }, [queries, weekDates, activityTypes]);
-
-  // Статистика загрузки
-  const isLoading = queries.some((q) => q.isLoading);
-  const error = queries.find((q) => q.error)?.error;
+  }, [calendarData, weekDates, activityTypes]);
 
   // Общее количество событий
   const totalActivities = Object.values(weekActivities).reduce(

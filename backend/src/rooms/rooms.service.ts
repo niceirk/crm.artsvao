@@ -21,6 +21,7 @@ export class RoomsService {
           select: {
             schedules: true,
             rentals: true,
+            workspaces: true,
           },
         },
       },
@@ -35,6 +36,7 @@ export class RoomsService {
           select: {
             schedules: true,
             rentals: true,
+            workspaces: true,
           },
         },
       },
@@ -67,6 +69,7 @@ export class RoomsService {
           select: {
             schedules: true,
             rentals: true,
+            workspaces: true,
           },
         },
       },

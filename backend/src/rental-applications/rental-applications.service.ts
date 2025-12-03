@@ -170,47 +170,54 @@ export class RentalApplicationsService {
       throw new BadRequestException('Не удалось определить помещение для проверки');
     }
 
-    // Проверяем каждую дату
-    for (const date of datesToCheck) {
-      try {
-        // Для почасовой аренды проверяем конкретное время
-        if (rentalType === RentalType.HOURLY && startTime && endTime) {
-          await this.conflictChecker.checkConflicts({
-            date,
-            startTime,
-            endTime,
-            roomIds: [roomIdToCheck],
-            excludeApplicationId,
-          });
-        } else {
-          // Для дневной/недельной/месячной аренды проверяем весь день
-          await this.conflictChecker.checkConflicts({
-            date,
-            startTime: '00:00',
-            endTime: '23:59',
-            roomIds: [roomIdToCheck],
-            excludeApplicationId,
-          });
-        }
-      } catch (error) {
-        if (error instanceof ConflictException) {
-          conflicts.push({
-            date,
-            type: 'schedule',
-            description: error.message,
-            startTime,
-            endTime,
-          });
+    // Для рабочих мест (WORKSPACE_*) НЕ проверяем конфликты через conflictChecker для помещения,
+    // потому что рабочие места бронируются независимо друг от друга.
+    // Проверяем только конфликты с другими заявками на те же конкретные рабочие места.
+    const isWorkspaceRental = rentalType.startsWith('WORKSPACE_');
+
+    if (!isWorkspaceRental) {
+      // Для почасовой аренды и аренды кабинетов целиком - проверяем конфликты помещения
+      for (const date of datesToCheck) {
+        try {
+          if (rentalType === RentalType.HOURLY && startTime && endTime) {
+            await this.conflictChecker.checkConflicts({
+              date,
+              startTime,
+              endTime,
+              roomIds: [roomIdToCheck],
+              excludeApplicationId,
+            });
+          } else {
+            // Для дневной/недельной/месячной аренды проверяем весь день
+            await this.conflictChecker.checkConflicts({
+              date,
+              startTime: '00:00',
+              endTime: '23:59',
+              roomIds: [roomIdToCheck],
+              excludeApplicationId,
+            });
+          }
+        } catch (error) {
+          if (error instanceof ConflictException) {
+            conflicts.push({
+              date,
+              type: 'schedule',
+              description: error.message,
+              startTime,
+              endTime,
+            });
+          }
         }
       }
     }
 
     // Проверяем существующие заявки на аренду рабочих мест
+    // Включаем DRAFT и PENDING, чтобы предотвратить двойное бронирование
     if (workspaceIds?.length) {
       const existingApplications = await this.prisma.rentalApplication.findMany({
         where: {
           id: excludeApplicationId ? { not: excludeApplicationId } : undefined,
-          status: { in: [RentalApplicationStatus.CONFIRMED, RentalApplicationStatus.ACTIVE] },
+          status: { in: [RentalApplicationStatus.DRAFT, RentalApplicationStatus.PENDING, RentalApplicationStatus.CONFIRMED, RentalApplicationStatus.ACTIVE] },
           workspaces: { some: { workspaceId: { in: workspaceIds } } },
           OR: datesToCheck.map(date => ({
             AND: [
@@ -221,22 +228,44 @@ export class RentalApplicationsService {
         },
         include: {
           workspaces: { include: { workspace: true } },
+          selectedDays: true,
         },
       });
 
       for (const app of existingApplications) {
-        for (const date of datesToCheck) {
+        // Определяем какие даты реально заняты этой заявкой
+        const appOccupiedDates = new Set<string>();
+
+        if (app.periodType === 'SPECIFIC_DAYS') {
+          // Для конкретных дней берём из selectedDays
+          for (const day of app.selectedDays) {
+            appOccupiedDates.add(day.date.toISOString().split('T')[0]);
+          }
+        } else {
+          // Для остальных типов - все дни в периоде
           const appStart = new Date(app.startDate);
           const appEnd = app.endDate ? new Date(app.endDate) : appStart;
-          const checkDate = new Date(date);
+          const current = new Date(appStart);
+          while (current <= appEnd) {
+            appOccupiedDates.add(current.toISOString().split('T')[0]);
+            current.setDate(current.getDate() + 1);
+          }
+        }
 
-          if (checkDate >= appStart && checkDate <= appEnd) {
-            const workspaceNames = app.workspaces.map(w => w.workspace.name).join(', ');
-            conflicts.push({
-              date,
-              type: 'rental',
-              description: `Рабочие места (${workspaceNames}) уже забронированы заявкой ${app.applicationNumber}`,
-            });
+        for (const date of datesToCheck) {
+          if (appOccupiedDates.has(date)) {
+            // Проверяем какие именно рабочие места конфликтуют
+            const conflictingWorkspaces = app.workspaces
+              .filter(w => workspaceIds.includes(w.workspaceId))
+              .map(w => w.workspace.name);
+
+            if (conflictingWorkspaces.length > 0) {
+              conflicts.push({
+                date,
+                type: 'rental',
+                description: `Рабочие места (${conflictingWorkspaces.join(', ')}) уже забронированы заявкой ${app.applicationNumber}`,
+              });
+            }
           }
         }
       }
