@@ -459,8 +459,8 @@ export class RentalApplicationsService {
         },
         select: {
           date: true,
-          clientName: true,
-          description: true,
+          notes: true,
+          reservedBy: true,
         },
       }),
     ]);
@@ -509,7 +509,7 @@ export class RentalApplicationsService {
       if (occupiedDays[dateStr] === null) {
         occupiedDays[dateStr] = {
           type: 'reservation',
-          description: `Резерв: ${reservation.clientName || reservation.description || 'Без описания'}`,
+          description: `Резерв: ${reservation.reservedBy || reservation.notes || 'Без описания'}`,
         };
       }
     }
