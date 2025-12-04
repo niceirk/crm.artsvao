@@ -1,7 +1,9 @@
 'use client';
 
+import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, Key, Star, Lock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Calendar, Key, Star, Lock, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Activity } from '@/hooks/use-room-planner';
 import { ACTIVITY_TYPE_LABELS } from '@/hooks/use-room-planner';
@@ -26,6 +28,9 @@ export function ActivityItem({
   variant = 'detailed',
 }: ActivityItemProps) {
   const Icon = ACTIVITY_ICONS[activity.type] || Calendar;
+
+  // Проверяем, является ли активность мероприятием
+  const isEvent = activity.type === 'event';
 
   if (variant === 'compact') {
     return (
@@ -117,6 +122,23 @@ export function ActivityItem({
             {ACTIVITY_TYPE_LABELS[activity.type]}
           </Badge>
         </div>
+
+        {/* Кнопка журнала посещаемости для мероприятий */}
+        {isEvent && (
+          <div className="mt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              asChild
+            >
+              <Link href={`/admin/events/${activity.id}`}>
+                <Users className="h-3 w-3 mr-1" />
+                Журнал посещаемости
+              </Link>
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

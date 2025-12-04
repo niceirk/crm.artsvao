@@ -18,6 +18,8 @@ import {
   CalculatePriceDto,
   ExtendRentalDto,
   CancelRentalDto,
+  GetHourlyOccupancyDto,
+  GetRoomMonthlyOccupancyDto,
 } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -32,6 +34,18 @@ export class RentalApplicationsController {
   @Post('check-availability')
   checkAvailability(@Body() dto: CheckAvailabilityDto): Promise<AvailabilityResult> {
     return this.rentalApplicationsService.checkAvailability(dto);
+  }
+
+  @Post('hourly-occupancy')
+  getHourlyOccupancy(@Body() dto: GetHourlyOccupancyDto): Promise<Record<string, boolean>> {
+    return this.rentalApplicationsService.getHourlyOccupancy(dto);
+  }
+
+  @Post('room-monthly-occupancy')
+  getRoomMonthlyOccupancy(
+    @Body() dto: GetRoomMonthlyOccupancyDto,
+  ): Promise<Record<string, { type: string; description: string } | null>> {
+    return this.rentalApplicationsService.getRoomMonthlyOccupancy(dto);
   }
 
   @Post('calculate-price')

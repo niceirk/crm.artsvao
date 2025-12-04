@@ -14,6 +14,8 @@ import {
   CalculatePriceDto,
   ExtendRentalDto,
   CancelRentalDto,
+  GetHourlyOccupancyDto,
+  GetRoomMonthlyOccupancyDto,
 } from './dto';
 import {
   RentalType,
@@ -275,6 +277,244 @@ export class RentalApplicationsService {
       available: conflicts.length === 0,
       conflicts,
     };
+  }
+
+  /**
+   * Получение занятых почасовых слотов для помещения
+   * Оптимизированный батчевый запрос для загрузки всех слотов за один раз
+   * Проверяет все источники: Rental, Event, Schedule, Reservation
+   * @returns Map: "yyyy-MM-dd_HH" -> boolean (занят)
+   */
+  async getHourlyOccupancy(dto: GetHourlyOccupancyDto): Promise<Record<string, boolean>> {
+    const { roomId, dates } = dto;
+    const occupiedSlots: Record<string, boolean> = {};
+    const parsedDates = dates.map(d => new Date(d));
+
+    // Параллельно загружаем все источники занятости
+    const [rentals, events, schedules, reservations] = await Promise.all([
+      // 1. Получаем все Rental записи (аренды)
+      this.prisma.rental.findMany({
+        where: {
+          roomId,
+          date: { in: parsedDates },
+          status: { not: 'CANCELLED' },
+        },
+        select: {
+          date: true,
+          startTime: true,
+          endTime: true,
+        },
+      }),
+
+      // 2. Получаем события из Event (мероприятия)
+      this.prisma.event.findMany({
+        where: {
+          roomId,
+          date: { in: parsedDates },
+          status: { not: 'CANCELLED' },
+        },
+        select: {
+          date: true,
+          startTime: true,
+          endTime: true,
+        },
+      }),
+
+      // 3. Получаем Schedule записи (занятия групп)
+      this.prisma.schedule.findMany({
+        where: {
+          roomId,
+          date: { in: parsedDates },
+          status: { not: 'CANCELLED' },
+        },
+        select: {
+          date: true,
+          startTime: true,
+          endTime: true,
+        },
+      }),
+
+      // 4. Получаем Reservation записи (резервы)
+      this.prisma.reservation.findMany({
+        where: {
+          roomId,
+          date: { in: parsedDates },
+          status: { not: 'CANCELLED' },
+        },
+        select: {
+          date: true,
+          startTime: true,
+          endTime: true,
+        },
+      }),
+    ]);
+
+    // Объединяем все занятые слоты из всех источников
+    const allBookings = [...rentals, ...events, ...schedules, ...reservations];
+
+    // Для каждого бронирования определяем какие часовые слоты заняты
+    for (const booking of allBookings) {
+      // Форматируем дату в локальном часовом поясе (sv-SE даёт формат YYYY-MM-DD)
+      const dateStr = booking.date.toLocaleDateString('sv-SE');
+
+      // Получаем часы начала и конца в UTC (Prisma возвращает TIME как Date в UTC)
+      const startHour = booking.startTime.getUTCHours();
+      const endHour = booking.endTime.getUTCHours();
+
+      // Помечаем все часовые слоты в диапазоне как занятые
+      // Слот считается занятым если бронирование пересекается с ним
+      for (let hour = 9; hour <= 21; hour++) {
+        // Проверяем пересечение: слот [hour, hour+1] и бронирование [startHour, endHour]
+        if (hour < endHour && hour + 1 > startHour) {
+          const slotKey = `${dateStr}_${hour}`;
+          occupiedSlots[slotKey] = true;
+        }
+      }
+    }
+
+    return occupiedSlots;
+  }
+
+  /**
+   * Получение занятости помещения по дням (для ROOM_MONTHLY коворкинга без мест)
+   * Проверяет все источники: Rental, Event, Schedule, Reservation
+   * @returns Record: "yyyy-MM-dd" -> { type, description } | null
+   */
+  async getRoomMonthlyOccupancy(
+    dto: GetRoomMonthlyOccupancyDto,
+  ): Promise<Record<string, { type: string; description: string } | null>> {
+    const { roomId, startDate, endDate } = dto;
+    const occupiedDays: Record<string, { type: string; description: string } | null> = {};
+
+    // Генерируем все даты в диапазоне
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const dates: Date[] = [];
+    const current = new Date(start);
+    while (current <= end) {
+      dates.push(new Date(current));
+      current.setDate(current.getDate() + 1);
+    }
+
+    // Инициализируем все даты как свободные
+    for (const date of dates) {
+      const dateStr = date.toISOString().split('T')[0];
+      occupiedDays[dateStr] = null;
+    }
+
+    // Параллельно загружаем все источники занятости
+    const [rentals, events, schedules, reservations] = await Promise.all([
+      // 1. Rental записи (включая из RentalApplication)
+      this.prisma.rental.findMany({
+        where: {
+          roomId,
+          date: { gte: start, lte: end },
+          status: { not: 'CANCELLED' },
+        },
+        select: {
+          date: true,
+          clientName: true,
+          eventType: true,
+          rentalApplication: {
+            select: {
+              applicationNumber: true,
+              client: { select: { firstName: true, lastName: true } },
+            },
+          },
+        },
+      }),
+
+      // 2. Event (мероприятия)
+      this.prisma.event.findMany({
+        where: {
+          roomId,
+          date: { gte: start, lte: end },
+          status: { not: 'CANCELLED' },
+        },
+        select: {
+          date: true,
+          name: true,
+        },
+      }),
+
+      // 3. Schedule (занятия групп)
+      this.prisma.schedule.findMany({
+        where: {
+          roomId,
+          date: { gte: start, lte: end },
+          status: { not: 'CANCELLED' },
+        },
+        select: {
+          date: true,
+          group: { select: { name: true } },
+        },
+      }),
+
+      // 4. Reservation (резервы)
+      this.prisma.reservation.findMany({
+        where: {
+          roomId,
+          date: { gte: start, lte: end },
+          status: { not: 'CANCELLED' },
+        },
+        select: {
+          date: true,
+          clientName: true,
+          description: true,
+        },
+      }),
+    ]);
+
+    // Обрабатываем Rental записи
+    for (const rental of rentals) {
+      const dateStr = rental.date.toLocaleDateString('sv-SE');
+      if (occupiedDays[dateStr] === null) {
+        const clientName = rental.rentalApplication?.client
+          ? `${rental.rentalApplication.client.lastName} ${rental.rentalApplication.client.firstName}`
+          : rental.clientName;
+        occupiedDays[dateStr] = {
+          type: 'rental',
+          description: rental.rentalApplication
+            ? `Аренда ${rental.rentalApplication.applicationNumber}: ${clientName}`
+            : `Аренда: ${clientName || rental.eventType || 'Без описания'}`,
+        };
+      }
+    }
+
+    // Обрабатываем Event
+    for (const event of events) {
+      const dateStr = event.date.toLocaleDateString('sv-SE');
+      if (occupiedDays[dateStr] === null) {
+        occupiedDays[dateStr] = {
+          type: 'event',
+          description: `Мероприятие: ${event.name}`,
+        };
+      }
+    }
+
+    // Обрабатываем Schedule
+    for (const schedule of schedules) {
+      const dateStr = schedule.date.toLocaleDateString('sv-SE');
+      if (occupiedDays[dateStr] === null) {
+        occupiedDays[dateStr] = {
+          type: 'schedule',
+          description: `Занятие: ${schedule.group?.name || 'Без группы'}`,
+        };
+      }
+    }
+
+    // Обрабатываем Reservation
+    for (const reservation of reservations) {
+      const dateStr = reservation.date.toLocaleDateString('sv-SE');
+      if (occupiedDays[dateStr] === null) {
+        occupiedDays[dateStr] = {
+          type: 'reservation',
+          description: `Резерв: ${reservation.clientName || reservation.description || 'Без описания'}`,
+        };
+      }
+    }
+
+    return occupiedDays;
   }
 
   /**

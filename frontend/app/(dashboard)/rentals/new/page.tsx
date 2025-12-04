@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Calendar } from '@/components/ui/calendar';
 import {
@@ -51,6 +50,7 @@ import { WorkspaceAvailabilityGrid } from './components/workspace-availability-g
 import { HourlyTimeSlotGrid } from './components/hourly-time-slot-grid';
 import { MonthlyWorkspaceAvailabilityGrid } from './components/monthly-workspace-availability-grid';
 import { RoomDailyAvailabilityGrid } from './components/room-daily-availability-grid';
+import { MonthlyRoomAvailabilityGrid } from './components/monthly-room-availability-grid';
 import { toast } from 'sonner';
 import type { Client } from '@/lib/types/clients';
 import type {
@@ -85,7 +85,7 @@ interface FormData {
 }
 
 const initialFormData: FormData = {
-  category: null,
+  category: 'hourly',
   periodUnit: null,
   roomId: null,
   workspaceIds: [],
@@ -120,7 +120,7 @@ export default function NewRentalPage() {
   // Инициализация формы с учётом предзаполненных данных
   const [formData, setFormData] = useState<FormData>(() => ({
     ...initialFormData,
-    category: prefilledCategory || null,
+    category: prefilledCategory || 'hourly',
     periodUnit: prefilledPeriodUnit || null,
     roomId: prefilledRoomId || null,
   }));
@@ -159,15 +159,36 @@ export default function NewRentalPage() {
 
   // Фильтрация помещений
   const coworkingRooms = useMemo(() => {
-    const filtered = rooms?.filter(r => r.isCoworking) || [];
-    console.log('coworkingRooms:', filtered);
-    return filtered;
+    return rooms?.filter(r => r.isCoworking) || [];
+  }, [rooms]);
+
+  // Коворкинги с рабочими местами (для режима "Рабочее место")
+  const coworkingRoomsWithWorkspaces = useMemo(() => {
+    return rooms?.filter(r => r.isCoworking && (r._count?.workspaces ?? 0) > 0) || [];
   }, [rooms]);
 
   const regularRooms = useMemo(() =>
     rooms?.filter(r => !r.isCoworking && r.status === 'AVAILABLE') || [],
     [rooms]
   );
+
+  // Помещения коворкинг без рабочих мест (для режима "Кабинет месяц")
+  const coworkingRoomsWithoutWorkspaces = useMemo(() => {
+    return rooms?.filter(r => r.isCoworking && (r._count?.workspaces ?? 0) === 0) || [];
+  }, [rooms]);
+
+  // Определяем является ли выбранное помещение коворкингом без мест
+  const isCoworkingWithoutWorkspaces = useMemo(() => {
+    if (!formData.roomId || !rooms) return false;
+    const room = rooms.find(r => r.id === formData.roomId);
+    return room?.isCoworking === true && (room._count?.workspaces ?? 0) === 0;
+  }, [formData.roomId, rooms]);
+
+  // Выбранное помещение
+  const selectedRoom = useMemo(() => {
+    if (!formData.roomId || !rooms) return null;
+    return rooms.find(r => r.id === formData.roomId) || null;
+  }, [formData.roomId, rooms]);
 
   // Определение типа аренды
   const getRentalType = (): RentalType | null => {
@@ -501,345 +522,299 @@ export default function NewRentalPage() {
         {/* Основная форма */}
         <div className="space-y-6">
           {/* Тип аренды */}
-          <div className="space-y-3">
-            <RadioGroup
-              value={formData.category || ''}
-              onValueChange={(value) => setFormData(prev => ({
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Почасовая */}
+            <Button
+              variant={formData.category === 'hourly' ? 'default' : 'outline'}
+              onClick={() => setFormData(prev => ({
                 ...prev,
-                category: value as RentalCategory,
-                // Для workspace и room автоматически выбираем "день", для hourly сбрасываем
-                periodUnit: value === 'hourly' ? null : (value === 'workspace' || value === 'room' ? 'day' : prev.periodUnit),
+                category: 'hourly',
+                periodUnit: null,
                 roomId: null,
                 workspaceIds: [],
                 startDate: null,
                 endDate: null,
                 selectedDays: [],
               }))}
-              className="flex items-center gap-4 flex-wrap"
             >
-              {/* Почасовая */}
-              <Label
-                htmlFor="hourly"
-                className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-5 py-3 cursor-pointer transition-colors",
-                  formData.category === 'hourly'
-                    ? "bg-green-50"
-                    : "border-2 border-muted hover:border-green-300"
-                )}
-              >
-                <RadioGroupItem value="hourly" id="hourly" className="sr-only" />
-                <Clock className={cn("h-5 w-5", formData.category === 'hourly' ? "text-green-600" : "text-muted-foreground")} />
-                <span className="font-medium text-base">Почасовая</span>
-              </Label>
+              <Clock className="h-4 w-4 mr-2" />
+              Почасовая
+            </Button>
 
-              {/* Рабочее место */}
-              <Label
-                htmlFor="workspace"
-                className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-5 py-3 cursor-pointer transition-colors",
-                  formData.category === 'workspace'
-                    ? "bg-green-50"
-                    : "border-2 border-muted hover:border-green-300"
-                )}
-              >
-                <RadioGroupItem value="workspace" id="workspace" className="sr-only" />
-                <Briefcase className={cn("h-5 w-5", formData.category === 'workspace' ? "text-green-600" : "text-muted-foreground")} />
-                <span className="font-medium text-base">Рабочее место</span>
-              </Label>
+            {/* Рабочее место */}
+            <Button
+              variant={formData.category === 'workspace' ? 'default' : 'outline'}
+              onClick={() => setFormData(prev => ({
+                ...prev,
+                category: 'workspace',
+                periodUnit: 'day',
+                roomId: null,
+                workspaceIds: [],
+                startDate: null,
+                endDate: null,
+                selectedDays: [],
+              }))}
+            >
+              <Briefcase className="h-4 w-4 mr-2" />
+              Рабочее место
+            </Button>
 
-              {/* Подварианты после Рабочего места */}
-              {formData.category === 'workspace' && (
-                <>
-                  <div className="h-8 w-px bg-border" />
-                  <RadioGroup
-                    value={formData.periodUnit || ''}
-                    onValueChange={(value) => setFormData(prev => ({
-                      ...prev,
-                      periodUnit: value as 'day' | 'month',
-                      startDate: null,
-                      endDate: null,
-                      selectedDays: [],
-                    }))}
-                    className="flex gap-2"
-                  >
-                    <Label
-                      htmlFor="day"
-                      className={cn(
-                        "flex items-center gap-2 rounded-full px-4 py-1.5 cursor-pointer transition-colors text-sm",
-                        formData.periodUnit === 'day'
-                          ? "bg-green-50"
-                          : "border-2 border-muted hover:border-green-300"
-                      )}
-                    >
-                      <RadioGroupItem value="day" id="day" className="sr-only" />
-                      <span className="font-medium">День</span>
-                    </Label>
+            {/* Подварианты для Рабочего места */}
+            {formData.category === 'workspace' && (
+              <>
+                <div className="h-6 w-px bg-border mx-1" />
+                <Button
+                  variant={formData.periodUnit === 'day' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFormData(prev => ({
+                    ...prev,
+                    periodUnit: 'day',
+                    startDate: null,
+                    endDate: null,
+                    selectedDays: [],
+                  }))}
+                >
+                  День
+                </Button>
+                <Button
+                  variant={formData.periodUnit === 'month' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFormData(prev => ({
+                    ...prev,
+                    periodUnit: 'month',
+                    startDate: null,
+                    endDate: null,
+                    selectedDays: [],
+                  }))}
+                >
+                  Месяц
+                </Button>
+              </>
+            )}
 
-                    <Label
-                      htmlFor="month"
-                      className={cn(
-                        "flex items-center gap-2 rounded-full px-4 py-1.5 cursor-pointer transition-colors text-sm",
-                        formData.periodUnit === 'month'
-                          ? "bg-green-50"
-                          : "border-2 border-muted hover:border-green-300"
-                      )}
-                    >
-                      <RadioGroupItem value="month" id="month" className="sr-only" />
-                      <span className="font-medium">Месяц</span>
-                    </Label>
-                  </RadioGroup>
-                </>
-              )}
+            {/* Кабинет */}
+            <Button
+              variant={formData.category === 'room' ? 'default' : 'outline'}
+              onClick={() => setFormData(prev => ({
+                ...prev,
+                category: 'room',
+                periodUnit: 'day',
+                roomId: null,
+                workspaceIds: [],
+                startDate: null,
+                endDate: null,
+                selectedDays: [],
+              }))}
+            >
+              <DoorOpen className="h-4 w-4 mr-2" />
+              Кабинет
+            </Button>
 
-              {/* Кабинет */}
-              <Label
-                htmlFor="room"
-                className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-5 py-3 cursor-pointer transition-colors",
-                  formData.category === 'room'
-                    ? "bg-green-50"
-                    : "border-2 border-muted hover:border-green-300"
-                )}
-              >
-                <RadioGroupItem value="room" id="room" className="sr-only" />
-                <DoorOpen className={cn("h-5 w-5", formData.category === 'room' ? "text-green-600" : "text-muted-foreground")} />
-                <span className="font-medium text-base">Кабинет</span>
-              </Label>
-
-              {/* Подварианты после Кабинета */}
-              {formData.category === 'room' && (
-                <>
-                  <div className="h-8 w-px bg-border" />
-                  <RadioGroup
-                    value={formData.periodUnit || ''}
-                    onValueChange={(value) => setFormData(prev => ({
-                      ...prev,
-                      periodUnit: value as 'day' | 'month',
-                      startDate: null,
-                      endDate: null,
-                      selectedDays: [],
-                    }))}
-                    className="flex gap-2"
-                  >
-                    <Label
-                      htmlFor="day-room"
-                      className={cn(
-                        "flex items-center gap-2 rounded-full px-4 py-1.5 cursor-pointer transition-colors text-sm",
-                        formData.periodUnit === 'day'
-                          ? "bg-green-50"
-                          : "border-2 border-muted hover:border-green-300"
-                      )}
-                    >
-                      <RadioGroupItem value="day" id="day-room" className="sr-only" />
-                      <span className="font-medium">День</span>
-                    </Label>
-
-                    <Label
-                      htmlFor="month-room"
-                      className={cn(
-                        "flex items-center gap-2 rounded-full px-4 py-1.5 cursor-pointer transition-colors text-sm",
-                        formData.periodUnit === 'month'
-                          ? "bg-green-50"
-                          : "border-2 border-muted hover:border-green-300"
-                      )}
-                    >
-                      <RadioGroupItem value="month" id="month-room" className="sr-only" />
-                      <span className="font-medium">Месяц</span>
-                    </Label>
-                  </RadioGroup>
-                </>
-              )}
-            </RadioGroup>
-
-            {/* Подсказка для выбранного периода */}
-            {formData.category && (formData.category === 'workspace' || formData.category === 'room') && formData.periodUnit && (
-              <p className="text-xs text-muted-foreground ml-1">
-                {formData.periodUnit === 'day' ? 'Выбор конкретных дней' : 'Календарный или скользящий месяц'}
-              </p>
+            {/* Подварианты для Кабинета */}
+            {formData.category === 'room' && (
+              <>
+                <div className="h-6 w-px bg-border mx-1" />
+                <Button
+                  variant={formData.periodUnit === 'day' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFormData(prev => ({
+                    ...prev,
+                    periodUnit: 'day',
+                    startDate: null,
+                    endDate: null,
+                    selectedDays: [],
+                  }))}
+                >
+                  День
+                </Button>
+                <Button
+                  variant={formData.periodUnit === 'month' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setFormData(prev => ({
+                    ...prev,
+                    periodUnit: 'month',
+                    startDate: null,
+                    endDate: null,
+                    selectedDays: [],
+                  }))}
+                >
+                  Месяц
+                </Button>
+              </>
             )}
           </div>
 
-          {/* Помещение и даты аренды - для workspace */}
-          {formData.category === 'workspace' && formData.periodUnit && (
+          {/* Единый блок формы */}
+          {formData.category && (formData.category === 'hourly' || formData.periodUnit) && (
             <Card>
-              <CardHeader>
-                <CardTitle>Помещение и даты аренды</CardTitle>
-                <CardDescription>
-                  {formData.periodUnit === 'day'
-                    ? 'Выберите коворкинг и кликните по свободным слотам в таблице'
-                    : 'Выберите рабочие места и укажите период'}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Выбор коворкинга и период на одной строке (только для месяца) */}
-                {formData.periodUnit === 'month' ? (
-                  <div className="flex items-end gap-6">
-                    {/* Выбор коворкинга */}
-                    <div className="flex-shrink-0 w-64">
-                      <Label className="text-sm font-medium">Коворкинг</Label>
-                      {isLoadingRooms ? (
-                        <div className="flex items-center mt-1 h-10 px-3 border rounded-md">
-                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
-                          <span className="text-sm text-muted-foreground">Загрузка...</span>
-                        </div>
-                      ) : coworkingRooms.length === 0 ? (
-                        <div className="mt-1 p-3 text-sm text-muted-foreground border rounded-md border-dashed">
-                          Нет доступных коворкингов. <a href="/admin/rooms" className="text-primary hover:underline">Добавить помещение</a>
-                        </div>
-                      ) : (
-                        <Select
-                          value={formData.roomId || ''}
-                          onValueChange={(value) => setFormData(prev => ({ ...prev, roomId: value, workspaceIds: [] }))}
-                        >
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Выберите коворкинг" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {coworkingRooms.map((room) => (
-                              <SelectItem key={room.id} value={room.id}>
-                                {room.name}{room.number ? ` №${room.number}` : ''}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </div>
-
-                    {/* Переключатель периода */}
-                    <div className="flex-shrink-0">
-                      <Label className="text-sm font-medium">Период</Label>
-                      <div className="flex items-center gap-4 mt-1 h-10">
-                        <button
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, monthType: 'calendar', startDate: null, endDate: null }))}
-                          className={cn(
-                            "text-sm font-medium transition-colors border-b-2 pb-0.5",
-                            formData.monthType === 'calendar'
-                              ? "text-primary border-dashed border-muted-foreground"
-                              : "text-muted-foreground border-transparent hover:text-foreground hover:border-dashed hover:border-muted-foreground"
+              <CardContent className="pt-6 space-y-6">
+                {/* === WORKSPACE === */}
+                {formData.category === 'workspace' && formData.periodUnit && (
+                  <>
+                    {/* Выбор коворкинга и период на одной строке (только для месяца) */}
+                    {formData.periodUnit === 'month' ? (
+                      <div className="flex items-end gap-6 flex-wrap">
+                        {/* Выбор коворкинга */}
+                        <div className="flex-shrink-0 w-64">
+                          <Label className="text-sm font-medium">Коворкинг</Label>
+                          {isLoadingRooms ? (
+                            <div className="flex items-center mt-1 h-10 px-3 border rounded-md">
+                              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
+                              <span className="text-sm text-muted-foreground">Загрузка...</span>
+                            </div>
+                          ) : coworkingRoomsWithWorkspaces.length === 0 ? (
+                            <div className="mt-1 p-3 text-sm text-muted-foreground border rounded-md border-dashed">
+                              Нет коворкингов с рабочими местами. <a href="/rentals/workspaces" className="text-primary hover:underline">Добавить рабочие места</a>
+                            </div>
+                          ) : (
+                            <Select
+                              value={formData.roomId || ''}
+                              onValueChange={(value) => setFormData(prev => ({ ...prev, roomId: value, workspaceIds: [] }))}
+                            >
+                              <SelectTrigger className="mt-1">
+                                <SelectValue placeholder="Выберите коворкинг" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {coworkingRoomsWithWorkspaces.map((room) => (
+                                  <SelectItem key={room.id} value={room.id}>
+                                    {room.name}{room.number ? ` №${room.number}` : ''} ({room._count?.workspaces} мест)
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           )}
-                        >
-                          Фиксированный месяц
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setFormData(prev => ({ ...prev, monthType: 'sliding', startDate: null, endDate: null }))}
-                          className={cn(
-                            "text-sm font-medium transition-colors border-b-2 pb-0.5",
-                            formData.monthType === 'sliding'
-                              ? "text-primary border-dashed border-muted-foreground"
-                              : "text-muted-foreground border-transparent hover:text-foreground hover:border-dashed hover:border-muted-foreground"
-                          )}
-                        >
-                          Скользящий (30 дней)
-                        </button>
-                      </div>
-                    </div>
+                        </div>
 
-                    {/* Дата начала - только для скользящего месяца */}
-                    {formData.monthType === 'sliding' && (
-                      <div className="flex-shrink-0 w-64">
-                        <Label className="text-sm font-medium">Дата начала</Label>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
+                        {/* Переключатель периода */}
+                        <div className="flex-shrink-0">
+                          <Label className="text-sm font-medium">Период</Label>
+                          <div className="flex items-center gap-4 mt-1 h-10">
+                            <button
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, monthType: 'calendar', startDate: null, endDate: null }))}
                               className={cn(
-                                "w-full justify-start text-left font-normal mt-1 h-10",
-                                !formData.startDate && "text-muted-foreground"
+                                "text-sm font-medium transition-colors border-b-2 pb-0.5",
+                                formData.monthType === 'calendar'
+                                  ? "text-primary border-dashed border-muted-foreground"
+                                  : "text-muted-foreground border-transparent hover:text-foreground hover:border-dashed hover:border-muted-foreground"
                               )}
                             >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {formData.startDate
-                                ? format(formData.startDate, 'PPP', { locale: ru })
-                                : 'Выберите дату'}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0">
-                            <Calendar
-                              mode="single"
-                              selected={formData.startDate || undefined}
-                              onSelect={(date) => {
-                                if (!date) return;
-                                // Для скользящего месяца: ровно 30 дней
-                                const endDate = addDays(date, 30);
-                                setFormData(prev => ({ ...prev, startDate: date, endDate }));
-                              }}
-                              locale={ru}
-                              disabled={(date) => date < new Date()}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  /* Выбор коворкинга - для режима "день" */
-                  <div>
-                    <Label className="text-sm font-medium">Коворкинг</Label>
-                    {isLoadingRooms ? (
-                      <div className="flex items-center mt-1 h-10 px-3 border rounded-md">
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
-                        <span className="text-sm text-muted-foreground">Загрузка...</span>
-                      </div>
-                    ) : coworkingRooms.length === 0 ? (
-                      <div className="mt-1 p-3 text-sm text-muted-foreground border rounded-md border-dashed">
-                        Нет доступных коворкингов. <a href="/admin/rooms" className="text-primary hover:underline">Добавить помещение</a>
-                      </div>
-                    ) : (
-                      <Select
-                        value={formData.roomId || ''}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, roomId: value, workspaceIds: [] }))}
-                      >
-                        <SelectTrigger className="mt-1">
-                          <SelectValue placeholder="Выберите коворкинг" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {coworkingRooms.map((room) => (
-                            <SelectItem key={room.id} value={room.id}>
-                              {room.name}{room.number ? ` №${room.number}` : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    )}
-                  </div>
-                )}
-
-                {/* Для периода "день" - таблица доступности */}
-                {formData.periodUnit === 'day' && formData.roomId && (
-                  <>
-                    {isLoadingWorkspaces ? (
-                      <div className="flex items-center justify-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        <span className="ml-2 text-sm text-muted-foreground">Загрузка рабочих мест...</span>
-                      </div>
-                    ) : workspaces && workspaces.length > 0 ? (
-                      <WorkspaceAvailabilityGrid
-                        workspaces={workspaces}
-                        selectedSlots={selectedSlots}
-                        onSlotToggle={handleSlotToggle}
-                      />
-                    ) : (
-                      <div className="p-6 text-center border rounded-lg border-dashed">
-                        <div className="text-muted-foreground">
-                          В выбранном коворкинге нет рабочих мест.
+                              Фиксированный месяц
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setFormData(prev => ({ ...prev, monthType: 'sliding', startDate: null, endDate: null }))}
+                              className={cn(
+                                "text-sm font-medium transition-colors border-b-2 pb-0.5",
+                                formData.monthType === 'sliding'
+                                  ? "text-primary border-dashed border-muted-foreground"
+                                  : "text-muted-foreground border-transparent hover:text-foreground hover:border-dashed hover:border-muted-foreground"
+                              )}
+                            >
+                              Скользящий (30 дней)
+                            </button>
+                          </div>
                         </div>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          Добавьте рабочие места в разделе <a href="/rentals/workspaces" className="text-primary hover:underline">Управление рабочими местами</a>
-                        </p>
+
+                        {/* Дата начала - только для скользящего месяца */}
+                        {formData.monthType === 'sliding' && (
+                          <div className="flex-shrink-0 w-64">
+                            <Label className="text-sm font-medium">Дата начала</Label>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  className={cn(
+                                    "w-full justify-start text-left font-normal mt-1 h-10",
+                                    !formData.startDate && "text-muted-foreground"
+                                  )}
+                                >
+                                  <CalendarIcon className="mr-2 h-4 w-4" />
+                                  {formData.startDate
+                                    ? format(formData.startDate, 'PPP', { locale: ru })
+                                    : 'Выберите дату'}
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0">
+                                <Calendar
+                                  mode="single"
+                                  selected={formData.startDate || undefined}
+                                  onSelect={(date) => {
+                                    if (!date) return;
+                                    const endDate = addDays(date, 30);
+                                    setFormData(prev => ({ ...prev, startDate: date, endDate }));
+                                  }}
+                                  locale={ru}
+                                  disabled={(date) => date < new Date()}
+                                />
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div>
+                        <Label className="text-sm font-medium">Коворкинг</Label>
+                        {isLoadingRooms ? (
+                          <div className="flex items-center mt-1 h-10 px-3 border rounded-md">
+                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mr-2" />
+                            <span className="text-sm text-muted-foreground">Загрузка...</span>
+                          </div>
+                        ) : coworkingRoomsWithWorkspaces.length === 0 ? (
+                          <div className="mt-1 p-3 text-sm text-muted-foreground border rounded-md border-dashed">
+                            Нет коворкингов с рабочими местами. <a href="/rentals/workspaces" className="text-primary hover:underline">Добавить рабочие места</a>
+                          </div>
+                        ) : (
+                          <Select
+                            value={formData.roomId || ''}
+                            onValueChange={(value) => setFormData(prev => ({ ...prev, roomId: value, workspaceIds: [] }))}
+                          >
+                            <SelectTrigger className="mt-1 w-64">
+                              <SelectValue placeholder="Выберите коворкинг" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {coworkingRoomsWithWorkspaces.map((room) => (
+                                <SelectItem key={room.id} value={room.id}>
+                                  {room.name}{room.number ? ` №${room.number}` : ''} ({room._count?.workspaces} мест)
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
                       </div>
                     )}
-                  </>
-                )}
 
-                {/* Для периода "месяц" - интерфейс с сеткой доступности */}
-                {formData.periodUnit === 'month' && formData.roomId && (
-                  <div className="space-y-6">
-                    {/* Выбор месяца или даты начала */}
-                    <div className="space-y-4">
-                      {/* Для календарного месяца - чипсы с месяцами */}
-                      {formData.monthType === 'calendar' && (
+                    {/* Для периода "день" - таблица доступности */}
+                    {formData.periodUnit === 'day' && formData.roomId && (
+                      <>
+                        {isLoadingWorkspaces ? (
+                          <div className="flex items-center justify-center py-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                            <span className="ml-2 text-sm text-muted-foreground">Загрузка рабочих мест...</span>
+                          </div>
+                        ) : workspaces && workspaces.length > 0 ? (
+                          <WorkspaceAvailabilityGrid
+                            workspaces={workspaces}
+                            selectedSlots={selectedSlots}
+                            onSlotToggle={handleSlotToggle}
+                          />
+                        ) : (
+                          <div className="p-6 text-center border rounded-lg border-dashed">
+                            <div className="text-muted-foreground">
+                              В выбранном коворкинге нет рабочих мест.
+                            </div>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Добавьте рабочие места в разделе <a href="/rentals/workspaces" className="text-primary hover:underline">Управление рабочими местами</a>
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* Для периода "месяц" */}
+                    {formData.periodUnit === 'month' && formData.roomId && (
+                      <div className="space-y-4">
+                        {formData.monthType === 'calendar' && (
                           <div>
                             <Label className="mb-2 block">Выберите месяц</Label>
                             <div className="flex flex-wrap gap-2">
@@ -847,7 +822,6 @@ export default function NewRentalPage() {
                                 const monthDate = addMonths(startOfMonth(new Date()), i);
                                 const isSelected = formData.startDate &&
                                   format(formData.startDate, 'yyyy-MM') === format(monthDate, 'yyyy-MM');
-
                                 return (
                                   <Button
                                     key={i}
@@ -858,10 +832,7 @@ export default function NewRentalPage() {
                                       const endDate = endOfMonth(monthDate);
                                       setFormData(prev => ({ ...prev, startDate, endDate }));
                                     }}
-                                    className={cn(
-                                      "transition-colors",
-                                      isSelected && "bg-primary text-primary-foreground"
-                                    )}
+                                    className={cn("transition-colors", isSelected && "bg-primary text-primary-foreground")}
                                   >
                                     {format(monthDate, 'LLLL yyyy', { locale: ru })}
                                   </Button>
@@ -871,447 +842,431 @@ export default function NewRentalPage() {
                           </div>
                         )}
 
-                      {formData.startDate && formData.endDate && (
-                        <div className="p-3 bg-muted rounded-lg">
-                          <div className="text-sm font-medium">Период:</div>
-                          <div className="text-sm text-muted-foreground">
-                            {format(formData.startDate, 'PPP', { locale: ru })} — {format(formData.endDate, 'PPP', { locale: ru })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-
-                    {/* Секция "Доступность" - показывается когда выбраны даты */}
-                    {formData.startDate && formData.endDate && workspaces.length > 0 && (
-                      <div className="space-y-4">
-                        <h4 className="font-medium text-sm text-muted-foreground">Доступность и выбор рабочих мест</h4>
-                        <MonthlyWorkspaceAvailabilityGrid
-                          workspaces={workspaces}
-                          selectedWorkspaceIds={formData.workspaceIds}
-                          onWorkspaceToggle={(workspaceId) => {
-                            setFormData(prev => ({
-                              ...prev,
-                              workspaceIds: prev.workspaceIds.includes(workspaceId)
-                                ? prev.workspaceIds.filter(id => id !== workspaceId)
-                                : [...prev.workspaceIds, workspaceId],
-                            }));
-                          }}
-                          startDate={formData.startDate}
-                          endDate={formData.endDate}
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Проверка доступности и конфликты */}
-                {formData.startDate && (
-                  <div className="mt-6 pt-6 border-t space-y-4">
-                    <Button
-                      variant="outline"
-                      onClick={checkAvailability}
-                      disabled={isCheckingAvailability}
-                      className="w-full"
-                    >
-                      {isCheckingAvailability ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Проверка...
-                        </>
-                      ) : (
-                        'Проверить доступность'
-                      )}
-                    </Button>
-
-                    {conflicts.length > 0 && (
-                      <Alert variant="destructive">
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertTitle>Обнаружены конфликты</AlertTitle>
-                        <AlertDescription>
-                          <div className="mt-2 space-y-1">
-                            {conflicts.map((conflict, i) => (
-                              <div key={i} className="text-sm">
-                                {format(new Date(conflict.date), 'PPP', { locale: ru })}: {conflict.description}
-                              </div>
-                            ))}
-                          </div>
-                          <div className="mt-3">
-                            <Label className="flex items-center gap-2 cursor-pointer">
-                              <Checkbox
-                                checked={ignoreConflicts}
-                                onCheckedChange={(checked) => setIgnoreConflicts(!!checked)}
-                              />
-                              <span>Игнорировать конфликты</span>
-                            </Label>
-                          </div>
-                        </AlertDescription>
-                      </Alert>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Объединенный блок для HOURLY: Объект и период */}
-          {formData.category === 'hourly' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Помещение и даты аренды</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {/* Шаг 1: Выбор зала */}
-                <div>
-                  <Label>Помещение</Label>
-                  <Select
-                    value={formData.roomId || ''}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, roomId: value, selectedHourlySlots: [] }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Выберите зал" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {regularRooms.map((room) => (
-                        <SelectItem key={room.id} value={room.id}>
-                          {room.name}{room.number ? ` №${room.number}` : ''} - {room.hourlyRate} ₽/час
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {formData.roomId && (
-                  <>
-                    <Separator />
-
-                    {/* Шаг 2 и 3: Выбор дней и временных слотов */}
-                    <div className="flex flex-col lg:flex-row gap-6">
-                      {/* Календарь слева */}
-                      <div className="flex-shrink-0">
-                        <Label className="mb-2 block">Выберите дни</Label>
-                        <Calendar
-                          mode="multiple"
-                          selected={formData.selectedDays}
-                          onSelect={(dates) => {
-                            setFormData(prev => ({
-                              ...prev,
-                              selectedDays: dates || [],
-                              // Удалить слоты для невыбранных дней
-                              selectedHourlySlots: prev.selectedHourlySlots.filter(slot =>
-                                dates?.some(d => isSameDay(d, slot.date))
-                              ),
-                            }));
-                          }}
-                          locale={ru}
-                          disabled={(date) => date < new Date()}
-                          className="rounded-md border"
-                        />
-                      </div>
-
-                      {/* Временные слоты справа */}
-                      <div className="flex-1 min-w-0">
-                        {formData.selectedDays.length > 0 ? (
-                          <>
-                            <Label className="mb-2 block">Выберите временные слоты</Label>
-                            <HourlyTimeSlotGrid
-                              roomId={formData.roomId}
-                              selectedDates={formData.selectedDays.sort((a, b) => a.getTime() - b.getTime())}
-                              selectedSlots={formData.selectedHourlySlots}
-                              onSlotToggle={(slot) => {
-                                setFormData(prev => {
-                                  const exists = prev.selectedHourlySlots.some(
-                                    s => isSameDay(s.date, slot.date) && s.startHour === slot.startHour
-                                  );
-                                  return {
-                                    ...prev,
-                                    selectedHourlySlots: exists
-                                      ? prev.selectedHourlySlots.filter(
-                                          s => !(isSameDay(s.date, slot.date) && s.startHour === slot.startHour)
-                                        )
-                                      : [...prev.selectedHourlySlots, slot],
-                                  };
-                                });
-                              }}
-                            />
-                          </>
-                        ) : (
-                          <div className="flex items-center justify-center h-full min-h-[300px] text-sm text-muted-foreground border rounded-md border-dashed">
-                            Выберите дни в календаре
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Выбор объекта - только для room */}
-          {formData.category === 'room' && formData.periodUnit && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Помещение и даты аренды</CardTitle>
-                <CardDescription>Выберите кабинет для аренды</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {formData.category === 'room' && (
-                  <Select
-                    value={formData.roomId || ''}
-                    onValueChange={(value) => setFormData(prev => ({ ...prev, roomId: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Выберите кабинет" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {coworkingRooms.map((room) => (
-                        <SelectItem key={room.id} value={room.id}>
-                          <div className="flex justify-between items-center gap-4">
-                            <span>{room.name}{room.number ? ` №${room.number}` : ''}</span>
-                            <span className="text-muted-foreground">
-                              {formData.periodUnit === 'day' && `${room.dailyRateCoworking || room.dailyRate} ₽/день`}
-                              {formData.periodUnit === 'month' && `${room.monthlyRateCoworking} ₽/месяц`}
+                        {formData.startDate && formData.endDate && (
+                          <div className="p-3 bg-muted rounded-lg inline-block">
+                            <span className="text-sm">
+                              {format(formData.startDate, 'PPP', { locale: ru })} — {format(formData.endDate, 'PPP', { locale: ru })}
                             </span>
                           </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                        )}
+
+                        {formData.startDate && formData.endDate && workspaces.length > 0 && (
+                          <MonthlyWorkspaceAvailabilityGrid
+                            workspaces={workspaces}
+                            selectedWorkspaceIds={formData.workspaceIds}
+                            onWorkspaceToggle={(workspaceId) => {
+                              setFormData(prev => ({
+                                ...prev,
+                                workspaceIds: prev.workspaceIds.includes(workspaceId)
+                                  ? prev.workspaceIds.filter(id => id !== workspaceId)
+                                  : [...prev.workspaceIds, workspaceId],
+                              }));
+                            }}
+                            startDate={formData.startDate}
+                            endDate={formData.endDate}
+                          />
+                        )}
+                      </div>
+                    )}
+
+                    {/* Проверка доступности и конфликты */}
+                    {formData.startDate && (
+                      <>
+                        <Button
+                          variant="outline"
+                          onClick={checkAvailability}
+                          disabled={isCheckingAvailability}
+                          size="sm"
+                        >
+                          {isCheckingAvailability ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Проверка...
+                            </>
+                          ) : (
+                            'Проверить доступность'
+                          )}
+                        </Button>
+
+                        {conflicts.length > 0 && (
+                          <Alert variant="destructive">
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertTitle>Обнаружены конфликты</AlertTitle>
+                            <AlertDescription>
+                              <div className="mt-2 space-y-1">
+                                {conflicts.map((conflict, i) => (
+                                  <div key={i} className="text-sm">
+                                    {format(new Date(conflict.date), 'PPP', { locale: ru })}: {conflict.description}
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="mt-3">
+                                <Label className="flex items-center gap-2 cursor-pointer">
+                                  <Checkbox
+                                    checked={ignoreConflicts}
+                                    onCheckedChange={(checked) => setIgnoreConflicts(!!checked)}
+                                  />
+                                  <span>Игнорировать конфликты</span>
+                                </Label>
+                              </div>
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                      </>
+                    )}
+                  </>
                 )}
-              </CardContent>
-            </Card>
-          )}
 
-          {/* Период - только для room */}
-          {formData.category === 'room' && formData.periodUnit && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Период</CardTitle>
-                <CardDescription>Укажите даты аренды</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {formData.periodUnit === 'day' && (
-                  <div className="flex flex-col lg:flex-row gap-6">
-                    {/* Календарь слева */}
-                    <div className="flex-shrink-0">
-                      <Calendar
-                        mode="multiple"
-                        selected={formData.selectedDays}
-                        onSelect={(dates) => {
-                          setFormData(prev => ({
-                            ...prev,
-                            selectedDays: dates || [],
-                            startDate: dates && dates.length > 0 ? dates.sort((a, b) => a.getTime() - b.getTime())[0] : null,
-                            endDate: dates && dates.length > 1 ? dates.sort((a, b) => a.getTime() - b.getTime())[dates.length - 1] : null,
-                          }));
-                        }}
-                        locale={ru}
-                        disabled={(date) => date < new Date()}
-                        className="rounded-md border"
-                      />
-                    </div>
-
-                    {/* Сетка со статусом доступности справа */}
-                    <div className="flex-1 min-w-0">
-                      {formData.roomId ? (
-                        <RoomDailyAvailabilityGrid
-                          roomId={formData.roomId}
-                          selectedDates={formData.selectedDays}
-                          conflicts={conflicts}
-                          isCheckingAvailability={isCheckingAvailability}
-                          ignoreConflicts={ignoreConflicts}
-                          onIgnoreConflictsChange={setIgnoreConflicts}
-                          onCheckAvailability={checkAvailability}
-                        />
-                      ) : (
-                        <div className="flex items-center justify-center h-full min-h-[300px] text-sm text-muted-foreground border rounded-md border-dashed">
-                          Сначала выберите кабинет
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {formData.periodUnit === 'month' && (
+                {/* === HOURLY === */}
+                {formData.category === 'hourly' && (
                   <>
-                    <div>
-                      <Label>Тип месяца</Label>
-                      <RadioGroup
-                        value={formData.monthType}
-                        onValueChange={(value) => setFormData(prev => ({ ...prev, monthType: value as 'calendar' | 'sliding', startDate: null, endDate: null }))}
-                        className="mt-2 flex gap-4"
+                    <div className="w-64">
+                      <Label>Помещение</Label>
+                      <Select
+                        value={formData.roomId || ''}
+                        onValueChange={(value) => setFormData(prev => ({ ...prev, roomId: value, selectedHourlySlots: [] }))}
                       >
-                        <Label className="flex items-center gap-2 cursor-pointer">
-                          <RadioGroupItem value="calendar" />
-                          <span>Календарный (с 1-го числа)</span>
-                        </Label>
-                        <Label className="flex items-center gap-2 cursor-pointer">
-                          <RadioGroupItem value="sliding" />
-                          <span>Скользящий (30 дней)</span>
-                        </Label>
-                      </RadioGroup>
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Выберите зал" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {regularRooms.map((room) => (
+                            <SelectItem key={room.id} value={room.id}>
+                              {room.name}{room.number ? ` №${room.number}` : ''} - {room.hourlyRate} ₽/час
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div>
-                      <Label>{formData.monthType === 'calendar' ? 'Выберите месяц' : 'Дата начала'}</Label>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            className={cn(
-                              "w-full justify-start text-left font-normal mt-1",
-                              !formData.startDate && "text-muted-foreground"
-                            )}
-                          >
-                            <CalendarIcon className="mr-2 h-4 w-4" />
-                            {formData.startDate
-                              ? formData.monthType === 'calendar'
-                                ? format(formData.startDate, 'LLLL yyyy', { locale: ru })
-                                : format(formData.startDate, 'PPP', { locale: ru })
-                              : 'Выберите дату'}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
+
+                    {formData.roomId && (
+                      <div className="flex flex-col lg:flex-row gap-6">
+                        <div className="flex-shrink-0">
+                          <Label className="mb-2 block">Выберите дни</Label>
                           <Calendar
-                            mode="single"
-                            selected={formData.startDate || undefined}
-                            onSelect={(date) => {
-                              if (!date) return;
-                              let startDate = date;
-                              let endDate: Date;
-
-                              if (formData.monthType === 'calendar') {
-                                startDate = startOfMonth(date);
-                                endDate = endOfMonth(date);
-                              } else {
-                                endDate = addMonths(date, 1);
-                              }
-
-                              setFormData(prev => ({ ...prev, startDate, endDate }));
+                            mode="multiple"
+                            selected={formData.selectedDays}
+                            onSelect={(dates) => {
+                              setFormData(prev => ({
+                                ...prev,
+                                selectedDays: dates || [],
+                                selectedHourlySlots: prev.selectedHourlySlots.filter(slot =>
+                                  dates?.some(d => isSameDay(d, slot.date))
+                                ),
+                              }));
                             }}
                             locale={ru}
                             disabled={(date) => date < new Date()}
+                            className="rounded-md border"
                           />
-                        </PopoverContent>
-                      </Popover>
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          {formData.selectedDays.length > 0 ? (
+                            <>
+                              <Label className="mb-2 block">Выберите временные слоты</Label>
+                              <HourlyTimeSlotGrid
+                                roomId={formData.roomId}
+                                selectedDates={formData.selectedDays.sort((a, b) => a.getTime() - b.getTime())}
+                                selectedSlots={formData.selectedHourlySlots}
+                                onSlotToggle={(slot) => {
+                                  setFormData(prev => {
+                                    const exists = prev.selectedHourlySlots.some(
+                                      s => isSameDay(s.date, slot.date) && s.startHour === slot.startHour
+                                    );
+                                    return {
+                                      ...prev,
+                                      selectedHourlySlots: exists
+                                        ? prev.selectedHourlySlots.filter(
+                                            s => !(isSameDay(s.date, slot.date) && s.startHour === slot.startHour)
+                                          )
+                                        : [...prev.selectedHourlySlots, slot],
+                                    };
+                                  });
+                                }}
+                              />
+                            </>
+                          ) : (
+                            <div className="flex items-center justify-center h-full min-h-[300px] text-sm text-muted-foreground border rounded-md border-dashed">
+                              Выберите дни в календаре
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* === ROOM === */}
+                {formData.category === 'room' && formData.periodUnit && (
+                  <>
+                    {/* Выбор кабинета */}
+                    <div className="flex items-end gap-6 flex-wrap">
+                      <div className="w-72">
+                        <Label>Кабинет</Label>
+                        <Select
+                          value={formData.roomId || ''}
+                          onValueChange={(value) => setFormData(prev => ({ ...prev, roomId: value }))}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Выберите кабинет" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {coworkingRooms.map((room) => (
+                              <SelectItem key={room.id} value={room.id}>
+                                {room.name}{room.number ? ` №${room.number}` : ''} — {formData.periodUnit === 'day' ? `${room.dailyRateCoworking || room.dailyRate} ₽/день` : `${room.monthlyRateCoworking} ₽/мес`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      {formData.periodUnit === 'month' && (
+                        <div className="flex items-center gap-4 h-10">
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, monthType: 'calendar', startDate: null, endDate: null }))}
+                            className={cn(
+                              "text-sm font-medium transition-colors border-b-2 pb-0.5",
+                              formData.monthType === 'calendar'
+                                ? "text-primary border-dashed border-muted-foreground"
+                                : "text-muted-foreground border-transparent hover:text-foreground"
+                            )}
+                          >
+                            Календарный месяц
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, monthType: 'sliding', startDate: null, endDate: null }))}
+                            className={cn(
+                              "text-sm font-medium transition-colors border-b-2 pb-0.5",
+                              formData.monthType === 'sliding'
+                                ? "text-primary border-dashed border-muted-foreground"
+                                : "text-muted-foreground border-transparent hover:text-foreground"
+                            )}
+                          >
+                            Скользящий (30 дней)
+                          </button>
+                        </div>
+                      )}
+
+                      {formData.periodUnit === 'month' && formData.monthType === 'sliding' && (
+                        <div className="w-64">
+                          <Label className="text-sm font-medium">Дата начала</Label>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal mt-1 h-10",
+                                  !formData.startDate && "text-muted-foreground"
+                                )}
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {formData.startDate ? format(formData.startDate, 'PPP', { locale: ru }) : 'Выберите дату'}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <Calendar
+                                mode="single"
+                                selected={formData.startDate || undefined}
+                                onSelect={(date) => {
+                                  if (!date) return;
+                                  setFormData(prev => ({ ...prev, startDate: date, endDate: addMonths(date, 1) }));
+                                }}
+                                locale={ru}
+                                disabled={(date) => date < new Date()}
+                              />
+                            </PopoverContent>
+                          </Popover>
+                        </div>
+                      )}
                     </div>
-                    {formData.startDate && formData.endDate && (
-                      <div className="p-3 bg-muted rounded-lg">
-                        <div className="text-sm font-medium">Период аренды:</div>
-                        <div className="text-sm text-muted-foreground">
-                          {format(formData.startDate, 'PPP', { locale: ru })} — {format(formData.endDate, 'PPP', { locale: ru })}
+
+                    {/* День: календарь и сетка */}
+                    {formData.periodUnit === 'day' && formData.roomId && (
+                      <div className="flex flex-col lg:flex-row gap-6">
+                        <div className="flex-shrink-0">
+                          <Calendar
+                            mode="multiple"
+                            selected={formData.selectedDays}
+                            onSelect={(dates) => {
+                              setFormData(prev => ({
+                                ...prev,
+                                selectedDays: dates || [],
+                                startDate: dates && dates.length > 0 ? dates.sort((a, b) => a.getTime() - b.getTime())[0] : null,
+                                endDate: dates && dates.length > 1 ? dates.sort((a, b) => a.getTime() - b.getTime())[dates.length - 1] : null,
+                              }));
+                            }}
+                            locale={ru}
+                            disabled={(date) => date < new Date()}
+                            className="rounded-md border"
+                          />
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                          <RoomDailyAvailabilityGrid
+                            roomId={formData.roomId}
+                            selectedDates={formData.selectedDays}
+                            conflicts={conflicts}
+                            isCheckingAvailability={isCheckingAvailability}
+                            ignoreConflicts={ignoreConflicts}
+                            onIgnoreConflictsChange={setIgnoreConflicts}
+                            onCheckAvailability={checkAvailability}
+                          />
                         </div>
                       </div>
                     )}
 
-                    {/* Кнопка проверки доступности для месяца */}
-                    {formData.startDate && (
-                      <Button
-                        variant="outline"
-                        onClick={checkAvailability}
-                        disabled={isCheckingAvailability}
-                        className="w-full"
-                      >
-                        {isCheckingAvailability ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Проверка...
-                          </>
-                        ) : (
-                          'Проверить доступность'
+                    {/* Месяц: чипсы или период */}
+                    {formData.periodUnit === 'month' && formData.roomId && (
+                      <div className="space-y-4">
+                        {formData.monthType === 'calendar' && (
+                          <div className="flex flex-wrap gap-2">
+                            {Array.from({ length: 12 }, (_, i) => {
+                              const monthDate = addMonths(startOfMonth(new Date()), i);
+                              const isSelected = formData.startDate &&
+                                format(formData.startDate, 'yyyy-MM') === format(monthDate, 'yyyy-MM');
+                              return (
+                                <Button
+                                  key={i}
+                                  variant={isSelected ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => {
+                                    const startDate = startOfMonth(monthDate);
+                                    const endDate = endOfMonth(monthDate);
+                                    setFormData(prev => ({ ...prev, startDate, endDate }));
+                                  }}
+                                  className={cn("transition-colors", isSelected && "bg-primary text-primary-foreground")}
+                                >
+                                  {format(monthDate, 'LLLL yyyy', { locale: ru })}
+                                </Button>
+                              );
+                            })}
+                          </div>
                         )}
-                      </Button>
-                    )}
 
-                    {/* Конфликты для месяца */}
-                    {conflicts.length > 0 && (
-                      <Alert variant="destructive">
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertTitle>Обнаружены конфликты</AlertTitle>
-                        <AlertDescription>
-                          <div className="mt-2 space-y-1">
-                            {conflicts.map((conflict, i) => (
-                              <div key={i} className="text-sm">
-                                {format(new Date(conflict.date), 'PPP', { locale: ru })}: {conflict.description}
+                        {formData.startDate && formData.endDate && (
+                          <div className="p-3 bg-muted rounded-lg inline-block">
+                            <span className="text-sm">
+                              {format(formData.startDate, 'PPP', { locale: ru })} — {format(formData.endDate, 'PPP', { locale: ru })}
+                            </span>
+                          </div>
+                        )}
+
+                        {isCoworkingWithoutWorkspaces && formData.startDate && formData.endDate && selectedRoom && (
+                          <MonthlyRoomAvailabilityGrid
+                            room={selectedRoom}
+                            startDate={formData.startDate}
+                            endDate={formData.endDate}
+                          />
+                        )}
+
+                        {formData.startDate && (
+                          <Button
+                            variant="outline"
+                            onClick={checkAvailability}
+                            disabled={isCheckingAvailability}
+                            size="sm"
+                          >
+                            {isCheckingAvailability ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Проверка...
+                              </>
+                            ) : (
+                              'Проверить доступность'
+                            )}
+                          </Button>
+                        )}
+
+                        {conflicts.length > 0 && (
+                          <Alert variant="destructive">
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertTitle>Обнаружены конфликты</AlertTitle>
+                            <AlertDescription>
+                              <div className="mt-2 space-y-1">
+                                {conflicts.map((conflict, i) => (
+                                  <div key={i} className="text-sm">
+                                    {format(new Date(conflict.date), 'PPP', { locale: ru })}: {conflict.description}
+                                  </div>
+                                ))}
                               </div>
-                            ))}
-                          </div>
-                          <div className="mt-3">
-                            <Label className="flex items-center gap-2 cursor-pointer">
-                              <Checkbox
-                                checked={ignoreConflicts}
-                                onCheckedChange={(checked) => setIgnoreConflicts(!!checked)}
-                              />
-                              <span>Игнорировать конфликты и продолжить</span>
-                            </Label>
-                          </div>
-                        </AlertDescription>
-                      </Alert>
+                              <div className="mt-3">
+                                <Label className="flex items-center gap-2 cursor-pointer">
+                                  <Checkbox
+                                    checked={ignoreConflicts}
+                                    onCheckedChange={(checked) => setIgnoreConflicts(!!checked)}
+                                  />
+                                  <span>Игнорировать конфликты</span>
+                                </Label>
+                              </div>
+                            </AlertDescription>
+                          </Alert>
+                        )}
+                      </div>
                     )}
                   </>
+                )}
+
+                {/* === КЛИЕНТ И ДОПОЛНИТЕЛЬНЫЕ ДАННЫЕ === */}
+                <Separator />
+
+                <div className="flex flex-wrap gap-6">
+                  <div className="w-80">
+                    <Label className="text-sm font-medium">Клиент *</Label>
+                    <div className="mt-1">
+                      <ClientSearch
+                        value={formData.clientId || undefined}
+                        onValueChange={(clientId) => {
+                          setFormData(prev => ({ ...prev, clientId: clientId || null }));
+                        }}
+                        onClientSelect={(client) => {
+                          setSelectedClient(client);
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {formData.category === 'hourly' && (
+                    <div className="w-64">
+                      <Label>Тип мероприятия</Label>
+                      <Input
+                        value={formData.eventType}
+                        onChange={(e) => setFormData(prev => ({ ...prev, eventType: e.target.value }))}
+                        placeholder="мастер-класс, репетиция..."
+                        className="mt-1"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex-1 min-w-[200px]">
+                    <Label>Примечания</Label>
+                    <Textarea
+                      value={formData.notes}
+                      onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
+                      placeholder="Дополнительная информация"
+                      className="mt-1"
+                      rows={2}
+                    />
+                  </div>
+                </div>
+
+                {priceCalculation && formData.adjustedPrice !== null && (
+                  <div className="w-80">
+                    <Label>Причина корректировки</Label>
+                    <Textarea
+                      value={formData.adjustmentReason}
+                      onChange={(e) => setFormData(prev => ({ ...prev, adjustmentReason: e.target.value }))}
+                      placeholder="Укажите причину"
+                      className="mt-1"
+                      rows={2}
+                    />
+                  </div>
                 )}
               </CardContent>
             </Card>
           )}
-
-          {/* Клиент и дополнительные данные */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Клиент и дополнительные данные</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <Label className="text-sm font-medium">Клиент *</Label>
-                <div className="mt-1">
-                  <ClientSearch
-                    value={formData.clientId || undefined}
-                    onValueChange={(clientId) => {
-                      setFormData(prev => ({ ...prev, clientId: clientId || null }));
-                    }}
-                    onClientSelect={(client) => {
-                      setSelectedClient(client);
-                    }}
-                  />
-                </div>
-              </div>
-
-              {formData.category === 'hourly' && (
-                <div>
-                  <Label>Тип мероприятия</Label>
-                  <Input
-                    value={formData.eventType}
-                    onChange={(e) => setFormData(prev => ({ ...prev, eventType: e.target.value }))}
-                    placeholder="Например: мастер-класс, репетиция"
-                    className="mt-1"
-                  />
-                </div>
-              )}
-
-              <div>
-                <Label>Примечания</Label>
-                <Textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                  placeholder="Дополнительная информация"
-                  className="mt-1"
-                  rows={3}
-                />
-              </div>
-
-              {priceCalculation && formData.adjustedPrice !== null && (
-                <div>
-                  <Label>Причина корректировки</Label>
-                  <Textarea
-                    value={formData.adjustmentReason}
-                    onChange={(e) => setFormData(prev => ({ ...prev, adjustmentReason: e.target.value }))}
-                    placeholder="Укажите причину"
-                    className="mt-1"
-                    rows={2}
-                  />
-                </div>
-              )}
-            </CardContent>
-          </Card>
         </div>
       </div>
 

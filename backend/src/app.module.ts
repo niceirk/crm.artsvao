@@ -36,6 +36,7 @@ import { CalendarModule } from './calendar/calendar.module';
 import { HealthModule } from './health/health.module';
 import { PyrusModule } from './integrations/pyrus/pyrus.module';
 import { NovofonModule } from './integrations/novofon/novofon.module';
+import { TimepadModule } from './integrations/timepad/timepad.module';
 import { EmailModule } from './email/email.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { MessagesModule } from './messages/messages.module';
@@ -100,6 +101,7 @@ import { CacheModule } from './common/cache/cache.module';
     HealthModule,
     PyrusModule,
     NovofonModule,
+    TimepadModule,
     TimesheetsModule,
     ArchivedSalesModule,
     NomenclatureModule,

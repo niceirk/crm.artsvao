@@ -87,4 +87,27 @@ export const rentalApplicationsApi = {
     const response = await apiClient.get(`/rental-applications/${id}/edit-status`);
     return response.data;
   },
+
+  // Получить занятые почасовые слоты (батчевый запрос)
+  getHourlyOccupancy: async (roomId: string, dates: string[]): Promise<Record<string, boolean>> => {
+    const response = await apiClient.post('/rental-applications/hourly-occupancy', {
+      roomId,
+      dates,
+    });
+    return response.data;
+  },
+
+  // Получить занятость помещения по дням (для ROOM_MONTHLY коворкинга без мест)
+  getRoomMonthlyOccupancy: async (
+    roomId: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<Record<string, { type: string; description: string } | null>> => {
+    const response = await apiClient.post('/rental-applications/room-monthly-occupancy', {
+      roomId,
+      startDate,
+      endDate,
+    });
+    return response.data;
+  },
 };

@@ -4,3 +4,5 @@ export * from './check-availability.dto';
 export * from './calculate-price.dto';
 export * from './extend-rental.dto';
 export * from './cancel-rental.dto';
+export * from './hourly-occupancy.dto';
+export * from './room-monthly-occupancy.dto';

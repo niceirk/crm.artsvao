@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MoreHorizontal, Pencil, Trash2, Calendar, Eye, ArrowUpDown, RefreshCw, X } from 'lucide-react';
@@ -43,6 +43,7 @@ import {
 import { Event } from '@/lib/api/events';
 import { useDeleteEvent, useUpdateEvent, useSyncEvents } from '@/hooks/use-events';
 import { EventDialog } from './event-dialog';
+import { EventParticipantsCell, EventAvailableCell } from './event-participants-cell';
 import { CalendarEventStatus } from '@/lib/api/calendar-event-status';
 
 const statusColors: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
@@ -393,6 +394,8 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
               <TableHead>Помещение</TableHead>
               <SortableHeader field="date">Дата</SortableHeader>
               <TableHead>Время</TableHead>
+              <SortableHeader field="participants"><span className="w-full text-center">Участники</span></SortableHeader>
+              <TableHead className="text-center">Доступно</TableHead>
               <TableHead>Статус</TableHead>
               <TableHead className="w-[70px]"></TableHead>
             </TableRow>
@@ -423,6 +426,12 @@ export function EventsTable({ events, isLoading }: EventsTableProps) {
                 <TableCell>{formatDate(event.date)}</TableCell>
                 <TableCell>
                   {formatTime(event.startTime)} - {formatTime(event.endTime)}
+                </TableCell>
+                <TableCell>
+                  <EventParticipantsCell event={event} />
+                </TableCell>
+                <TableCell>
+                  <EventAvailableCell event={event} />
                 </TableCell>
                 <TableCell>
                   <Badge variant={statusColors[event.status]}>

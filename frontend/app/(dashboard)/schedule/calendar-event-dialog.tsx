@@ -1163,14 +1163,25 @@ export function CalendarEventDialog({
                   </Button>
                 )}
                 {isEditing && selectedEventType === 'event' && event && (
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    onClick={() => setShowDeleteConfirm(true)}
-                    disabled={deleteEvent.isPending}
-                  >
-                    Удалить
-                  </Button>
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      asChild
+                    >
+                      <Link href={`/admin/events/${event.id}`}>
+                        Журнал посещаемости
+                      </Link>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={() => setShowDeleteConfirm(true)}
+                      disabled={deleteEvent.isPending}
+                    >
+                      Удалить
+                    </Button>
+                  </>
                 )}
                 {isEditing && selectedEventType === 'reservation' && reservation && (
                   <Button
