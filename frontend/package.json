@@ -55,6 +55,7 @@
     "react": "^18",
     "react-day-picker": "^9.11.1",
     "react-dom": "^18",
+    "react-dropzone": "^14.3.8",
     "react-hook-form": "^7.66.0",
     "react-input-mask": "^2.0.4",
     "react-international-phone": "^4.6.0",

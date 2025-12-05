@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { format, addMonths, addDays, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Calendar as CalendarIcon, ArrowLeft, AlertTriangle, Loader2, Building2, Clock, Briefcase, DoorOpen, Save, X, Eye, Trash2 } from 'lucide-react';
+import { Calendar as CalendarIcon, ArrowLeft, AlertTriangle, Loader2, Building2, Clock, Briefcase, DoorOpen, Save, X, Eye, Trash2, FileText, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -50,6 +50,7 @@ import {
   useCheckAvailability,
   useCalculatePrice,
   useRemoveRental,
+  useCreateInvoice,
 } from '@/hooks/use-rental-applications';
 import { WorkspaceAvailabilityGrid } from '../new/components/workspace-availability-grid';
 import { HourlyTimeSlotGrid } from '../new/components/hourly-time-slot-grid';
@@ -328,6 +329,12 @@ export default function EditRentalPage() {
   const checkAvailabilityMutation = useCheckAvailability();
   const calculatePriceMutation = useCalculatePrice();
   const removeRentalMutation = useRemoveRental();
+  const createInvoiceMutation = useCreateInvoice();
+
+  // Получить активный счет
+  const activeInvoice = useMemo(() => {
+    return application?.invoices?.find((inv: any) => inv.status !== 'CANCELLED');
+  }, [application]);
 
   // Инициализация формы данными заявки
   useEffect(() => {
@@ -1565,8 +1572,37 @@ export default function EditRentalPage() {
                   Назад к списку
                 </Button>
 
-                {/* Информация о стоимости в режиме просмотра */}
+                {/* Информация о счете и стоимости в режиме просмотра */}
                 <div className="flex items-center gap-6 ml-auto">
+                  {/* Блок счета */}
+                  {activeInvoice ? (
+                    <Button
+                      variant="outline"
+                      onClick={() => window.open(`/invoices/${activeInvoice.id}`, '_blank')}
+                    >
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Счет {activeInvoice.invoiceNumber}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={() => createInvoiceMutation.mutate(id!)}
+                      disabled={createInvoiceMutation.isPending}
+                    >
+                      {createInvoiceMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Формирование...
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="h-4 w-4 mr-2" />
+                          Сформировать счет
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
+                <div className="flex items-center gap-6">
                   {priceCalculation ? (
                     <>
                       <div className="flex items-baseline gap-2">

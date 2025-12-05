@@ -37,6 +37,8 @@ interface BulkCancelFormData {
   transferStartTime?: string;
   transferEndTime?: string;
   notifyClients: boolean;
+  isCompensated: boolean;
+  compensationNote: string;
 }
 
 export function BulkCancelForm() {
@@ -48,8 +50,12 @@ export function BulkCancelForm() {
     defaultValues: {
       action: 'CANCEL',
       notifyClients: true,
+      isCompensated: false,
+      compensationNote: '',
     },
   });
+
+  const isCompensated = form.watch('isCompensated');
 
   const action = form.watch('action');
 
@@ -70,6 +76,13 @@ export function BulkCancelForm() {
       notifyClients: data.notifyClients,
     };
 
+    if (data.action === 'CANCEL') {
+      requestData.isCompensated = data.isCompensated;
+      if (data.isCompensated && data.compensationNote) {
+        requestData.compensationNote = data.compensationNote;
+      }
+    }
+
     if (data.action === 'TRANSFER' && transferDate) {
       requestData.transferDate = format(transferDate, 'yyyy-MM-dd');
       if (data.transferStartTime) requestData.transferStartTime = data.transferStartTime;
@@ -83,6 +96,8 @@ export function BulkCancelForm() {
         form.reset({
           action: 'CANCEL',
           notifyClients: true,
+          isCompensated: false,
+          compensationNote: '',
         });
       },
     });
@@ -247,6 +262,57 @@ export function BulkCancelForm() {
                 </FormItem>
               )}
             />
+
+            {action === 'CANCEL' && (
+              <>
+                <FormField
+                  control={form.control}
+                  name="isCompensated"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 bg-orange-50">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel>
+                          Считать отмену компенсацией
+                        </FormLabel>
+                        <FormDescription>
+                          Всем записанным клиентам с активными абонементами будет поставлен статус
+                          &quot;Уважительно&quot; (EXCUSED). Занятие отобразится в табеле и будет учтено
+                          при расчёте компенсаций.
+                        </FormDescription>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                {isCompensated && (
+                  <FormField
+                    control={form.control}
+                    name="compensationNote"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Комментарий к компенсации</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Например: Занятие отменено по техническим причинам"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Этот комментарий будет добавлен к записям посещений
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+              </>
+            )}
 
             {action === 'TRANSFER' && (
               <>

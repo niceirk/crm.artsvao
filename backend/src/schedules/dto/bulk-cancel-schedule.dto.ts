@@ -31,4 +31,12 @@ export class BulkCancelScheduleDto {
   @IsOptional()
   @IsBoolean()
   notifyClients?: boolean = true; // Send notifications
+
+  @IsOptional()
+  @IsBoolean()
+  isCompensated?: boolean = false; // Mark cancellation as compensated (EXCUSED for clients)
+
+  @IsOptional()
+  @IsString()
+  compensationNote?: string; // Note to add to attendance records
 }

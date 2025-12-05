@@ -18,8 +18,8 @@ export const invoicesApi = {
     const query = params.toString();
     const url = query ? `/invoices?${query}` : '/invoices';
 
-    const response = await apiClient.get<Invoice[]>(url);
-    return response.data;
+    const response = await apiClient.get<{ data: Invoice[]; meta: any }>(url);
+    return response.data.data;
   },
 
   getById: async (id: string): Promise<Invoice> => {
@@ -69,6 +69,11 @@ export const invoicesApi = {
 
   sendQREmail: async (id: string): Promise<{ success: boolean; message: string }> => {
     const response = await apiClient.post(`/invoices/${id}/send-qr-email`);
+    return response.data;
+  },
+
+  markAsPaid: async (id: string): Promise<Invoice> => {
+    const response = await apiClient.post<Invoice>(`/invoices/${id}/mark-paid`);
     return response.data;
   },
 };

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceDto } from './dto/update-invoice.dto';
@@ -459,17 +459,40 @@ export class InvoicesService {
     }
   }
 
-  async delete(id: string) {
+  async delete(id: string, userEmail?: string) {
     const invoice = await this.findOne(id);
 
-    // Проверка: нельзя удалить оплаченный счет
-    if (invoice.status === InvoiceStatus.PAID || invoice.status === InvoiceStatus.PARTIALLY_PAID) {
+    // Суперадмин (nikita@artsvao.ru) может удалять счета в любом статусе
+    const isSuperAdmin = userEmail === 'nikita@artsvao.ru';
+
+    // Проверка: нельзя удалить оплаченный счет (кроме суперадмина)
+    if (!isSuperAdmin && (invoice.status === InvoiceStatus.PAID || invoice.status === InvoiceStatus.PARTIALLY_PAID)) {
       throw new ConflictException('Cannot delete paid or partially paid invoice');
     }
 
     return this.prisma.invoice.delete({
       where: { id },
     });
+  }
+
+  /**
+   * Быстрая отметка счета как оплаченного
+   */
+  async markAsPaid(id: string, userId: string) {
+    const invoice = await this.findOne(id);
+
+    if (invoice.status === InvoiceStatus.PAID) {
+      throw new BadRequestException('Счет уже оплачен');
+    }
+
+    if (invoice.status === InvoiceStatus.CANCELLED) {
+      throw new BadRequestException('Нельзя оплатить отмененный счет');
+    }
+
+    return this.update(id, {
+      status: InvoiceStatus.PAID,
+      paidAt: new Date().toISOString(),
+    }, userId);
   }
 
   /**

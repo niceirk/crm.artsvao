@@ -15,6 +15,8 @@ export interface Schedule {
   recurrenceRule?: string;
   status: CalendarEventStatus;
   notes?: string;
+  isCompensated?: boolean; // Была ли компенсация при отмене
+  cancellationNote?: string; // Комментарий к компенсации
   createdAt: string;
   updatedAt: string;
   group?: {
@@ -57,6 +59,8 @@ export interface CreateScheduleDto {
 
 export interface UpdateScheduleDto extends Partial<CreateScheduleDto> {
   version?: number; // Для защиты от перезатирания
+  isCompensated?: boolean; // При отмене - считать компенсацией
+  compensationNote?: string; // Комментарий к компенсации
 }
 
 export interface RecurrenceRuleDto {
@@ -104,6 +108,8 @@ export interface BulkCancelScheduleDto {
   transferStartTime?: string;
   transferEndTime?: string;
   notifyClients?: boolean;
+  isCompensated?: boolean;
+  compensationNote?: string;
 }
 
 export interface BulkDeleteScheduleDto {

@@ -5,9 +5,10 @@ import { Prisma } from '@prisma/client';
  * P1001 - Can't reach database server
  * P1002 - Database server was reached but timed out
  * P1008 - Operations timed out
+ * P1017 - Server has closed the connection
  * P2024 - Timed out fetching a new connection from the connection pool
  */
-const RETRYABLE_ERROR_CODES = ['P1001', 'P1002', 'P1008', 'P2024'];
+const RETRYABLE_ERROR_CODES = ['P1001', 'P1002', 'P1008', 'P1017', 'P2024'];
 
 /**
  * PostgreSQL native error codes (SqlState), при которых нужно повторить запрос:
@@ -46,7 +47,8 @@ function isRetryableError(error: unknown): boolean {
       message.includes('idle-session timeout') ||
       message.includes('connection') ||
       message.includes('ECONNRESET') ||
-      message.includes('EPIPE')
+      message.includes('EPIPE') ||
+      message.includes('Server has closed')
     ) {
       return true;
     }

@@ -10,8 +10,9 @@ import { Prisma } from '@prisma/client';
 
 /**
  * Коды ошибок Prisma, связанные с соединением (временные, можно retry)
+ * P1017 - Server has closed the connection
  */
-const CONNECTION_ERROR_CODES = ['P1001', 'P1002', 'P1008', 'P2024'];
+const CONNECTION_ERROR_CODES = ['P1001', 'P1002', 'P1008', 'P1017', 'P2024'];
 
 /**
  * PostgreSQL native error codes (SqlState), связанные с соединением

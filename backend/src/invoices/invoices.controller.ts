@@ -126,6 +126,12 @@ export class InvoicesController {
     return this.invoicesService.findOne(id);
   }
 
+  @Post(':id/mark-paid')
+  @UseGuards(AdminGuard)
+  markAsPaid(@Param('id') id: string, @Request() req) {
+    return this.invoicesService.markAsPaid(id, req.user.sub);
+  }
+
   @Patch(':id')
   @UseGuards(AdminGuard)
   update(
@@ -138,7 +144,7 @@ export class InvoicesController {
 
   @Delete(':id')
   @UseGuards(AdminGuard)
-  remove(@Param('id') id: string) {
-    return this.invoicesService.delete(id);
+  remove(@Param('id') id: string, @Request() req) {
+    return this.invoicesService.delete(id, req.user.email);
   }
 }

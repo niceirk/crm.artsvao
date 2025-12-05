@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Plus, Laptop } from 'lucide-react';
@@ -16,6 +16,32 @@ export default function RentalsPage() {
   const [filters, setFilters] = useState<RentalApplicationFilters>({});
 
   const { data: applications, isLoading } = useRentalApplications(filters);
+
+  // Клиентская фильтрация для полей, не поддерживаемых бэкендом
+  const filteredApplications = useMemo(() => {
+    if (!applications) return [];
+
+    return applications.filter(app => {
+      // Фильтр по статусу счёта
+      if (filters.invoiceStatus) {
+        const activeInvoice = app.invoices?.find(inv => inv.status !== 'CANCELLED');
+
+        if (filters.invoiceStatus === 'NONE' && activeInvoice) return false;
+        if (filters.invoiceStatus === 'PENDING' && (!activeInvoice || activeInvoice.status === 'PAID')) return false;
+        if (filters.invoiceStatus === 'PAID' && activeInvoice?.status !== 'PAID') return false;
+      }
+
+      // Фильтр по диапазону бронирования
+      if (filters.bookingDateFrom) {
+        if (new Date(app.startDate) < new Date(filters.bookingDateFrom)) return false;
+      }
+      if (filters.bookingDateTo) {
+        if (new Date(app.startDate) > new Date(filters.bookingDateTo)) return false;
+      }
+
+      return true;
+    });
+  }, [applications, filters.invoiceStatus, filters.bookingDateFrom, filters.bookingDateTo]);
 
   // Подсчет статистики
   const stats = {
@@ -87,7 +113,7 @@ export default function RentalsPage() {
         <CardContent className="space-y-4">
           <RentalFilters filters={filters} onFiltersChange={setFilters} />
           <RentalsTable
-            applications={applications || []}
+            applications={filteredApplications}
             isLoading={isLoading}
             onEdit={(id) => router.push(`/rentals/${id}`)}
           />

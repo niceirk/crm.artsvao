@@ -8,6 +8,8 @@ import { UpdateCompensationDto } from './dto/update-compensation.dto';
 import { CreateBulkInvoicesDto } from './dto/create-bulk-invoices.dto';
 import { CalendarEventStatus, AttendanceStatus, GroupMemberStatus, ServiceType, WriteOffTiming } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
+import * as XLSX from 'xlsx';
+import { ImportAttendanceResult, ImportAttendanceRowResult } from './dto/import-attendance.dto';
 
 @Injectable()
 export class TimesheetsService {
@@ -46,7 +48,7 @@ export class TimesheetsService {
       throw new NotFoundException('Группа не найдена');
     }
 
-    // 2. Получить все занятия группы за месяц
+    // 2. Получить все занятия группы за месяц (включая компенсированные отмены)
     const schedules = await this.prisma.schedule.findMany({
       where: {
         groupId,
@@ -54,7 +56,10 @@ export class TimesheetsService {
           gte: monthStart,
           lte: monthEnd,
         },
-        status: { not: CalendarEventStatus.CANCELLED },
+        OR: [
+          { status: { not: CalendarEventStatus.CANCELLED } },
+          { status: CalendarEventStatus.CANCELLED, isCompensated: true },
+        ],
       },
       orderBy: { date: 'asc' },
       select: {
@@ -62,8 +67,15 @@ export class TimesheetsService {
         date: true,
         startTime: true,
         status: true,
+        isCompensated: true,
+        cancellationNote: true,
       },
     });
+
+    // 2.1. Подсчитать количество отменённых занятий с компенсацией
+    const compensatedCancelledCount = schedules.filter(
+      s => s.status === CalendarEventStatus.CANCELLED && s.isCompensated
+    ).length;
 
     // 3. Получить участников группы (текущих и тех, кто был активен в этом месяце)
     const members = await this.prisma.groupMember.findMany({
@@ -244,6 +256,17 @@ export class TimesheetsService {
       medCertsByClient.set(clientId, existing);
     }
 
+    // 6.3. Получить неоплаченные счета для всех клиентов группы
+    const unpaidInvoices = await this.getUnpaidInvoices(clientIds, groupId);
+
+    // Группируем сумму задолженности по клиенту
+    const debtByClient = new Map<string, number>();
+    for (const invoice of unpaidInvoices) {
+      const clientId = invoice.clientId;
+      const amount = Number(invoice.totalAmount) || 0;
+      debtByClient.set(clientId, (debtByClient.get(clientId) || 0) + amount);
+    }
+
     // 7. Создаём Map для быстрого поиска O(1)
     const attendancesByClient = new Map<string, typeof attendances>();
     const subscriptionsByClient = new Map<string, typeof subscriptions[0]>();
@@ -286,6 +309,8 @@ export class TimesheetsService {
         const day = String(dateObj.getDate()).padStart(2, '0');
         // Проверяем, был ли статус установлен по медицинской справке
         const isFromMedicalCertificate = attendance?.medicalCertificateSchedules?.length > 0;
+        // Занятие отменено (с компенсацией) - нельзя менять статус
+        const isScheduleCancelled = schedule.status === CalendarEventStatus.CANCELLED;
         return {
           date: `${year}-${month}-${day}`,
           scheduleId: schedule.id,
@@ -293,6 +318,8 @@ export class TimesheetsService {
           status: attendance?.status || null,
           subscriptionName: attendance?.subscription?.subscriptionType?.name || null,
           isFromMedicalCertificate,
+          isScheduleCancelled,
+          cancellationNote: isScheduleCancelled ? schedule.cancellationNote : null,
         };
       });
 
@@ -330,11 +357,15 @@ export class TimesheetsService {
       const baseCalculatedAmount = excusedWithoutMedCert * pricePerLessonWithDiscount;
       // Дополнительная компенсация из медицинских справок (перенесённая на этот месяц)
       const medCertCompensation = medCertCompByClient.get(member.clientId) || 0;
-      // Общая рассчитанная компенсация
-      const calculatedAmount = baseCalculatedAmount + medCertCompensation;
+      // Компенсация за отменённые занятия с компенсацией
+      const cancelledLessonsCompensation = compensatedCancelledCount * pricePerLessonWithDiscount;
+      // Задолженность клиента (неоплаченные счета по группе)
+      const clientDebtAmount = debtByClient.get(member.clientId) || 0;
+      // Общая рассчитанная компенсация (включая отменённые занятия)
+      const calculatedAmount = baseCalculatedAmount + medCertCompensation + cancelledLessonsCompensation;
 
-      // Запомнить для batch upsert
-      if (excusedTotal > 0 || existingCompensation) {
+      // Запомнить для batch upsert (включая компенсации за отменённые занятия и задолженность)
+      if (excusedTotal > 0 || compensatedCancelledCount > 0 || clientDebtAmount > 0 || existingCompensation) {
         compensationsToUpsert.push({
           clientId: member.clientId,
           excusedCount: excusedTotal,
@@ -348,11 +379,35 @@ export class TimesheetsService {
         : 0;
       const priceWithDiscount = subscriptionTypePrice * (1 - discountPercent / 100);
 
-      const compensationAmount = existingCompensation?.adjustedAmount
-        ? Number(existingCompensation.adjustedAmount)
-        : calculatedAmount;
+      // Перерасчёт = Компенсации - Задолженность (с учётом сохранённых настроек)
+      // Положительный перерасчёт уменьшает счёт, отрицательный увеличивает
+      let recalculationAmount: number;
+      if (existingCompensation?.adjustedAmount !== null && existingCompensation?.adjustedAmount !== undefined) {
+        // Используем ручную корректировку если она задана
+        recalculationAmount = Number(existingCompensation.adjustedAmount);
+      } else {
+        // Рассчитываем на основе сохранённых настроек
+        const includeExcused = existingCompensation?.includeExcused ?? true;
+        const includeMedCert = existingCompensation?.includeMedCert ?? true;
+        const includeCancelled = existingCompensation?.includeCancelled ?? true;
+        const excludedInvoiceIds = new Set(existingCompensation?.excludedInvoiceIds ?? []);
+
+        // Компенсации с учётом настроек
+        const effectiveCompensation =
+          (includeExcused ? baseCalculatedAmount : 0) +
+          (includeMedCert ? medCertCompensation : 0) +
+          (includeCancelled ? cancelledLessonsCompensation : 0);
+
+        // Задолженность с учётом исключённых счетов
+        const clientInvoices = unpaidInvoices.filter(inv => inv.clientId === member.clientId);
+        const effectiveDebt = clientInvoices
+          .filter(inv => !excludedInvoiceIds.has(inv.id))
+          .reduce((sum, inv) => sum + Number(inv.totalAmount), 0);
+
+        recalculationAmount = effectiveCompensation - effectiveDebt;
+      }
       const nextMonthInvoice = subscriptionTypePrice > 0
-        ? Math.max(0, Math.round(priceWithDiscount - compensationAmount))
+        ? Math.max(0, Math.round(priceWithDiscount - recalculationAmount))
         : null;
 
       return {
@@ -373,13 +428,26 @@ export class TimesheetsService {
         compensation: {
           id: existingCompensation?.id,
           excusedCount: excusedTotal,
-          calculatedAmount,
+          calculatedAmount, // Полная сумма компенсаций (без учёта настроек)
+          effectiveRecalculationAmount: recalculationAmount, // Итоговый перерасчёт с учётом настроек
           baseCalculatedAmount, // Компенсация за текущий месяц (excused без справок * pricePerLesson со скидкой)
           medCertCompensation, // Компенсация из мед. справок (перенесённая с других месяцев)
+          cancelledLessonsCompensation, // Компенсация за отменённые занятия
+          debtAmount: clientDebtAmount, // Полная задолженность (неоплаченные счета)
           adjustedAmount: existingCompensation?.adjustedAmount ? Number(existingCompensation.adjustedAmount) : null,
           pricePerLesson: pricePerLessonWithDiscount, // Цена за занятие с учетом льготы клиента
           notes: existingCompensation?.notes,
           appliedToInvoiceId: existingCompensation?.appliedToInvoiceId,
+          // Настройки перерасчёта (из БД)
+          includeExcused: existingCompensation?.includeExcused ?? true,
+          includeMedCert: existingCompensation?.includeMedCert ?? true,
+          includeCancelled: existingCompensation?.includeCancelled ?? true,
+          excludedInvoiceIds: existingCompensation?.excludedInvoiceIds ?? [],
+          // Детализация (сохранённая)
+          savedBaseAmount: existingCompensation?.baseAmount ? Number(existingCompensation.baseAmount) : null,
+          savedMedCertAmount: existingCompensation?.medCertAmount ? Number(existingCompensation.medCertAmount) : null,
+          savedCancelledAmount: existingCompensation?.cancelledAmount ? Number(existingCompensation.cancelledAmount) : null,
+          savedDebtAmount: existingCompensation?.debtAmount ? Number(existingCompensation.debtAmount) : null,
         },
         subscription: clientSubscription
           ? {
@@ -445,6 +513,9 @@ export class TimesheetsService {
         scheduleId: s.id,
         dayOfWeek,
         startTime: s.startTime.toISOString(),
+        status: s.status,
+        isCompensated: s.isCompensated,
+        cancellationNote: s.cancellationNote,
       };
     });
 
@@ -469,7 +540,7 @@ export class TimesheetsService {
   }
 
   /**
-   * Обновить компенсацию (ручная корректировка)
+   * Обновить компенсацию (ручная корректировка с настройками перерасчёта)
    */
   async updateCompensation(id: string, dto: UpdateCompensationDto) {
     const compensation = await this.prisma.compensation.findUnique({
@@ -485,8 +556,534 @@ export class TimesheetsService {
       data: {
         adjustedAmount: dto.adjustedAmount,
         notes: dto.notes,
+        // Настройки перерасчёта
+        includeExcused: dto.includeExcused,
+        includeMedCert: dto.includeMedCert,
+        includeCancelled: dto.includeCancelled,
+        excludedInvoiceIds: dto.excludedInvoiceIds,
+        // Детализация расчёта
+        baseAmount: dto.baseAmount,
+        medCertAmount: dto.medCertAmount,
+        cancelledAmount: dto.cancelledAmount,
+        debtAmount: dto.debtAmount,
       },
     });
+  }
+
+  /**
+   * Создать или обновить компенсацию по clientId, groupId, month
+   */
+  async upsertCompensation(dto: UpdateCompensationDto & { clientId: string; groupId: string; month: string }) {
+    return this.prisma.compensation.upsert({
+      where: {
+        clientId_groupId_month: {
+          clientId: dto.clientId,
+          groupId: dto.groupId,
+          month: dto.month,
+        },
+      },
+      create: {
+        clientId: dto.clientId,
+        groupId: dto.groupId,
+        month: dto.month,
+        excusedCount: 0,
+        calculatedAmount: 0,
+        adjustedAmount: dto.adjustedAmount,
+        notes: dto.notes,
+        includeExcused: dto.includeExcused ?? true,
+        includeMedCert: dto.includeMedCert ?? true,
+        includeCancelled: dto.includeCancelled ?? true,
+        excludedInvoiceIds: dto.excludedInvoiceIds ?? [],
+        baseAmount: dto.baseAmount,
+        medCertAmount: dto.medCertAmount,
+        cancelledAmount: dto.cancelledAmount,
+        debtAmount: dto.debtAmount,
+      },
+      update: {
+        adjustedAmount: dto.adjustedAmount,
+        notes: dto.notes,
+        includeExcused: dto.includeExcused,
+        includeMedCert: dto.includeMedCert,
+        includeCancelled: dto.includeCancelled,
+        excludedInvoiceIds: dto.excludedInvoiceIds,
+        baseAmount: dto.baseAmount,
+        medCertAmount: dto.medCertAmount,
+        cancelledAmount: dto.cancelledAmount,
+        debtAmount: dto.debtAmount,
+      },
+    });
+  }
+
+  /**
+   * Получить неоплаченные счета клиентов по группе для расчёта задолженности
+   */
+  async getUnpaidInvoices(clientIds: string[], groupId: string) {
+    return this.prisma.invoice.findMany({
+      where: {
+        clientId: { in: clientIds },
+        status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+        items: {
+          some: {
+            groupId: groupId,
+          },
+        },
+      },
+      select: {
+        id: true,
+        invoiceNumber: true,
+        clientId: true,
+        totalAmount: true,
+        status: true,
+        issuedAt: true,
+        items: {
+          where: { groupId },
+          select: {
+            serviceName: true,
+            serviceDescription: true,
+          },
+        },
+      },
+      orderBy: { issuedAt: 'asc' },
+    });
+  }
+
+  /**
+   * Получить детализацию перерасчёта для клиента
+   */
+  async getRecalculationDetails(clientId: string, groupId: string, month: string) {
+    const { monthStart, monthEnd } = this.getMonthBoundaries(month);
+
+    // Выполняем все запросы параллельно
+    const [compensation, unpaidInvoices, cancelledSchedules] = await Promise.all([
+      // 1. Получить компенсацию клиента
+      this.prisma.compensation.findUnique({
+        where: {
+          clientId_groupId_month: { clientId, groupId, month },
+        },
+      }),
+      // 2. Получить неоплаченные счета
+      this.getUnpaidInvoices([clientId], groupId),
+      // 3. Получить отменённые занятия с компенсацией
+      this.prisma.schedule.findMany({
+        where: {
+          groupId,
+          date: { gte: monthStart, lte: monthEnd },
+          status: CalendarEventStatus.CANCELLED,
+          isCompensated: true,
+        },
+        select: {
+          id: true,
+          date: true,
+          cancellationNote: true,
+        },
+        orderBy: { date: 'asc' },
+      }),
+    ]);
+
+    return {
+      compensation: compensation
+        ? {
+            id: compensation.id,
+            excusedCount: compensation.excusedCount,
+            calculatedAmount: Number(compensation.calculatedAmount),
+            adjustedAmount: compensation.adjustedAmount ? Number(compensation.adjustedAmount) : null,
+            notes: compensation.notes,
+            includeExcused: compensation.includeExcused,
+            includeMedCert: compensation.includeMedCert,
+            includeCancelled: compensation.includeCancelled,
+            excludedInvoiceIds: compensation.excludedInvoiceIds,
+            baseAmount: compensation.baseAmount ? Number(compensation.baseAmount) : null,
+            medCertAmount: compensation.medCertAmount ? Number(compensation.medCertAmount) : null,
+            cancelledAmount: compensation.cancelledAmount ? Number(compensation.cancelledAmount) : null,
+            debtAmount: compensation.debtAmount ? Number(compensation.debtAmount) : null,
+          }
+        : null,
+      unpaidInvoices: unpaidInvoices.map((inv) => ({
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        totalAmount: Number(inv.totalAmount),
+        status: inv.status,
+        issuedAt: inv.issuedAt.toISOString(),
+        period: inv.items[0]?.serviceDescription || '',
+      })),
+      cancelledSchedules: cancelledSchedules.map((s) => ({
+        id: s.id,
+        date: s.date.toISOString(),
+        note: s.cancellationNote,
+      })),
+    };
+  }
+
+  /**
+   * Импорт посещаемости из Excel файла (ОтчетГруппа.xlsx)
+   * Оптимизированная версия: загружаем все данные разом, используем batch операции
+   */
+  async importAttendance(
+    file: Express.Multer.File,
+    groupId: string,
+  ): Promise<ImportAttendanceResult> {
+    // Проверяем существование группы
+    const group = await this.prisma.group.findUnique({
+      where: { id: groupId },
+    });
+
+    if (!group) {
+      throw new NotFoundException('Группа не найдена');
+    }
+
+    // Парсим Excel файл
+    const workbook = XLSX.read(file.buffer, { type: 'buffer' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows: any[][] = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: null,
+    });
+
+    // Пропускаем заголовки (строки 0-6), данные начинаются с 7-й строки
+    const dataRows = rows.slice(7).filter(
+      (row) => row[0] && row[1] && row[2],
+    );
+
+    if (dataRows.length === 0) {
+      return {
+        success: true,
+        summary: {
+          total: 0,
+          imported: 0,
+          skipped: 0,
+          clientNotFound: 0,
+          scheduleNotFound: 0,
+        },
+        results: [],
+      };
+    }
+
+    // === ОПТИМИЗАЦИЯ: Загружаем все данные одним запросом ===
+
+    // 1. Получаем участников группы
+    const groupMembers = await this.prisma.groupMember.findMany({
+      where: {
+        groupId,
+        status: { in: [GroupMemberStatus.ACTIVE, GroupMemberStatus.EXPELLED] },
+      },
+      include: {
+        client: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            middleName: true,
+          },
+        },
+      },
+    });
+
+    // 2. Собираем уникальные даты из файла
+    const uniqueDates = new Set<string>();
+    for (const row of dataRows) {
+      const parsed = this.parseDateTimeFromExcel(String(row[0] || ''));
+      if (parsed) {
+        uniqueDates.add(parsed.date.toISOString().split('T')[0]);
+      }
+    }
+
+    // 3. Загружаем все расписания для этих дат одним запросом
+    const schedules = await this.prisma.schedule.findMany({
+      where: {
+        groupId,
+        status: { not: CalendarEventStatus.CANCELLED },
+      },
+      select: { id: true, date: true },
+    });
+
+    // Создаем Map: dateString -> scheduleId
+    const scheduleByDate = new Map<string, string>();
+    for (const s of schedules) {
+      const dateKey = new Date(s.date).toISOString().split('T')[0];
+      scheduleByDate.set(dateKey, s.id);
+    }
+
+    // 4. Загружаем все существующие записи посещаемости для группы
+    const scheduleIds = schedules.map(s => s.id);
+    const clientIds = groupMembers.map(m => m.clientId);
+
+    const existingAttendances = await this.prisma.attendance.findMany({
+      where: {
+        scheduleId: { in: scheduleIds },
+        clientId: { in: clientIds },
+      },
+      select: {
+        id: true,
+        scheduleId: true,
+        clientId: true,
+        status: true,
+      },
+    });
+
+    // Создаем Map: "scheduleId:clientId" -> attendance
+    const attendanceMap = new Map<string, typeof existingAttendances[0]>();
+    for (const a of existingAttendances) {
+      attendanceMap.set(`${a.scheduleId}:${a.clientId}`, a);
+    }
+
+    // Маппинг статусов из Excel в систему
+    const statusMap: Record<string, AttendanceStatus> = {
+      'Посещал': AttendanceStatus.PRESENT,
+      'Не посещал': AttendanceStatus.ABSENT,
+      'Болел': AttendanceStatus.EXCUSED,
+    };
+
+    const results: ImportAttendanceRowResult[] = [];
+    const summary = {
+      total: dataRows.length,
+      imported: 0,
+      skipped: 0,
+      clientNotFound: 0,
+      scheduleNotFound: 0,
+    };
+
+    // Собираем записи для batch создания и обновления
+    const toCreate: Array<{
+      scheduleId: string;
+      clientId: string;
+      status: AttendanceStatus;
+      markedAt: Date;
+    }> = [];
+    const toUpdate: Array<{
+      id: string;
+      status: AttendanceStatus;
+    }> = [];
+
+    const now = new Date();
+
+    // === Обрабатываем каждую строку (без запросов к БД) ===
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i];
+      const rowNum = i + 8;
+      const dateTimeStr = String(row[0] || '');
+      const fioStr = String(row[1] || '');
+      const statusStr = String(row[2] || '').trim();
+
+      // Парсим дату и время
+      const parsedDateTime = this.parseDateTimeFromExcel(dateTimeStr);
+      if (!parsedDateTime) {
+        results.push({
+          row: rowNum,
+          fio: fioStr,
+          dateTime: dateTimeStr,
+          status: 'schedule_not_found',
+          message: 'Не удалось распознать дату и время',
+        });
+        summary.scheduleNotFound++;
+        continue;
+      }
+
+      // Парсим ФИО и ищем клиента (в памяти)
+      const parsedFIO = this.parseFIO(fioStr);
+      const client = this.findClientByFIO(groupMembers, parsedFIO);
+      if (!client) {
+        results.push({
+          row: rowNum,
+          fio: fioStr,
+          dateTime: dateTimeStr,
+          status: 'client_not_found',
+          message: `Клиент "${fioStr}" не найден в группе`,
+        });
+        summary.clientNotFound++;
+        continue;
+      }
+
+      // Ищем занятие по дате (в памяти)
+      const dateKey = parsedDateTime.date.toISOString().split('T')[0];
+      const scheduleId = scheduleByDate.get(dateKey);
+      if (!scheduleId) {
+        results.push({
+          row: rowNum,
+          fio: fioStr,
+          dateTime: dateTimeStr,
+          status: 'schedule_not_found',
+          message: `Занятие на дату ${parsedDateTime.date.toLocaleDateString('ru-RU')} не найдено`,
+        });
+        summary.scheduleNotFound++;
+        continue;
+      }
+
+      // Маппим статус
+      const newStatus = statusMap[statusStr];
+      if (!newStatus) {
+        results.push({
+          row: rowNum,
+          fio: fioStr,
+          dateTime: dateTimeStr,
+          status: 'schedule_not_found',
+          message: `Неизвестный статус: "${statusStr}"`,
+        });
+        summary.scheduleNotFound++;
+        continue;
+      }
+
+      // Проверяем существующую запись (в памяти)
+      const existingKey = `${scheduleId}:${client.id}`;
+      const existingAttendance = attendanceMap.get(existingKey);
+
+      if (existingAttendance && existingAttendance.status) {
+        results.push({
+          row: rowNum,
+          fio: fioStr,
+          dateTime: dateTimeStr,
+          status: 'skipped',
+          message: `Уже есть отметка: ${this.statusToRussian(existingAttendance.status)}`,
+          existingStatus: existingAttendance.status,
+          newStatus: newStatus,
+        });
+        summary.skipped++;
+        continue;
+      }
+
+      // Добавляем в batch
+      if (existingAttendance) {
+        toUpdate.push({ id: existingAttendance.id, status: newStatus });
+      } else {
+        toCreate.push({
+          scheduleId,
+          clientId: client.id,
+          status: newStatus,
+          markedAt: now,
+        });
+      }
+
+      results.push({
+        row: rowNum,
+        fio: fioStr,
+        dateTime: dateTimeStr,
+        status: 'imported',
+        message: 'Успешно импортировано',
+        newStatus: newStatus,
+      });
+      summary.imported++;
+    }
+
+    // === Batch операции ===
+    if (toCreate.length > 0 || toUpdate.length > 0) {
+      await this.prisma.$transaction([
+        // Batch создание новых записей
+        ...(toCreate.length > 0
+          ? [this.prisma.attendance.createMany({ data: toCreate })]
+          : []),
+        // Batch обновление существующих записей
+        ...toUpdate.map((u) =>
+          this.prisma.attendance.update({
+            where: { id: u.id },
+            data: { status: u.status, markedAt: now },
+          }),
+        ),
+      ]);
+    }
+
+    return {
+      success: true,
+      summary,
+      results,
+    };
+  }
+
+  /**
+   * Парсинг даты и времени из формата "02.12.2025, 17:00"
+   */
+  private parseDateTimeFromExcel(
+    value: string,
+  ): { date: Date; time: string } | null {
+    const match = value.match(
+      /(\d{2})\.(\d{2})\.(\d{4}),?\s*(\d{2}):(\d{2})/,
+    );
+    if (!match) return null;
+
+    const [, day, month, year, hours, minutes] = match;
+    return {
+      date: new Date(
+        Date.UTC(parseInt(year), parseInt(month) - 1, parseInt(day)),
+      ),
+      time: `${hours}:${minutes}`,
+    };
+  }
+
+  /**
+   * Парсинг ФИО из строки (может быть "Фамилия Имя -" или "Фамилия Имя Отчество")
+   */
+  private parseFIO(fio: string): {
+    lastName: string;
+    firstName: string;
+    middleName?: string;
+  } {
+    // Убираем суффикс " -" если есть
+    const cleaned = fio.replace(/\s*-\s*$/, '').trim();
+    const parts = cleaned.split(/\s+/);
+
+    if (parts.length >= 3) {
+      return {
+        lastName: parts[0],
+        firstName: parts[1],
+        middleName: parts.slice(2).join(' '),
+      };
+    } else if (parts.length === 2) {
+      return {
+        lastName: parts[0],
+        firstName: parts[1],
+      };
+    } else {
+      return {
+        lastName: parts[0] || '',
+        firstName: '',
+      };
+    }
+  }
+
+  /**
+   * Поиск клиента по ФИО среди участников группы
+   */
+  private findClientByFIO(
+    groupMembers: Array<{
+      client: {
+        id: string;
+        firstName: string;
+        lastName: string;
+        middleName: string | null;
+      };
+    }>,
+    fio: { lastName: string; firstName: string; middleName?: string },
+  ): { id: string } | null {
+    // Точное совпадение фамилии и имени (case-insensitive)
+    const exactMatch = groupMembers.find(
+      (m) =>
+        m.client.lastName.toLowerCase() === fio.lastName.toLowerCase() &&
+        m.client.firstName.toLowerCase() === fio.firstName.toLowerCase(),
+    );
+
+    if (exactMatch) return { id: exactMatch.client.id };
+
+    // Частичное совпадение (если имя сокращено)
+    const partialMatch = groupMembers.find(
+      (m) =>
+        m.client.lastName.toLowerCase() === fio.lastName.toLowerCase() &&
+        fio.firstName.length >= 2 &&
+        m.client.firstName
+          .toLowerCase()
+          .startsWith(fio.firstName.toLowerCase().slice(0, 2)),
+    );
+
+    return partialMatch ? { id: partialMatch.client.id } : null;
+  }
+
+  /**
+   * Перевод статуса на русский для сообщений
+   */
+  private statusToRussian(status: AttendanceStatus): string {
+    const map: Record<AttendanceStatus, string> = {
+      PRESENT: 'Присутствовал',
+      ABSENT: 'Отсутствовал',
+      EXCUSED: 'Уважительная причина',
+    };
+    return map[status] || status;
   }
 
   /**

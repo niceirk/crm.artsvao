@@ -106,6 +106,24 @@ export class RentalApplicationsController {
     return this.rentalApplicationsService.confirm(id, req.user.userId);
   }
 
+  @Post(':id/create-invoice')
+  @UseGuards(AdminGuard)
+  createInvoice(@Param('id') id: string, @Request() req: any) {
+    return this.rentalApplicationsService.createInvoice(id, req.user.userId);
+  }
+
+  @Post('batch/create-invoices')
+  @UseGuards(AdminGuard)
+  createInvoicesBatch(@Body() dto: { applicationIds: string[] }, @Request() req: any) {
+    return this.rentalApplicationsService.createInvoicesBatch(dto.applicationIds, req.user.userId);
+  }
+
+  @Post('batch/mark-invoices-paid')
+  @UseGuards(AdminGuard)
+  markInvoicesPaidBatch(@Body() dto: { applicationIds: string[] }, @Request() req: any) {
+    return this.rentalApplicationsService.markInvoicesPaidBatch(dto.applicationIds, req.user.userId);
+  }
+
   @Post(':id/extend')
   @UseGuards(AdminGuard)
   extend(

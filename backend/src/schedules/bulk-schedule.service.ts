@@ -348,19 +348,85 @@ export class BulkScheduleService {
     for (const schedule of schedules) {
       try {
         if (dto.action === CancelAction.CANCEL) {
-          // Just cancel
+          // Cancel the schedule
           await this.prisma.schedule.update({
             where: { id: schedule.id },
             data: {
               status: 'CANCELLED',
+              isCompensated: dto.isCompensated || false,
+              cancellationNote: dto.reason,
             },
           });
 
-          // Update attendances
-          await this.prisma.attendance.updateMany({
-            where: { scheduleId: schedule.id },
-            data: { status: 'ABSENT' },
-          });
+          if (dto.isCompensated && schedule.groupId) {
+            // Compensated cancellation - set EXCUSED for clients with active subscriptions
+            const compensationNote = dto.compensationNote || `Компенсация: ${dto.reason}`;
+
+            // Find clients with active subscriptions for this group
+            const clientsWithSubscriptions = await this.findClientsWithActiveSubscriptions(
+              schedule.groupId,
+              schedule.date,
+            );
+
+            // Update existing attendances to EXCUSED
+            const existingClientIds = schedule.attendances.map(a => a.clientId);
+            const clientsToUpdate = clientsWithSubscriptions.filter(c =>
+              existingClientIds.includes(c.clientId)
+            );
+
+            if (clientsToUpdate.length > 0) {
+              await this.prisma.attendance.updateMany({
+                where: {
+                  scheduleId: schedule.id,
+                  clientId: { in: clientsToUpdate.map(c => c.clientId) },
+                },
+                data: {
+                  status: 'EXCUSED',
+                  notes: compensationNote,
+                },
+              });
+            }
+
+            // Create EXCUSED for clients who don't have attendance yet
+            const clientsToCreate = clientsWithSubscriptions.filter(c =>
+              !existingClientIds.includes(c.clientId)
+            );
+
+            if (clientsToCreate.length > 0) {
+              await this.prisma.attendance.createMany({
+                data: clientsToCreate.map(c => ({
+                  scheduleId: schedule.id,
+                  clientId: c.clientId,
+                  status: 'EXCUSED' as const,
+                  notes: compensationNote,
+                  subscriptionId: c.subscriptionId,
+                  subscriptionDeducted: false,
+                })),
+              });
+            }
+
+            // Update remaining attendances (clients without subscriptions) to ABSENT
+            const subscriptionClientIds = clientsWithSubscriptions.map(c => c.clientId);
+            const clientsWithoutSubscription = existingClientIds.filter(
+              id => !subscriptionClientIds.includes(id)
+            );
+
+            if (clientsWithoutSubscription.length > 0) {
+              await this.prisma.attendance.updateMany({
+                where: {
+                  scheduleId: schedule.id,
+                  clientId: { in: clientsWithoutSubscription },
+                },
+                data: { status: 'ABSENT' },
+              });
+            }
+          } else {
+            // Regular cancellation - set ABSENT
+            await this.prisma.attendance.updateMany({
+              where: { scheduleId: schedule.id },
+              data: { status: 'ABSENT' },
+            });
+          }
 
           cancelled.push(schedule.id);
         } else if (dto.action === CancelAction.TRANSFER) {
@@ -637,6 +703,36 @@ export class BulkScheduleService {
     }
 
     return enrolledCount;
+  }
+
+  /**
+   * Find clients with active subscriptions for a group on a specific date
+   */
+  private async findClientsWithActiveSubscriptions(
+    groupId: string,
+    scheduleDate: Date,
+  ): Promise<Array<{ clientId: string; subscriptionId: string }>> {
+    const subscriptions = await this.prisma.subscription.findMany({
+      where: {
+        groupId,
+        status: 'ACTIVE',
+        startDate: { lte: scheduleDate },
+        endDate: { gte: scheduleDate },
+        OR: [
+          { remainingVisits: null }, // Unlimited subscription
+          { remainingVisits: { gt: 0 } }, // Visit pack with remaining visits
+        ],
+      },
+      select: {
+        id: true,
+        clientId: true,
+      },
+    });
+
+    return subscriptions.map(s => ({
+      clientId: s.clientId,
+      subscriptionId: s.id,
+    }));
   }
 
   /**

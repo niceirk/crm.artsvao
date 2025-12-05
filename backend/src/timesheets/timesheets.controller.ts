@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Patch,
   Param,
   Query,
@@ -11,12 +12,17 @@ import {
   Res,
   Header,
   NotFoundException,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { Response } from 'express';
 import { TimesheetsService } from './timesheets.service';
 import { TimesheetFilterDto } from './dto/timesheet-filter.dto';
 import { UpdateCompensationDto } from './dto/update-compensation.dto';
 import { CreateBulkInvoicesDto } from './dto/create-bulk-invoices.dto';
+import { ImportAttendanceDto } from './dto/import-attendance.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('timesheets')
@@ -121,7 +127,19 @@ export class TimesheetsController {
   }
 
   /**
-   * Обновить компенсацию (ручная корректировка)
+   * Получить детализацию перерасчёта для клиента
+   */
+  @Get('recalculation-details')
+  async getRecalculationDetails(
+    @Query('clientId') clientId: string,
+    @Query('groupId') groupId: string,
+    @Query('month') month: string,
+  ) {
+    return this.timesheetsService.getRecalculationDetails(clientId, groupId, month);
+  }
+
+  /**
+   * Обновить компенсацию (ручная корректировка с настройками перерасчёта)
    */
   @Patch('compensation/:id')
   async updateCompensation(
@@ -129,6 +147,16 @@ export class TimesheetsController {
     @Body() dto: UpdateCompensationDto,
   ) {
     return this.timesheetsService.updateCompensation(id, dto);
+  }
+
+  /**
+   * Создать или обновить компенсацию по clientId, groupId, month
+   */
+  @Put('compensation')
+  async upsertCompensation(
+    @Body() dto: UpdateCompensationDto & { clientId: string; groupId: string; month: string },
+  ) {
+    return this.timesheetsService.upsertCompensation(dto);
   }
 
   /**
@@ -140,5 +168,17 @@ export class TimesheetsController {
     @Request() req: any,
   ) {
     return this.timesheetsService.createBulkInvoices(dto, req.user?.id);
+  }
+
+  /**
+   * Импорт посещаемости из Excel файла (ОтчетГруппа.xlsx)
+   */
+  @Post('import-attendance')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async importAttendance(
+    @UploadedFile() file: Express.Multer.File,
+    @Body() dto: ImportAttendanceDto,
+  ) {
+    return this.timesheetsService.importAttendance(file, dto.groupId);
   }
 }

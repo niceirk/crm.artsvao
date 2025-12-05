@@ -7,6 +7,8 @@ import type {
   Studio,
   GroupForFilter,
   Compensation,
+  ImportAttendanceResult,
+  RecalculationDetails,
 } from '../types/timesheets';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
@@ -48,7 +50,7 @@ export const timesheetsApi = {
   },
 
   /**
-   * Обновить компенсацию (ручная корректировка)
+   * Обновить компенсацию (ручная корректировка с настройками перерасчёта)
    */
   updateCompensation: async (
     id: string,
@@ -57,6 +59,34 @@ export const timesheetsApi = {
     const response = await apiClient.patch<Compensation>(
       `/timesheets/compensation/${id}`,
       data
+    );
+    return response.data;
+  },
+
+  /**
+   * Создать или обновить компенсацию по clientId, groupId, month
+   */
+  upsertCompensation: async (
+    data: UpdateCompensationDto & { clientId: string; groupId: string; month: string }
+  ): Promise<Compensation> => {
+    const response = await apiClient.put<Compensation>(
+      '/timesheets/compensation',
+      data
+    );
+    return response.data;
+  },
+
+  /**
+   * Получить детализацию перерасчёта для клиента
+   */
+  getRecalculationDetails: async (
+    clientId: string,
+    groupId: string,
+    month: string
+  ): Promise<RecalculationDetails> => {
+    const params = new URLSearchParams({ clientId, groupId, month });
+    const response = await apiClient.get<RecalculationDetails>(
+      `/timesheets/recalculation-details?${params.toString()}`
     );
     return response.data;
   },
@@ -113,6 +143,34 @@ export const timesheetsApi = {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(downloadUrl);
+  },
+
+  /**
+   * Импорт посещаемости из Excel файла
+   */
+  importAttendance: async (
+    groupId: string,
+    file: File,
+  ): Promise<ImportAttendanceResult> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('groupId', groupId);
+
+    const token = useAuthStore.getState().accessToken;
+    const response = await fetch(`${API_URL}/timesheets/import-attendance`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.message || 'Ошибка при импорте посещаемости');
+    }
+
+    return response.json();
   },
 };
 

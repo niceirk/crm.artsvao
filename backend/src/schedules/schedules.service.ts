@@ -267,11 +267,39 @@ export class SchedulesService {
       });
     }
 
-    // Извлекаем version для проверки
-    const { version, ...restDto } = updateScheduleDto;
+    // Извлекаем version и поля компенсации для отдельной обработки
+    const { version, isCompensated, compensationNote, ...restDto } = updateScheduleDto;
+
+    // Проверяем, меняется ли статус на CANCELLED
+    const isBeingCancelled = updateScheduleDto.status === 'CANCELLED' && existing.status !== 'CANCELLED';
+
+    // Проверяем, меняется ли статус С CANCELLED на другой
+    const isBeingUncancelled = existing.status === 'CANCELLED' &&
+      updateScheduleDto.status &&
+      updateScheduleDto.status !== 'CANCELLED';
 
     // Convert date and time strings to Date objects using UTC
     const updateData: any = { ...restDto };
+
+    // Если отменяется с компенсацией - сохраняем флаг и комментарий
+    if (isBeingCancelled && isCompensated) {
+      updateData.isCompensated = true;
+      updateData.cancellationNote = compensationNote || null;
+    }
+
+    // Если занятие "раз-отменяется" - очищаем данные компенсации
+    if (isBeingUncancelled) {
+      updateData.isCompensated = false;
+      updateData.cancellationNote = null;
+
+      // Удалить attendance со статусом EXCUSED (вернуть в "Не отмечен")
+      await this.prisma.attendance.deleteMany({
+        where: {
+          scheduleId: id,
+          status: 'EXCUSED',
+        },
+      });
+    }
     if (updateScheduleDto.date) {
       updateData.date = new Date(updateScheduleDto.date);
     }
@@ -330,6 +358,82 @@ export class SchedulesService {
         data: updateData,
         include,
       });
+    }
+
+    // Обработка attendance при отмене
+    if (isBeingCancelled) {
+      if (isCompensated && existing.groupId) {
+        // Отмена с компенсацией - ставим EXCUSED клиентам с активными абонементами
+        const noteText = compensationNote || `Компенсация: занятие отменено`;
+
+        // Найти клиентов с активными абонементами
+        const clientsWithSubscriptions = await this.findClientsWithActiveSubscriptions(
+          existing.groupId,
+          existing.date,
+        );
+
+        // Получить существующие attendance для этого занятия
+        const existingAttendances = await this.prisma.attendance.findMany({
+          where: { scheduleId: id },
+          select: { clientId: true },
+        });
+        const existingClientIds = existingAttendances.map(a => a.clientId);
+
+        // Обновить существующие attendance на EXCUSED
+        const clientsToUpdate = clientsWithSubscriptions.filter(c =>
+          existingClientIds.includes(c.clientId)
+        );
+        if (clientsToUpdate.length > 0) {
+          await this.prisma.attendance.updateMany({
+            where: {
+              scheduleId: id,
+              clientId: { in: clientsToUpdate.map(c => c.clientId) },
+            },
+            data: {
+              status: 'EXCUSED',
+              notes: noteText,
+            },
+          });
+        }
+
+        // Создать EXCUSED для клиентов, у которых ещё нет attendance
+        const clientsToCreate = clientsWithSubscriptions.filter(c =>
+          !existingClientIds.includes(c.clientId)
+        );
+        if (clientsToCreate.length > 0) {
+          await this.prisma.attendance.createMany({
+            data: clientsToCreate.map(c => ({
+              scheduleId: id,
+              clientId: c.clientId,
+              status: 'EXCUSED' as const,
+              notes: noteText,
+              subscriptionId: c.subscriptionId,
+              subscriptionDeducted: false,
+            })),
+          });
+        }
+
+        // Клиенты без абонементов - ставим ABSENT
+        const subscriptionClientIds = clientsWithSubscriptions.map(c => c.clientId);
+        const clientsWithoutSubscription = existingClientIds.filter(
+          cid => !subscriptionClientIds.includes(cid)
+        );
+        if (clientsWithoutSubscription.length > 0) {
+          await this.prisma.attendance.updateMany({
+            where: {
+              scheduleId: id,
+              clientId: { in: clientsWithoutSubscription },
+            },
+            data: { status: 'ABSENT' },
+          });
+        }
+      } else {
+        // Обычная отмена - ставим ABSENT
+        await this.prisma.attendance.updateMany({
+          where: { scheduleId: id },
+          data: { status: 'ABSENT' },
+        });
+      }
     }
 
     // Отправить уведомление об изменении расписания
@@ -405,5 +509,35 @@ export class SchedulesService {
     }
 
     return { hours, minutes };
+  }
+
+  /**
+   * Find clients with active subscriptions for a group on a specific date
+   */
+  private async findClientsWithActiveSubscriptions(
+    groupId: string,
+    scheduleDate: Date,
+  ): Promise<Array<{ clientId: string; subscriptionId: string }>> {
+    const subscriptions = await this.prisma.subscription.findMany({
+      where: {
+        groupId,
+        status: 'ACTIVE',
+        startDate: { lte: scheduleDate },
+        endDate: { gte: scheduleDate },
+        OR: [
+          { remainingVisits: null }, // Unlimited subscription
+          { remainingVisits: { gt: 0 } }, // Visit pack with remaining visits
+        ],
+      },
+      select: {
+        id: true,
+        clientId: true,
+      },
+    });
+
+    return subscriptions.map(s => ({
+      clientId: s.clientId,
+      subscriptionId: s.id,
+    }));
   }
 }

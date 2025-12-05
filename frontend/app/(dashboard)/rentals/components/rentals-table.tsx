@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,7 +29,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { MoreHorizontal, Check, RefreshCw, X, Trash2, Eye, Clock, Monitor, Building } from 'lucide-react';
+import { MoreHorizontal, RefreshCw, X, Trash2, Eye, Clock, Monitor, Building, FileText, CheckCircle2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import {
   RentalApplication,
   RentalType,
@@ -37,9 +38,12 @@ import {
   RENTAL_STATUS_COLORS,
 } from '@/lib/types/rental-applications';
 import {
-  useConfirmRentalApplication,
   useCancelRentalApplication,
   useDeleteRentalApplication,
+  useCreateInvoice,
+  useCreateInvoicesBatch,
+  useMarkInvoicesPaidBatch,
+  useMarkInvoicePaid,
 } from '@/hooks/use-rental-applications';
 import {
   AlertDialog,
@@ -51,6 +55,28 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+
+// Статусы и цвета для счетов
+const INVOICE_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Черновик',
+  PENDING: 'Ожидает',
+  PAID: 'Оплачен',
+  PARTIALLY_PAID: 'Частично',
+  OVERDUE: 'Просрочен',
+  CANCELLED: 'Отменён',
+};
+
+const INVOICE_STATUS_COLORS: Record<string, string> = {
+  DRAFT: 'bg-gray-100 text-gray-800 hover:bg-gray-200',
+  PENDING: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200',
+  PAID: 'bg-green-100 text-green-800 hover:bg-green-200',
+  PARTIALLY_PAID: 'bg-blue-100 text-blue-800 hover:bg-blue-200',
+  OVERDUE: 'bg-red-100 text-red-800 hover:bg-red-200',
+  CANCELLED: 'bg-gray-100 text-gray-500 hover:bg-gray-200',
+};
+
+type SortField = 'createdAt' | 'client' | 'applicationNumber' | 'slots';
+type SortOrder = 'asc' | 'desc';
 
 interface RentalsTableProps {
   applications: RentalApplication[];
@@ -72,8 +98,105 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
   const router = useRouter();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBatchInvoiceConfirm, setShowBatchInvoiceConfirm] = useState(false);
+  const [showBatchPaidConfirm, setShowBatchPaidConfirm] = useState(false);
 
-  const confirmMutation = useConfirmRentalApplication();
+  // Сортировка
+  const [sortField, setSortField] = useState<SortField>('createdAt');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const sortedApplications = useMemo(() => {
+    return [...applications].sort((a, b) => {
+      let cmp = 0;
+      switch (sortField) {
+        case 'createdAt':
+          cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+        case 'client':
+          cmp = `${a.client.lastName} ${a.client.firstName}`.localeCompare(
+            `${b.client.lastName} ${b.client.firstName}`, 'ru'
+          );
+          break;
+        case 'applicationNumber':
+          cmp = a.applicationNumber.localeCompare(b.applicationNumber);
+          break;
+        case 'slots':
+          cmp = (a._count?.rentals || 0) - (b._count?.rentals || 0);
+          break;
+      }
+      return sortOrder === 'asc' ? cmp : -cmp;
+    });
+  }, [applications, sortField, sortOrder]);
+
+  const SortableHeader = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
+    <TableHead>
+      <Button
+        variant="ghost"
+        onClick={() => handleSort(field)}
+        className="p-0 h-auto font-medium hover:bg-transparent"
+      >
+        {children}
+        {sortField === field
+          ? (sortOrder === 'asc' ? <ArrowUp className="ml-1 h-4 w-4" /> : <ArrowDown className="ml-1 h-4 w-4" />)
+          : <ArrowUpDown className="ml-1 h-4 w-4 opacity-50" />}
+      </Button>
+    </TableHead>
+  );
+
+  const createInvoiceMutation = useCreateInvoice();
+  const createInvoicesBatchMutation = useCreateInvoicesBatch();
+  const markInvoicesPaidBatchMutation = useMarkInvoicesPaidBatch();
+  const markInvoicePaidMutation = useMarkInvoicePaid();
+
+  const toggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === sortedApplications.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(sortedApplications.map(a => a.id)));
+    }
+  };
+
+  const handleBatchCreateInvoices = () => {
+    createInvoicesBatchMutation.mutate(Array.from(selectedIds), {
+      onSuccess: () => {
+        setSelectedIds(new Set());
+        setShowBatchInvoiceConfirm(false);
+      },
+    });
+  };
+
+  const handleBatchMarkPaid = () => {
+    markInvoicesPaidBatchMutation.mutate(Array.from(selectedIds), {
+      onSuccess: () => {
+        setSelectedIds(new Set());
+        setShowBatchPaidConfirm(false);
+      },
+    });
+  };
+
+  const getActiveInvoice = (app: RentalApplication) => {
+    return app.invoices?.find(inv => inv.status !== 'CANCELLED');
+  };
 
   const handleRowClick = (id: string, e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
@@ -129,7 +252,7 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
     );
   }
 
-  if (applications.length === 0) {
+  if (sortedApplications.length === 0) {
     return (
       <div className="text-center py-12 text-muted-foreground">
         Заявки не найдены
@@ -139,29 +262,81 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
 
   return (
     <>
+      {/* Панель массовых действий */}
+      {selectedIds.size > 0 && (
+        <div className="mb-4 bg-muted/50 border rounded-lg p-4 flex items-center justify-between">
+          <span className="text-sm text-muted-foreground">
+            Выбрано: {selectedIds.size}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowBatchInvoiceConfirm(true)}
+              disabled={createInvoicesBatchMutation.isPending}
+            >
+              <FileText className="h-4 w-4 mr-2" />
+              Сформировать счета
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowBatchPaidConfirm(true)}
+              disabled={markInvoicesPaidBatchMutation.isPending}
+            >
+              <CheckCircle2 className="h-4 w-4 mr-2" />
+              Отметить оплаченными
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              <X className="h-4 w-4 mr-2" />
+              Отменить
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="border rounded-lg">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Номер</TableHead>
-              <TableHead>Клиент</TableHead>
+              <TableHead className="w-[50px]">
+                <Checkbox
+                  checked={selectedIds.size === sortedApplications.length && sortedApplications.length > 0}
+                  onCheckedChange={toggleSelectAll}
+                />
+              </TableHead>
+              <SortableHeader field="applicationNumber">Номер</SortableHeader>
+              <SortableHeader field="createdAt">Создано</SortableHeader>
+              <SortableHeader field="client">Клиент</SortableHeader>
               <TableHead className="w-[50px]">Тип</TableHead>
               <TableHead>Помещение</TableHead>
               <TableHead>Период</TableHead>
-              <TableHead>Слоты</TableHead>
+              <SortableHeader field="slots">Слоты</SortableHeader>
               <TableHead>Итого</TableHead>
-              <TableHead>Статус</TableHead>
+              <TableHead>Счет</TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {applications.map((app) => (
-              <TableRow
+            {sortedApplications.map((app) => {
+              const activeInvoice = getActiveInvoice(app);
+              return (
+                <TableRow
                 key={app.id}
                 className="cursor-pointer hover:bg-muted/50"
                 onClick={(e) => handleRowClick(app.id, e)}
               >
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  <Checkbox
+                    checked={selectedIds.has(app.id)}
+                    onCheckedChange={() => toggleSelect(app.id)}
+                  />
+                </TableCell>
                 <TableCell className="font-medium">{app.applicationNumber}</TableCell>
+                <TableCell className="text-muted-foreground">
+                  {format(new Date(app.createdAt), 'dd.MM.yyyy', { locale: ru })}
+                </TableCell>
                 <TableCell>
                   <div>
                     <div className="font-medium">
@@ -194,10 +369,39 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
                 <TableCell className="font-medium">
                   {Number(app.totalPrice).toLocaleString('ru-RU')} ₽
                 </TableCell>
-                <TableCell>
-                  <Badge className={RENTAL_STATUS_COLORS[app.status]}>
-                    {RENTAL_STATUS_LABELS[app.status]}
-                  </Badge>
+                <TableCell onClick={(e) => e.stopPropagation()}>
+                  {activeInvoice ? (
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        className={`cursor-pointer ${INVOICE_STATUS_COLORS[activeInvoice.status]}`}
+                        onClick={() => window.open(`/invoices/${activeInvoice.id}`, '_blank')}
+                      >
+                        {INVOICE_STATUS_LABELS[activeInvoice.status]}
+                      </Badge>
+                      {activeInvoice.status !== 'PAID' && activeInvoice.status !== 'CANCELLED' && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={() => markInvoicePaidMutation.mutate(activeInvoice.id)}
+                                disabled={markInvoicePaidMutation.isPending}
+                              >
+                                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Отметить оплаченным
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  )}
                 </TableCell>
                 <TableCell>
                   <DropdownMenu>
@@ -206,19 +410,19 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
+                    <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
                       <DropdownMenuItem onClick={() => onEdit(app.id)}>
                         <Eye className="h-4 w-4 mr-2" />
                         Просмотр
                       </DropdownMenuItem>
 
-                      {app.status === 'DRAFT' && (
+                      {!activeInvoice && (
                         <DropdownMenuItem
-                          onClick={() => confirmMutation.mutate(app.id)}
-                          disabled={confirmMutation.isPending}
+                          onClick={() => createInvoiceMutation.mutate(app.id)}
+                          disabled={createInvoiceMutation.isPending}
                         >
-                          <Check className="h-4 w-4 mr-2" />
-                          Подтвердить
+                          <FileText className="h-4 w-4 mr-2" />
+                          Сформировать счет
                         </DropdownMenuItem>
                       )}
 
@@ -253,8 +457,9 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </TableCell>
-              </TableRow>
-            ))}
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>
@@ -265,7 +470,7 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
           <AlertDialogHeader>
             <AlertDialogTitle>Удалить заявку?</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleteId && getDeleteWarning(applications.find((a) => a.id === deleteId)!)}
+              {deleteId && getDeleteWarning(sortedApplications.find((a) => a.id === deleteId)!)}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -310,6 +515,49 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Диалог подтверждения массового создания счетов */}
+      <AlertDialog open={showBatchInvoiceConfirm} onOpenChange={setShowBatchInvoiceConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Сформировать счета?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Будут сформированы счета для {selectedIds.size} заявок.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBatchCreateInvoices}
+              disabled={createInvoicesBatchMutation.isPending}
+            >
+              {createInvoicesBatchMutation.isPending ? 'Формирование...' : 'Сформировать'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Диалог подтверждения массовой оплаты */}
+      <AlertDialog open={showBatchPaidConfirm} onOpenChange={setShowBatchPaidConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Отметить счета оплаченными?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Счета для {selectedIds.size} заявок будут отмечены как оплаченные.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBatchMarkPaid}
+              disabled={markInvoicesPaidBatchMutation.isPending}
+            >
+              {markInvoicesPaidBatchMutation.isPending ? 'Обработка...' : 'Отметить оплаченными'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
     </>
   );
 }

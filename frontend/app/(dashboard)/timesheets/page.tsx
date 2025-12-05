@@ -15,7 +15,9 @@ import {
   FileText,
   Send,
   Download,
+  Upload,
   FileHeart,
+  XCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -50,6 +52,8 @@ import {
 } from '@/hooks/use-timesheets';
 import { CompensationEditDialog } from './components/compensation-edit-dialog';
 import { CreateInvoicesDialog } from './components/create-invoices-dialog';
+import { ImportAttendanceDialog } from './components/import-attendance-dialog';
+import { RecalculationSettingsDialog } from './components/recalculation-settings-dialog';
 import { AttendanceSheet } from '@/app/(dashboard)/schedule/attendance-sheet';
 import { useMarkAttendance, useUpdateAttendance, useDeleteAttendance } from '@/hooks/use-attendance';
 import { useQueryClient } from '@tanstack/react-query';
@@ -93,11 +97,19 @@ const AttendanceCell = memo(function AttendanceCell({
   isLoading: boolean;
   onStatusChange: (clientId: string, attendance: TimesheetAttendance, status: AttendanceStatus) => void;
 }) {
-  // Блокируем редактирование если статус установлен по мед. справке
-  const isLocked = attendance.isFromMedicalCertificate;
+  // Блокируем редактирование если статус установлен по мед. справке или занятие отменено
+  const isLocked = attendance.isFromMedicalCertificate || attendance.isScheduleCancelled;
 
   // Если заблокировано - показываем ячейку без возможности редактирования
   if (isLocked) {
+    let lockReason: string;
+    if (attendance.isScheduleCancelled) {
+      lockReason = attendance.cancellationNote
+        ? `Отмена: ${attendance.cancellationNote}`
+        : 'Занятие отменено с компенсацией';
+    } else {
+      lockReason = 'Установлено по медицинской справке';
+    }
     return (
       <TableCell className="text-center p-1">
         <div
@@ -105,7 +117,7 @@ const AttendanceCell = memo(function AttendanceCell({
             'flex items-center justify-center h-8 w-8 mx-auto rounded cursor-not-allowed',
             attendance.status === 'EXCUSED' && 'bg-orange-100 ring-1 ring-orange-300'
           )}
-          title="Установлено по медицинской справке"
+          title={lockReason}
         >
           <AlertCircle className="h-4 w-4 text-orange-600" />
         </div>
@@ -191,10 +203,12 @@ export default function TimesheetsPage() {
   const [editingCompensation, setEditingCompensation] = useState<{
     client: TimesheetClient;
   } | null>(null);
+  const [editingRecalculation, setEditingRecalculation] = useState<TimesheetClient | null>(null);
   const [selectedSchedule, setSelectedSchedule] = useState<TimesheetScheduleDate | null>(null);
   const [pendingCell, setPendingCell] = useState<string | null>(null);
   const [selectedClientIds, setSelectedClientIds] = useState<Set<string>>(new Set());
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const [isCreatingInvoices, setIsCreatingInvoices] = useState(false);
 
   const queryClient = useQueryClient();
@@ -491,25 +505,36 @@ export default function TimesheetsPage() {
         </div>
 
         {selectedGroupId && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9"
-            onClick={async () => {
-              try {
-                await timesheetsApi.exportToExcel({
-                  groupId: selectedGroupId,
-                  month: selectedMonth,
-                });
-                toast.success('Табель экспортирован');
-              } catch (error) {
-                toast.error('Ошибка при экспорте табеля');
-              }
-            }}
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Экспорт
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9"
+              onClick={() => setShowImportDialog(true)}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Импорт
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-9"
+              onClick={async () => {
+                try {
+                  await timesheetsApi.exportToExcel({
+                    groupId: selectedGroupId,
+                    month: selectedMonth,
+                  });
+                  toast.success('Табель экспортирован');
+                } catch (error) {
+                  toast.error('Ошибка при экспорте табеля');
+                }
+              }}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Экспорт
+            </Button>
+          </>
         )}
       </div>
 
@@ -623,10 +648,13 @@ export default function TimesheetsPage() {
                         <button
                           onClick={() => setSelectedSchedule(date)}
                           className="w-full rounded px-1 py-0.5 hover:bg-muted transition-colors cursor-pointer"
-                          title="Открыть журнал занятия"
+                          title={date.isCompensated ? (date.cancellationNote || 'Отменено с компенсацией') : 'Открыть журнал занятия'}
                         >
-                          <div className="text-xs font-medium">
+                          <div className="text-xs font-medium flex items-center justify-center gap-0.5">
                             {format(new Date(date.date), 'd')}
+                            {date.isCompensated && (
+                              <XCircle className="h-3 w-3 text-orange-500" />
+                            )}
                           </div>
                           <div className="text-[10px] text-muted-foreground">
                             {date.dayOfWeek}
@@ -641,7 +669,7 @@ export default function TimesheetsPage() {
                       Ув.
                     </TableHead>
                     <TableHead className="text-center min-w-[100px]">
-                      Компенсация
+                      Перерасчёт
                     </TableHead>
                     <TableHead className="text-center min-w-[100px]">
                       Счет
@@ -729,40 +757,36 @@ export default function TimesheetsPage() {
                             {client.summary.excused}
                           </TableCell>
                           <TableCell className="text-center">
-                            {(client.compensation.excusedCount > 0 || (client.compensation.medCertCompensation ?? 0) > 0) ? (
-                              <div>
-                                <div
+                            {(() => {
+                              // effectiveRecalculationAmount уже рассчитан на бэкенде с учётом сохранённых настроек
+                              const effectiveRecalculation = client.compensation.effectiveRecalculationAmount ?? 0;
+                              const compensations = client.compensation.calculatedAmount;
+                              const debt = client.compensation.debtAmount ?? 0;
+                              const hasRecalculation = effectiveRecalculation !== 0 || compensations > 0 || debt > 0;
+
+                              if (!hasRecalculation) {
+                                return <span className="text-muted-foreground">—</span>;
+                              }
+
+                              // Используем effectiveRecalculationAmount с бэкенда или adjustedAmount если задан вручную
+                              const recalculation = client.compensation.adjustedAmount ?? effectiveRecalculation;
+
+                              return (
+                                <button
+                                  onClick={() => setEditingRecalculation(client)}
                                   className={cn(
-                                    'font-medium',
+                                    'font-medium underline decoration-dotted decoration-muted-foreground underline-offset-4 hover:decoration-primary cursor-pointer',
                                     client.compensation.adjustedAmount !== null
                                       ? 'text-blue-600'
-                                      : 'text-orange-600'
+                                      : recalculation >= 0
+                                        ? 'text-green-600'
+                                        : 'text-red-600'
                                   )}
                                 >
-                                  {formatMoney(
-                                    client.compensation.adjustedAmount ??
-                                      client.compensation.calculatedAmount
-                                  )}
-                                </div>
-                                {/* Показываем разбивку если есть перенесённая компенсация из справок */}
-                                {(client.compensation.medCertCompensation ?? 0) > 0 && (
-                                  <div className="text-[10px] text-muted-foreground">
-                                    <span title="Текущий месяц">{formatMoney(client.compensation.baseCalculatedAmount ?? 0)}</span>
-                                    {' + '}
-                                    <span className="text-purple-600" title="Перенесено из справок">{formatMoney(client.compensation.medCertCompensation ?? 0)}</span>
-                                  </div>
-                                )}
-                                {client.compensation.adjustedAmount !== null && (
-                                  <div className="text-xs text-muted-foreground line-through">
-                                    {formatMoney(
-                                      client.compensation.calculatedAmount
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-muted-foreground">—</span>
-                            )}
+                                  {formatMoney(recalculation)}
+                                </button>
+                              );
+                            })()}
                           </TableCell>
                           <TableCell className="text-center">
                             {client.nextMonthInvoice !== null ? (
@@ -864,6 +888,15 @@ export default function TimesheetsPage() {
         client={editingCompensation?.client || null}
       />
 
+      {/* Диалог настройки перерасчёта */}
+      <RecalculationSettingsDialog
+        open={!!editingRecalculation}
+        onOpenChange={(open) => !open && setEditingRecalculation(null)}
+        client={editingRecalculation}
+        groupId={selectedGroupId}
+        month={selectedMonth}
+      />
+
       {/* Диалог формирования счетов */}
       <CreateInvoicesDialog
         open={showInvoiceDialog}
@@ -873,6 +906,17 @@ export default function TimesheetsPage() {
         currentMonth={selectedMonth}
         onCreateInvoices={handleCreateInvoices}
         isLoading={isCreatingInvoices}
+      />
+
+      {/* Диалог импорта посещаемости */}
+      <ImportAttendanceDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        groupId={selectedGroupId}
+        groupName={groups?.find((g) => g.id === selectedGroupId)?.name}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+        }}
       />
 
       {/* Журнал посещаемости занятия */}

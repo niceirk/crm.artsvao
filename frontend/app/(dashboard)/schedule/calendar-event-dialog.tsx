@@ -221,6 +221,8 @@ export function CalendarEventDialog({
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isFullDayMode, setIsFullDayMode] = useState(false);
   const [showRoomDialog, setShowRoomDialog] = useState(false);
+  const [isCompensated, setIsCompensated] = useState(false);
+  const [compensationNote, setCompensationNote] = useState('');
 
   const createSchedule = useCreateSchedule();
   const updateSchedule = useUpdateSchedule();
@@ -265,6 +267,7 @@ export function CalendarEventDialog({
   const watchedRoomId = form.watch('roomId');
   const watchedStartTime = form.watch('startTime');
   const watchedEndTime = form.watch('endTime');
+  const watchedStatus = form.watch('status');
 
   // Определяем выбранную комнату
   const selectedRoom = useMemo(() => {
@@ -430,19 +433,35 @@ export function CalendarEventDialog({
     setIsFullDayMode(false);
   }, [watchedRoomId]);
 
-  // Сброс режима "Весь день" при открытии диалога
+  // Сброс режима "Весь день" и инициализация компенсации при открытии диалога
   useEffect(() => {
     if (open) {
       setIsFullDayMode(false);
+      // Если занятие уже отменено с компенсацией - показываем сохраненные значения
+      if (schedule?.status === 'CANCELLED' && schedule?.isCompensated) {
+        setIsCompensated(true);
+        setCompensationNote(schedule.cancellationNote || '');
+      } else {
+        setIsCompensated(false);
+        setCompensationNote('');
+      }
     }
-  }, [open]);
+  }, [open, schedule]);
 
   const onSubmit = async (values: any) => {
     try {
       switch (selectedEventType) {
         case 'schedule':
           if (schedule) {
-            await updateSchedule.mutateAsync({ id: schedule.id, data: { ...values, version: schedule.version } });
+            const updateData: any = { ...values, version: schedule.version };
+            // Добавить поля компенсации при отмене занятия
+            if (values.status === 'CANCELLED' && schedule.status !== 'CANCELLED') {
+              updateData.isCompensated = isCompensated;
+              if (isCompensated && compensationNote) {
+                updateData.compensationNote = compensationNote;
+              }
+            }
+            await updateSchedule.mutateAsync({ id: schedule.id, data: updateData });
           } else {
             await createSchedule.mutateAsync(values);
           }
@@ -705,6 +724,46 @@ export function CalendarEventDialog({
                     </FormItem>
                   )}
                 />
+
+                {/* Блок компенсации при отмене занятия */}
+                {schedule && watchedStatus === 'CANCELLED' && (schedule.status !== 'CANCELLED' || schedule.isCompensated) && (
+                  <div className="space-y-3 p-4 bg-orange-50 border border-orange-200 rounded-md">
+                    <div className="flex items-start space-x-3">
+                      <Checkbox
+                        id="isCompensated"
+                        checked={isCompensated}
+                        onCheckedChange={(checked) => setIsCompensated(checked === true)}
+                        disabled={schedule.status === 'CANCELLED'}
+                      />
+                      <label
+                        htmlFor="isCompensated"
+                        className="text-sm font-medium leading-none cursor-pointer"
+                      >
+                        {schedule.status === 'CANCELLED' ? 'Компенсация согласована' : 'Считать отмену компенсацией'}
+                      </label>
+                    </div>
+
+                    {isCompensated && (
+                      <div className="pt-2">
+                        <label className="text-sm font-medium mb-1.5 block">
+                          {schedule.status === 'CANCELLED' ? 'Причина отмены' : 'Комментарий к компенсации'}
+                        </label>
+                        <Textarea
+                          value={compensationNote}
+                          onChange={(e) => setCompensationNote(e.target.value)}
+                          placeholder="Например: Занятие отменено по техническим причинам"
+                          rows={2}
+                          disabled={schedule.status === 'CANCELLED'}
+                        />
+                        {schedule.status !== 'CANCELLED' && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Этот комментарий будет добавлен к записям посещений
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             )}
 

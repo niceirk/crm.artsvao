@@ -1195,6 +1195,110 @@ export class RentalApplicationsService {
   }
 
   /**
+   * Создание счета для заявки (без изменения статуса)
+   */
+  async createInvoice(id: string, managerId: string) {
+    const application = await this.findOne(id);
+
+    // Проверка: счет еще не создан
+    const existingInvoice = await this.prisma.invoice.findFirst({
+      where: {
+        rentalApplicationId: id,
+        status: { not: 'CANCELLED' },
+      },
+    });
+
+    if (existingInvoice) {
+      throw new BadRequestException('Счет для этой заявки уже существует');
+    }
+
+    // Определяем помещение для Invoice
+    const roomId = application.roomId || application.workspaces[0]?.workspace.roomId;
+    const room = application.room || (roomId ? await this.prisma.room.findUnique({ where: { id: roomId } }) : null);
+
+    const invoice = await this.invoicesService.create({
+      clientId: application.clientId,
+      rentalApplicationId: application.id,
+      items: [{
+        serviceType: ServiceType.RENTAL,
+        serviceName: this.getInvoiceItemName(application, room),
+        serviceDescription: this.getInvoiceItemDescription(application),
+        roomId,
+        quantity: Number(application.quantity),
+        basePrice: Number(application.adjustedPrice ?? application.basePrice),
+        unitPrice: Number(application.adjustedPrice ?? application.basePrice),
+        vatRate: 0,
+        discountPercent: 0,
+        writeOffTiming: WriteOffTiming.ON_SALE,
+        isPriceAdjusted: !!application.adjustedPrice,
+        adjustmentReason: application.adjustmentReason,
+      }],
+      notes: application.notes,
+    }, managerId);
+
+    return invoice;
+  }
+
+  /**
+   * Массовое создание счетов для заявок
+   */
+  async createInvoicesBatch(applicationIds: string[], managerId: string) {
+    const results = {
+      success: [] as string[],
+      errors: [] as { id: string; error: string }[],
+    };
+
+    for (const id of applicationIds) {
+      try {
+        await this.createInvoice(id, managerId);
+        results.success.push(id);
+      } catch (error) {
+        results.errors.push({ id, error: error.message });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Массовая отметка счетов как оплаченных
+   */
+  async markInvoicesPaidBatch(applicationIds: string[], managerId: string) {
+    const results = {
+      success: [] as string[],
+      errors: [] as { id: string; error: string }[],
+    };
+
+    for (const id of applicationIds) {
+      try {
+        const application = await this.findOne(id);
+        const invoice = application.invoices?.find(inv => inv.status !== 'CANCELLED');
+
+        if (!invoice) {
+          results.errors.push({ id, error: 'Счет не найден' });
+          continue;
+        }
+
+        if (invoice.status === 'PAID') {
+          results.errors.push({ id, error: 'Счет уже оплачен' });
+          continue;
+        }
+
+        await this.invoicesService.update(invoice.id, {
+          status: 'PAID',
+          paidAt: new Date().toISOString(),
+        }, managerId);
+
+        results.success.push(id);
+      } catch (error) {
+        results.errors.push({ id, error: error.message });
+      }
+    }
+
+    return results;
+  }
+
+  /**
    * Продление аренды
    */
   async extend(id: string, dto: ExtendRentalDto, managerId: string) {

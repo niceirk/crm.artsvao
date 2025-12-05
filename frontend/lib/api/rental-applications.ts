@@ -123,4 +123,28 @@ export const rentalApplicationsApi = {
     const response = await apiClient.delete(`/rental-applications/${applicationId}/rentals/${rentalId}`);
     return response.data;
   },
+
+  // Создать счет для заявки
+  createInvoice: async (id: string): Promise<any> => {
+    const response = await apiClient.post(`/rental-applications/${id}/create-invoice`);
+    return response.data;
+  },
+
+  // Массовое создание счетов
+  createInvoicesBatch: async (applicationIds: string[]): Promise<BatchResult> => {
+    const response = await apiClient.post('/rental-applications/batch/create-invoices', { applicationIds });
+    return response.data;
+  },
+
+  // Массовая отметка оплаты
+  markInvoicesPaidBatch: async (applicationIds: string[]): Promise<BatchResult> => {
+    const response = await apiClient.post('/rental-applications/batch/mark-invoices-paid', { applicationIds });
+    return response.data;
+  },
 };
+
+// Тип для результата массовых операций
+export interface BatchResult {
+  success: string[];
+  errors: { id: string; error: string }[];
+}

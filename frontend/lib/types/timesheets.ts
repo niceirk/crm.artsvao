@@ -7,6 +7,17 @@ export interface TimesheetFilterDto {
 export interface UpdateCompensationDto {
   adjustedAmount?: number;
   notes?: string;
+  // Флаги включения компонентов перерасчёта
+  includeExcused?: boolean;
+  includeMedCert?: boolean;
+  includeCancelled?: boolean;
+  // Исключённые счета из задолженности
+  excludedInvoiceIds?: string[];
+  // Детализация расчёта (для истории)
+  baseAmount?: number;
+  medCertAmount?: number;
+  cancelledAmount?: number;
+  debtAmount?: number;
 }
 
 export interface TimesheetAttendance {
@@ -16,6 +27,8 @@ export interface TimesheetAttendance {
   status: 'PRESENT' | 'ABSENT' | 'EXCUSED' | null;
   subscriptionName: string | null;
   isFromMedicalCertificate: boolean; // Статус установлен по медицинской справке (не редактируется)
+  isScheduleCancelled: boolean; // Занятие отменено (с компенсацией) - нельзя редактировать
+  cancellationNote: string | null; // Причина отмены занятия
 }
 
 export interface TimesheetSummary {
@@ -30,12 +43,25 @@ export interface TimesheetCompensation {
   id?: string;
   excusedCount: number;
   calculatedAmount: number;
+  effectiveRecalculationAmount?: number; // Итоговый перерасчёт с учётом настроек
   baseCalculatedAmount?: number; // Компенсация за текущий месяц (excused * pricePerLesson)
   medCertCompensation?: number; // Компенсация из мед. справок (перенесённая с других месяцев)
+  cancelledLessonsCompensation?: number; // Компенсация за отменённые занятия
+  debtAmount?: number; // Задолженность (неоплаченные счета по группе)
   adjustedAmount: number | null;
   pricePerLesson: number;
   notes?: string;
   appliedToInvoiceId?: string;
+  // Настройки перерасчёта (из БД)
+  includeExcused?: boolean;
+  includeMedCert?: boolean;
+  includeCancelled?: boolean;
+  excludedInvoiceIds?: string[];
+  // Сохранённая детализация
+  savedBaseAmount?: number | null;
+  savedMedCertAmount?: number | null;
+  savedCancelledAmount?: number | null;
+  savedDebtAmount?: number | null;
 }
 
 export interface TimesheetSubscription {
@@ -72,6 +98,9 @@ export interface TimesheetScheduleDate {
   scheduleId: string;
   dayOfWeek: string;
   startTime: string;
+  status?: string;
+  isCompensated?: boolean;
+  cancellationNote?: string;
 }
 
 export interface TimesheetGroup {
@@ -123,4 +152,67 @@ export interface Compensation {
   appliedToInvoiceId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+// Типы для импорта посещаемости
+export interface ImportAttendanceRowResult {
+  row: number;
+  fio: string;
+  dateTime: string;
+  status: 'imported' | 'skipped' | 'client_not_found' | 'schedule_not_found';
+  message: string;
+  existingStatus?: string;
+  newStatus?: string;
+}
+
+export interface ImportAttendanceSummary {
+  total: number;
+  imported: number;
+  skipped: number;
+  clientNotFound: number;
+  scheduleNotFound: number;
+}
+
+export interface ImportAttendanceResult {
+  success: boolean;
+  summary: ImportAttendanceSummary;
+  results: ImportAttendanceRowResult[];
+}
+
+// Типы для детализации перерасчёта
+export interface UnpaidInvoice {
+  id: string;
+  invoiceNumber: string;
+  totalAmount: number;
+  status: 'PENDING' | 'OVERDUE' | 'PARTIALLY_PAID';
+  issuedAt: string;
+  period: string;
+}
+
+export interface CancelledSchedule {
+  id: string;
+  date: string;
+  note: string | null;
+}
+
+export interface RecalculationDetailsCompensation {
+  id: string;
+  excusedCount: number;
+  calculatedAmount: number;
+  adjustedAmount: number | null;
+  notes: string | null;
+  includeExcused: boolean;
+  includeMedCert: boolean;
+  includeCancelled: boolean;
+  excludedInvoiceIds: string[];
+  baseAmount: number | null;
+  medCertAmount: number | null;
+  cancelledAmount: number | null;
+  debtAmount: number | null;
+}
+
+export interface RecalculationDetails {
+  compensation: RecalculationDetailsCompensation | null;
+  unpaidInvoices: UnpaidInvoice[];
+  cancelledSchedules: CancelledSchedule[];
 }

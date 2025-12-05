@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDistance } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Eye, FileText, Plus } from 'lucide-react';
+import { Eye, FileText, Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -29,7 +29,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useInvoices } from '@/hooks/use-invoices';
+import { useInvoices, useDeleteInvoice } from '@/hooks/use-invoices';
+import { useAuth } from '@/hooks/use-auth';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { CreateInvoiceDialog } from './components/create-invoice-dialog';
 import type { InvoiceStatus } from '@/lib/types/invoices';
 
@@ -53,12 +64,26 @@ const statusVariants: Record<InvoiceStatus, 'default' | 'secondary' | 'destructi
 
 export default function InvoicesPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<{ id: string; number: string } | null>(null);
 
   const { data: invoices, isLoading } = useInvoices(
     statusFilter !== 'all' ? { status: statusFilter } : undefined
   );
+  const deleteInvoice = useDeleteInvoice();
+
+  // Только nikita@artsvao.ru может удалять счета
+  const canDeleteInvoices = user?.email === 'nikita@artsvao.ru';
+
+  const handleDeleteInvoice = () => {
+    if (invoiceToDelete) {
+      deleteInvoice.mutate(invoiceToDelete.id, {
+        onSuccess: () => setInvoiceToDelete(null),
+      });
+    }
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ru-RU', {
@@ -169,17 +194,32 @@ export default function InvoicesPage() {
                     </TableCell>
                     <TableCell>{invoice.items.length}</TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push(`/invoices/${invoice.id}`);
-                        }}
-                      >
-                        <Eye className="h-4 w-4 mr-2" />
-                        Просмотр
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/invoices/${invoice.id}`);
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Просмотр
+                        </Button>
+                        {canDeleteInvoices && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInvoiceToDelete({ id: invoice.id, number: invoice.invoiceNumber });
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -201,6 +241,26 @@ export default function InvoicesPage() {
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
       />
+
+      <AlertDialog open={!!invoiceToDelete} onOpenChange={(open) => !open && setInvoiceToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Удалить счет?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Вы уверены, что хотите удалить счет {invoiceToDelete?.number}? Это действие нельзя отменить.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteInvoice}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteInvoice.isPending ? 'Удаление...' : 'Удалить'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

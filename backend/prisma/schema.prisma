@@ -495,8 +495,10 @@ model Schedule {
   notes          String?
   createdAt      DateTime            @default(now()) @map("created_at")
   updatedAt      DateTime            @updatedAt @map("updated_at")
-  status         CalendarEventStatus @default(PLANNED)
-  attendances    Attendance[]
+  status           CalendarEventStatus @default(PLANNED)
+  isCompensated    Boolean             @default(false) @map("is_compensated")
+  cancellationNote String?             @map("cancellation_note")
+  attendances      Attendance[]
   group          Group?              @relation(fields: [groupId], references: [id])
   room           Room                @relation(fields: [roomId], references: [id])
   teacher        Teacher             @relation(fields: [teacherId], references: [id])
@@ -1276,6 +1278,20 @@ model Compensation {
   appliedToInvoiceId String?  @map("applied_to_invoice_id")
   createdAt          DateTime @default(now()) @map("created_at")
   updatedAt          DateTime @updatedAt @map("updated_at")
+
+  // Флаги включения компонентов перерасчёта
+  includeExcused     Boolean  @default(true) @map("include_excused")
+  includeMedCert     Boolean  @default(true) @map("include_med_cert")
+  includeCancelled   Boolean  @default(true) @map("include_cancelled")
+
+  // Исключённые счета из задолженности (массив ID)
+  excludedInvoiceIds String[] @default([]) @map("excluded_invoice_ids")
+
+  // Детализация расчёта (для истории)
+  baseAmount         Decimal? @map("base_amount") @db.Decimal(10, 2)
+  medCertAmount      Decimal? @map("med_cert_amount") @db.Decimal(10, 2)
+  cancelledAmount    Decimal? @map("cancelled_amount") @db.Decimal(10, 2)
+  debtAmount         Decimal? @map("debt_amount") @db.Decimal(10, 2)
 
   client  Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   group   Group   @relation(fields: [groupId], references: [id], onDelete: Cascade)

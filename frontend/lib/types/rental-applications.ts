@@ -185,6 +185,10 @@ export interface RentalApplicationFilters {
   startDate?: string;
   endDate?: string;
   search?: string;
+  // Дополнительные фильтры (клиентская фильтрация)
+  invoiceStatus?: 'NONE' | 'PENDING' | 'PAID';
+  bookingDateFrom?: string;
+  bookingDateTo?: string;
 }
 
 // Вспомогательные функции

@@ -201,3 +201,110 @@ export function useRemoveRental() {
     },
   });
 }
+
+// Создание счета для заявки
+export function useCreateInvoice() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => rentalApplicationsApi.createInvoice(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success('Счет сформирован');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Ошибка при создании счета');
+    },
+  });
+}
+
+// Массовое создание счетов
+export function useCreateInvoicesBatch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (applicationIds: string[]) => rentalApplicationsApi.createInvoicesBatch(applicationIds),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      if (data.errors.length > 0) {
+        // Проверяем, все ли ошибки одинаковые
+        const uniqueErrors = Array.from(new Set(data.errors.map(e => e.error)));
+        if (data.success.length === 0 && uniqueErrors.length === 1) {
+          // Все заявки с одинаковой ошибкой
+          if (uniqueErrors[0].includes('уже существует')) {
+            toast.info('Счета уже сформированы для всех выбранных заявок');
+          } else {
+            toast.warning(uniqueErrors[0]);
+          }
+        } else {
+          toast.warning(`Создано счетов: ${data.success.length}. Пропущено: ${data.errors.length} (счета уже сформированы)`);
+        }
+      } else {
+        toast.success(`Создано счетов: ${data.success.length}`);
+      }
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Ошибка при создании счетов');
+    },
+  });
+}
+
+// Массовая отметка оплаты
+export function useMarkInvoicesPaidBatch() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (applicationIds: string[]) => rentalApplicationsApi.markInvoicesPaidBatch(applicationIds),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      if (data.errors.length > 0) {
+        // Проверяем, все ли ошибки одинаковые
+        const uniqueErrors = Array.from(new Set(data.errors.map(e => e.error)));
+        if (data.success.length === 0 && uniqueErrors.length === 1) {
+          // Все заявки с одинаковой ошибкой
+          if (uniqueErrors[0].includes('уже оплачен')) {
+            toast.info('Все выбранные счета уже оплачены');
+          } else if (uniqueErrors[0].includes('не найден')) {
+            toast.warning('Для выбранных заявок счета не сформированы');
+          } else {
+            toast.warning(uniqueErrors[0]);
+          }
+        } else {
+          // Разные ошибки или частичный успех
+          const alreadyPaid = data.errors.filter(e => e.error.includes('уже оплачен')).length;
+          const noInvoice = data.errors.filter(e => e.error.includes('не найден')).length;
+          let details = [];
+          if (alreadyPaid > 0) details.push(`уже оплачено: ${alreadyPaid}`);
+          if (noInvoice > 0) details.push(`без счета: ${noInvoice}`);
+          toast.warning(`Оплачено: ${data.success.length}. Пропущено: ${data.errors.length} (${details.join(', ')})`);
+        }
+      } else {
+        toast.success(`Оплачено счетов: ${data.success.length}`);
+      }
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Ошибка при оплате счетов');
+    },
+  });
+}
+
+// Отметка одного счета как оплаченного (через invoices API)
+export function useMarkInvoicePaid() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (invoiceId: string) =>
+      import('@/lib/api/invoices').then((mod) => mod.invoicesApi.markAsPaid(invoiceId)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      toast.success('Счет отмечен как оплаченный');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Ошибка при оплате счета');
+    },
+  });
+}
