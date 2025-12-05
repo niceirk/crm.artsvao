@@ -48,7 +48,7 @@ const relationTypeLabels: Record<RelationType, string> = {
 const formSchema = z.object({
   relatedClientId: z.string().min(1, 'Выберите клиента'),
   relationType: z.enum(['PARENT', 'CHILD', 'SPOUSE', 'SIBLING'], {
-    required_error: 'Выберите тип связи',
+    message: 'Выберите тип связи',
   }),
 });
 

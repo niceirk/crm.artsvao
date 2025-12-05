@@ -234,42 +234,46 @@ export interface EventWithLayout {
 /**
  * Расчет расположения пересекающихся событий
  * События делят ширину колонки, если пересекаются по времени
+ * Оптимизировано: предвычисляем timeToMinutes для всех событий один раз
  */
 export function layoutOverlappingEvents<T extends { id: string; startTime: string; endTime: string }>(
   events: T[]
 ): (T & { column: number; totalColumns: number })[] {
   if (events.length === 0) return [];
 
+  // Предвычисляем время в минутах для всех событий (кэширование)
+  const eventsWithTime = events.map(event => ({
+    event,
+    startMin: timeToMinutes(event.startTime),
+    endMin: timeToMinutes(event.endTime),
+  }));
+
   // Сортируем по времени начала
-  const sorted = [...events].sort((a, b) => {
-    const aStart = timeToMinutes(a.startTime);
-    const bStart = timeToMinutes(b.startTime);
-    if (aStart !== bStart) return aStart - bStart;
+  eventsWithTime.sort((a, b) => {
+    if (a.startMin !== b.startMin) return a.startMin - b.startMin;
     // При равном начале - более длинные события сначала
-    return timeToMinutes(b.endTime) - timeToMinutes(a.endTime);
+    return b.endMin - a.endMin;
   });
 
   // Результат с колонками
   const result: (T & { column: number; totalColumns: number })[] = [];
 
   // Группы пересекающихся событий
-  const groups: T[][] = [];
-  let currentGroup: T[] = [];
+  type EventWithTime = typeof eventsWithTime[number];
+  const groups: EventWithTime[][] = [];
+  let currentGroup: EventWithTime[] = [];
   let groupEnd = 0;
 
-  for (const event of sorted) {
-    const eventStart = timeToMinutes(event.startTime);
-    const eventEnd = timeToMinutes(event.endTime);
-
-    if (currentGroup.length === 0 || eventStart < groupEnd) {
+  for (const item of eventsWithTime) {
+    if (currentGroup.length === 0 || item.startMin < groupEnd) {
       // Добавляем в текущую группу
-      currentGroup.push(event);
-      groupEnd = Math.max(groupEnd, eventEnd);
+      currentGroup.push(item);
+      groupEnd = Math.max(groupEnd, item.endMin);
     } else {
       // Начинаем новую группу
       groups.push(currentGroup);
-      currentGroup = [event];
-      groupEnd = eventEnd;
+      currentGroup = [item];
+      groupEnd = item.endMin;
     }
   }
 
@@ -279,41 +283,110 @@ export function layoutOverlappingEvents<T extends { id: string; startTime: strin
 
   // Для каждой группы назначаем колонки
   for (const group of groups) {
-    const columns: T[][] = [];
+    // Храним только время окончания последнего события в каждой колонке
+    const columnEndTimes: number[] = [];
 
-    for (const event of group) {
-      const eventStart = timeToMinutes(event.startTime);
+    // Map для хранения назначенной колонки для каждого события
+    const columnAssignments = new Map<EventWithTime, number>();
 
+    for (const item of group) {
       // Ищем первую колонку, где событие не пересекается
-      let placed = false;
-      for (let col = 0; col < columns.length; col++) {
-        const lastInColumn = columns[col][columns[col].length - 1];
-        const lastEnd = timeToMinutes(lastInColumn.endTime);
-
-        if (eventStart >= lastEnd) {
-          columns[col].push(event);
-          placed = true;
+      let assignedCol = -1;
+      for (let col = 0; col < columnEndTimes.length; col++) {
+        if (item.startMin >= columnEndTimes[col]) {
+          columnEndTimes[col] = item.endMin;
+          assignedCol = col;
           break;
         }
       }
 
-      if (!placed) {
-        columns.push([event]);
+      if (assignedCol === -1) {
+        assignedCol = columnEndTimes.length;
+        columnEndTimes.push(item.endMin);
       }
+
+      columnAssignments.set(item, assignedCol);
     }
 
     // Записываем результат
-    const totalColumns = columns.length;
-    for (let col = 0; col < columns.length; col++) {
-      for (const event of columns[col]) {
-        result.push({
-          ...event,
-          column: col,
-          totalColumns,
-        });
-      }
+    const totalColumns = columnEndTimes.length;
+    for (const item of group) {
+      result.push({
+        ...item.event,
+        column: columnAssignments.get(item)!,
+        totalColumns,
+      });
     }
   }
 
   return result;
+}
+
+// ==================== Drag-and-Drop утилиты ====================
+
+/**
+ * Интерфейс для результата расчета позиции при drop
+ */
+export interface DropPosition {
+  startTime: string;
+  endTime: string;
+  rowIndex: number;
+}
+
+/**
+ * Рассчитывает новое время события при drop на основе Y-координаты
+ * Привязка к 30-минутным интервалам (00, 30)
+ *
+ * @param yOffset - смещение Y от верха области с событиями (в пикселях)
+ * @param columnHeight - полная высота колонки (в пикселях)
+ * @param eventDurationMinutes - длительность события в минутах
+ * @param scale - масштаб отображения (по умолчанию 1.0)
+ */
+export function calculateDropPosition(
+  yOffset: number,
+  columnHeight: number,
+  eventDurationMinutes: number,
+  scale: number = 1.0
+): DropPosition {
+  const scaledRowHeight = CHESS_GRID.ROW_HEIGHT * scale;
+
+  // Рассчитываем индекс строки (каждая строка = 30 минут)
+  let rowIndex = Math.round(yOffset / scaledRowHeight);
+
+  // Ограничиваем индекс строки допустимыми значениями
+  rowIndex = Math.max(0, Math.min(rowIndex, TOTAL_ROWS - 1));
+
+  // Рассчитываем время начала
+  const startMinutes = CHESS_GRID.START_HOUR * 60 + rowIndex * CHESS_GRID.SLOT_DURATION;
+
+  // Рассчитываем время окончания
+  let endMinutes = startMinutes + eventDurationMinutes;
+
+  // Ограничиваем время окончания рабочими часами
+  const maxEndMinutes = CHESS_GRID.END_HOUR * 60;
+  if (endMinutes > maxEndMinutes) {
+    endMinutes = maxEndMinutes;
+    // Сдвигаем начало назад, чтобы сохранить длительность (если возможно)
+    const adjustedStart = endMinutes - eventDurationMinutes;
+    if (adjustedStart >= CHESS_GRID.START_HOUR * 60) {
+      return {
+        startTime: minutesToTime(adjustedStart),
+        endTime: minutesToTime(endMinutes),
+        rowIndex: Math.floor((adjustedStart - CHESS_GRID.START_HOUR * 60) / CHESS_GRID.SLOT_DURATION),
+      };
+    }
+  }
+
+  return {
+    startTime: minutesToTime(startMinutes),
+    endTime: minutesToTime(endMinutes),
+    rowIndex,
+  };
+}
+
+/**
+ * Рассчитывает длительность события в минутах
+ */
+export function getEventDurationMinutes(startTime: string, endTime: string): number {
+  return timeToMinutes(endTime) - timeToMinutes(startTime);
 }

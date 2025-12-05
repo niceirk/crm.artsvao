@@ -120,7 +120,7 @@ export function ClientNotesCard({ clientId }: ClientNotesCardProps) {
                 <div className="flex justify-between items-start gap-2">
                   <div className="flex-1">
                     <p className="text-sm font-medium">
-                      {note.author.lastName} {note.author.firstName}
+                      {note.author ? `${note.author.lastName} ${note.author.firstName}` : note.authorName || 'Неизвестный автор'}
                     </p>
                     <p className="text-xs text-muted-foreground">{formatDate(note.createdAt)}</p>
                   </div>

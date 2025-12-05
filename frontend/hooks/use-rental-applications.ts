@@ -182,3 +182,22 @@ export function useRentalApplicationEditStatus(id: string | undefined) {
     enabled: !!id,
   });
 }
+
+// Удаление отдельного слота (Rental) из заявки
+export function useRemoveRental() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ applicationId, rentalId }: { applicationId: string; rentalId: string }) =>
+      rentalApplicationsApi.removeRental(applicationId, rentalId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEY] });
+      queryClient.invalidateQueries({ queryKey: ['rentals'] });
+      queryClient.invalidateQueries({ queryKey: ['calendar-events'] });
+      toast.success('Слот удален');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.message || 'Ошибка при удалении слота');
+    },
+  });
+}

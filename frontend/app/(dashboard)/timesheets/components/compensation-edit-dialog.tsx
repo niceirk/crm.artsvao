@@ -30,8 +30,7 @@ import { useUpdateCompensation } from '@/hooks/use-timesheets';
 import type { TimesheetClient } from '@/lib/types/timesheets';
 
 const formSchema = z.object({
-  adjustedAmount: z.coerce
-    .number()
+  adjustedAmount: z.number()
     .min(0, 'Сумма не может быть отрицательной')
     .optional(),
   notes: z.string().optional(),

@@ -24,6 +24,9 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Install PM2 globally for cluster mode
+RUN npm install -g pm2
+
 # Install production dependencies only
 COPY package*.json ./
 COPY prisma ./prisma/
@@ -34,6 +37,9 @@ RUN npm ci --only=production && \
 
 # Copy built application from builder
 COPY --from=builder /app/dist ./dist
+
+# Copy PM2 ecosystem config
+COPY ecosystem.config.js /app/ecosystem.config.js
 
 # Copy entrypoint script
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh

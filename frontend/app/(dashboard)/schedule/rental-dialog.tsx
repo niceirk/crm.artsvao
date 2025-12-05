@@ -99,7 +99,7 @@ const formSchema = z.object({
   date: z.string().min(1, 'Выберите дату'),
   startTime: z.string().min(1, 'Введите время начала'),
   endTime: z.string().min(1, 'Введите время окончания'),
-  totalPrice: z.coerce.number().min(0, 'Цена должна быть больше 0'),
+  totalPrice: z.number().min(0, 'Цена должна быть больше 0'),
   status: z.enum(['PLANNED', 'ONGOING', 'COMPLETED', 'CANCELLED']).optional(),
   notes: z.string().optional(),
 });

@@ -84,13 +84,13 @@ export function SellSingleSessionsDialog({
   const groupList = groups?.data ?? [];
   const normalizedGroupSearch = groupSearch.trim().toLowerCase();
   const filteredGroups = groupList.filter((group) => {
-    const label = `${group.name} ${group.studio.name}`.toLowerCase();
+    const label = `${group.name} ${group.studio?.name ?? ''}`.toLowerCase();
     return label.includes(normalizedGroupSearch);
   });
 
   const groupOptions: ComboboxOption[] = filteredGroups.map((group) => ({
     value: group.id,
-    label: `${group.name} (${group.studio.name}) - ${formatCurrency(group.singleSessionPrice || 0)}/занятие`,
+    label: `${group.name} (${group.studio?.name ?? '-'}) - ${formatCurrency(group.singleSessionPrice || 0)}/занятие`,
   }));
 
   useEffect(() => {

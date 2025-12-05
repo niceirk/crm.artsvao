@@ -44,12 +44,13 @@ const useFormField = () => {
   const itemContext = React.useContext(FormItemContext)
 
   // Безопасная проверка наличия formContext
-  let getFieldState, formState
+  let getFieldState: ReturnType<typeof useFormContext>['getFieldState'] | undefined
+  let formState: ReturnType<typeof useFormContext>['formState'] | undefined
   try {
     const formContext = useFormContext()
     getFieldState = formContext.getFieldState
     formState = formContext.formState
-  } catch (error) {
+  } catch {
     // Если используется вне FormProvider, возвращаем безопасные значения
     console.warn("useFormField: Form component used outside FormProvider")
   }
@@ -62,7 +63,7 @@ const useFormField = () => {
     throw new Error("useFormField should be used within <FormItem>")
   }
 
-  const fieldState = getFieldState ? getFieldState(fieldContext.name, formState) : {}
+  const fieldState = getFieldState && formState ? getFieldState(fieldContext.name, formState) : { invalid: false, isDirty: false, isTouched: false, isValidating: false, error: undefined }
 
   const { id } = itemContext
 
@@ -72,7 +73,11 @@ const useFormField = () => {
     formItemId: `${id}-form-item`,
     formDescriptionId: `${id}-form-item-description`,
     formMessageId: `${id}-form-item-message`,
-    ...fieldState,
+    error: fieldState.error,
+    invalid: fieldState.invalid,
+    isDirty: fieldState.isDirty,
+    isTouched: fieldState.isTouched,
+    isValidating: fieldState.isValidating,
   }
 }
 

@@ -46,6 +46,7 @@ export function CodePreview({
           )}
         </Button>
       </div>
+      {/* @ts-expect-error - react-syntax-highlighter types incompatible with React 19 */}
       <SyntaxHighlighter
         language={language}
         style={theme === 'dark' ? oneDark : oneLight}

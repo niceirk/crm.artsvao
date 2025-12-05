@@ -81,7 +81,7 @@ export default function SubscriptionsPage() {
     return groups
       .filter((group) => {
         if (!normalizedSearch) return true;
-        const label = `${group.name} ${group.studio.name}`.toLowerCase();
+        const label = `${group.name} ${group.studio?.name ?? ''}`.toLowerCase();
         return label.includes(normalizedSearch);
       })
       .map((group) => ({

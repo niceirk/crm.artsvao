@@ -304,7 +304,7 @@ export function CalendarDemo({ usages }: DemoProps) {
 }
 
 export function DatePickerDemo({ usages }: DemoProps) {
-  const [date, setDate] = useState<Date | undefined>();
+  const [dateStr, setDateStr] = useState<string | undefined>();
 
   const code = `<DatePicker
   value={date}
@@ -320,8 +320,8 @@ export function DatePickerDemo({ usages }: DemoProps) {
       preview={
         <div className="w-[280px]">
           <DatePicker
-            value={date}
-            onChange={setDate}
+            value={dateStr}
+            onChange={(value) => setDateStr(value ?? undefined)}
             placeholder="Выберите дату"
           />
         </div>

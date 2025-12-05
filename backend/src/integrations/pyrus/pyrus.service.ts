@@ -1,7 +1,7 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, Inject, forwardRef, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout, catchError, throwError } from 'rxjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
   PyrusAuthResponse,
@@ -76,6 +76,12 @@ export class PyrusService {
   private readonly AUTH_URL = 'https://accounts.pyrus.com/api/v4/auth';
   private readonly API_BASE_URL = 'https://api.pyrus.com/v4';
 
+  // Timeout для API запросов (30 секунд - больше из-за объёма данных)
+  private readonly API_TIMEOUT_MS = 30000;
+
+  // Максимальное количество записей для запроса (защита от OOM)
+  private readonly MAX_ITEMS_LIMIT = 5000;
+
   constructor(
     private readonly configService: ConfigService,
     private readonly httpService: HttpService,
@@ -109,7 +115,21 @@ export class PyrusService {
         this.httpService.post<PyrusAuthResponse>(this.AUTH_URL, {
           login,
           security_key: securityKey,
-        }),
+        }, {
+          timeout: this.API_TIMEOUT_MS,
+        }).pipe(
+          timeout(this.API_TIMEOUT_MS),
+          catchError((error) => {
+            if (error.name === 'TimeoutError') {
+              this.logger.error(`Pyrus auth timeout after ${this.API_TIMEOUT_MS}ms`);
+              return throwError(() => new HttpException(
+                `Превышено время ожидания ответа от Pyrus (${this.API_TIMEOUT_MS / 1000} сек)`,
+                HttpStatus.GATEWAY_TIMEOUT,
+              ));
+            }
+            return throwError(() => error);
+          }),
+        ),
       );
 
       this.accessToken = response.data.access_token;
@@ -119,6 +139,9 @@ export class PyrusService {
       this.logger.log('Токен доступа Pyrus успешно получен');
       return this.accessToken;
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       this.logger.error('Ошибка при получении токена Pyrus', error.response?.data || error.message);
       throw new BadRequestException('Не удалось авторизоваться в Pyrus API');
     }
@@ -135,7 +158,13 @@ export class PyrusService {
       throw new BadRequestException('Не настроен PYRUS_FORM_ID в .env');
     }
 
-    this.logger.log(`Получение задач из формы ${formId}...`);
+    // Ограничиваем количество записей для защиты от OOM
+    const safeFilters = {
+      ...filters,
+      item_count: Math.min(filters?.item_count ?? this.MAX_ITEMS_LIMIT, this.MAX_ITEMS_LIMIT),
+    };
+
+    this.logger.log(`Получение задач из формы ${formId} (лимит: ${safeFilters.item_count})...`);
 
     try {
       const response = await firstValueFrom(
@@ -145,8 +174,21 @@ export class PyrusService {
             headers: {
               Authorization: `Bearer ${token}`,
             },
-            params: filters,
+            params: safeFilters,
+            timeout: this.API_TIMEOUT_MS,
           },
+        ).pipe(
+          timeout(this.API_TIMEOUT_MS),
+          catchError((error) => {
+            if (error.name === 'TimeoutError') {
+              this.logger.error(`Pyrus getFormTasks timeout after ${this.API_TIMEOUT_MS}ms`);
+              return throwError(() => new HttpException(
+                `Превышено время ожидания ответа от Pyrus (${this.API_TIMEOUT_MS / 1000} сек)`,
+                HttpStatus.GATEWAY_TIMEOUT,
+              ));
+            }
+            return throwError(() => error);
+          }),
         ),
       );
 
@@ -170,6 +212,9 @@ export class PyrusService {
 
       return tasks;
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       this.logger.error('Ошибка при получении задач из Pyrus', error.response?.data || error.message);
       throw new BadRequestException('Не удалось получить задачи из Pyrus');
     }
@@ -180,7 +225,7 @@ export class PyrusService {
    */
   async getTasksPreview(): Promise<PyrusTaskPreviewDto[]> {
     const tasks = await this.getFormTasks({
-      item_count: 20000, // Максимальный лимит Pyrus API
+      item_count: this.MAX_ITEMS_LIMIT, // Используем безопасный лимит
       include_archived: 'y', // Включить все задачи, включая архивные
     });
 
@@ -525,12 +570,28 @@ export class PyrusService {
           headers: {
             Authorization: `Bearer ${token}`,
           },
-        }),
+          timeout: this.API_TIMEOUT_MS,
+        }).pipe(
+          timeout(this.API_TIMEOUT_MS),
+          catchError((error) => {
+            if (error.name === 'TimeoutError') {
+              this.logger.error(`Pyrus getCatalog timeout after ${this.API_TIMEOUT_MS}ms for catalog ${catalogId}`);
+              return throwError(() => new HttpException(
+                `Превышено время ожидания ответа от Pyrus (${this.API_TIMEOUT_MS / 1000} сек)`,
+                HttpStatus.GATEWAY_TIMEOUT,
+              ));
+            }
+            return throwError(() => error);
+          }),
+        ),
       );
 
       this.logger.log(`Получено ${response.data.items?.length || 0} элементов из справочника ${catalogId}`);
       return response.data;
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       this.logger.error('Ошибка при получении справочника из Pyrus', error.response?.data || error.message);
       throw new BadRequestException('Не удалось получить справочник из Pyrus');
     }
@@ -704,7 +765,20 @@ export class PyrusService {
                 Authorization: `Bearer ${token}`,
                 'Content-Type': 'application/json',
               },
+              timeout: this.API_TIMEOUT_MS,
             },
+          ).pipe(
+            timeout(this.API_TIMEOUT_MS),
+            catchError((error) => {
+              if (error.name === 'TimeoutError') {
+                this.logger.error(`Pyrus upsertCatalogItem timeout after ${this.API_TIMEOUT_MS}ms`);
+                return throwError(() => new HttpException(
+                  `Превышено время ожидания ответа от Pyrus (${this.API_TIMEOUT_MS / 1000} сек)`,
+                  HttpStatus.GATEWAY_TIMEOUT,
+                ));
+              }
+              return throwError(() => error);
+            }),
           ),
         );
         this.logger.log(`Обновлен элемент ${itemId} в справочнике ${catalogId}`);
@@ -731,7 +805,20 @@ export class PyrusService {
                 Authorization: `Bearer ${token}`,
                 'Content-Type': 'application/json',
               },
+              timeout: this.API_TIMEOUT_MS,
             },
+          ).pipe(
+            timeout(this.API_TIMEOUT_MS),
+            catchError((error) => {
+              if (error.name === 'TimeoutError') {
+                this.logger.error(`Pyrus upsertCatalogItem timeout after ${this.API_TIMEOUT_MS}ms`);
+                return throwError(() => new HttpException(
+                  `Превышено время ожидания ответа от Pyrus (${this.API_TIMEOUT_MS / 1000} сек)`,
+                  HttpStatus.GATEWAY_TIMEOUT,
+                ));
+              }
+              return throwError(() => error);
+            }),
           ),
         );
 
@@ -749,6 +836,9 @@ export class PyrusService {
         return createdItem;
       }
     } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
       this.logger.error(
         `Ошибка при ${itemId ? 'обновлении' : 'создании'} элемента в справочнике ${catalogId}`,
         error.response?.data || error.message,

@@ -1,17 +1,22 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRentalDto } from './dto/create-rental.dto';
 import { UpdateRentalDto } from './dto/update-rental.dto';
 import { ConflictCheckerService } from '../shared/conflict-checker.service';
 import { InvoicesService } from '../invoices/invoices.service';
+import { RentalApplicationsService } from '../rental-applications/rental-applications.service';
 import { ServiceType, WriteOffTiming } from '@prisma/client';
 
 @Injectable()
 export class RentalsService {
+  private readonly logger = new Logger(RentalsService.name);
+
   constructor(
     private prisma: PrismaService,
     private conflictChecker: ConflictCheckerService,
     private invoicesService: InvoicesService,
+    @Inject(forwardRef(() => RentalApplicationsService))
+    private rentalApplicationsService: RentalApplicationsService,
   ) {}
 
   async create(createRentalDto: CreateRentalDto) {
@@ -104,7 +109,7 @@ export class RentalsService {
         }, createRentalDto.managerId);
       } catch (error) {
         // Логируем ошибку, но не прерываем создание аренды
-        console.error('Failed to auto-create invoice for rental:', error);
+        this.logger.error('Failed to auto-create invoice for rental:', error);
       }
     }
 
@@ -166,6 +171,14 @@ export class RentalsService {
             id: true,
             applicationNumber: true,
             status: true,
+            client: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                phone: true,
+              },
+            },
             invoices: {
               select: {
                 id: true,
@@ -210,6 +223,14 @@ export class RentalsService {
             id: true,
             applicationNumber: true,
             status: true,
+            client: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                phone: true,
+              },
+            },
             invoices: {
               select: {
                 id: true,
@@ -217,6 +238,11 @@ export class RentalsService {
                 status: true,
                 totalAmount: true,
                 paidAt: true,
+              },
+            },
+            _count: {
+              select: {
+                rentals: true,
               },
             },
           },
@@ -315,27 +341,50 @@ export class RentalsService {
   }
 
   async remove(id: string) {
-    await this.findOne(id);
-
-    // Check if rental has payments
     const rental = await this.prisma.rental.findUnique({
       where: { id },
       include: {
-        _count: {
-          select: {
-            payments: true,
+        rentalApplication: {
+          include: {
+            _count: { select: { rentals: true } },
+            invoices: { where: { status: 'PAID' } },
           },
         },
+        _count: { select: { payments: true } },
       },
     });
 
-    if (rental._count.payments > 0) {
-      throw new Error('Cannot delete rental that has payment records');
+    if (!rental) {
+      throw new NotFoundException(`Rental with ID ${id} not found`);
     }
 
-    return this.prisma.rental.delete({
-      where: { id },
-    });
+    if (rental._count.payments > 0) {
+      throw new BadRequestException('Нельзя удалить аренду с записями об оплате');
+    }
+
+    // Если связан с заявкой
+    if (rental.rentalApplicationId && rental.rentalApplication) {
+      const app = rental.rentalApplication;
+
+      // Проверка на оплаченные счета
+      if (app.invoices.length > 0) {
+        throw new BadRequestException('Нельзя удалить: заявка имеет оплаченные счета');
+      }
+
+      // Если единственный слот - удалить всю заявку
+      if (app._count.rentals === 1) {
+        await this.rentalApplicationsService.remove(app.id);
+        return { deleted: 'application', applicationId: app.id };
+      }
+
+      // Если не единственный - удалить слот из заявки
+      await this.rentalApplicationsService.removeRental(app.id, id);
+      return { deleted: 'slot', applicationId: app.id };
+    }
+
+    // Обычное удаление (без заявки)
+    await this.prisma.rental.delete({ where: { id } });
+    return { deleted: 'rental' };
   }
 
   /**

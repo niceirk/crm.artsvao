@@ -68,7 +68,7 @@ export function ClientHeader({ client, isEditing, onEdit, onCancelEdit, onSave }
     .join(' ');
 
   // Вычисляем возраст клиента
-  const calculateAge = (dateOfBirth: string | Date | null): number | null => {
+  const calculateAge = (dateOfBirth: string | Date | null | undefined): number | null => {
     if (!dateOfBirth) return null;
     const today = new Date();
     const birthDate = new Date(dateOfBirth);

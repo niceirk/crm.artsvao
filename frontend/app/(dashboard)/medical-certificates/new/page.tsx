@@ -241,7 +241,7 @@ export default function NewMedicalCertificatePage() {
     if (filteredSchedules) {
       setSelectedScheduleIds((prev) => {
         const newIds = filteredSchedules.map((s) => s.id);
-        return [...new Set([...prev, ...newIds])];
+        return Array.from(new Set([...prev, ...newIds]));
       });
     }
   };

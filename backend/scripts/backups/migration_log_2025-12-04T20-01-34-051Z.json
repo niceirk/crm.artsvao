@@ -1,0 +1,787 @@
+{
+  "timestamp": "2025-12-04T20:01:47.951Z",
+  "isDryRun": false,
+  "groups": [
+    {
+      "mainApplicationId": "f308217a-d8e8-496d-8977-1c6c010df6fd",
+      "mainAppNumber": "АР-25-000001",
+      "mergedApplicationIds": [
+        "898a153e-17b3-497b-9fc3-8235eaf9e808",
+        "b4ed892f-227f-4673-8855-9c10a3e65bf4",
+        "3bafc0ca-f854-429f-aeb0-d4acef5b1a07"
+      ],
+      "movedRentalIds": [
+        "90b7801b-035a-4c4a-b198-5c13db619a5a",
+        "eaebc7f6-2d4e-4a1f-9b20-3fb201d9c816",
+        "ec5346d9-a957-4394-b7eb-a13955bd4831"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000004",
+        "АР-25-000007",
+        "АР-25-000010"
+      ],
+      "newQuantity": 4,
+      "newTotalPrice": 5200
+    },
+    {
+      "mainApplicationId": "aa50918f-b557-42a9-b747-1682dcf715c8",
+      "mainAppNumber": "АР-25-000016",
+      "mergedApplicationIds": [
+        "c38885b3-5a4b-47f0-8060-2d0c0797090b",
+        "0630dd76-35db-4d0b-946f-be93b9c62f1f",
+        "3a67b8a2-6614-4201-b4f7-16b78b7e9adc",
+        "e1f580f1-447a-4d7e-8362-30039ed69eb9"
+      ],
+      "movedRentalIds": [
+        "1df33389-8fdd-4abc-ae19-6f16c9a03d82",
+        "9881cbdc-77f4-4d49-bcd2-3b529fcf00fc",
+        "76522006-1346-4bee-872b-4f1e2b3e8170",
+        "ae39b9d3-c4f1-47b4-a222-a4901a5d28ec"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000017",
+        "АР-25-000018",
+        "АР-25-000019",
+        "АР-25-000020"
+      ],
+      "newQuantity": 5,
+      "newTotalPrice": 6500
+    },
+    {
+      "mainApplicationId": "f961f10a-c292-4cdb-8acd-5ed0b0095741",
+      "mainAppNumber": "АР-25-000002",
+      "mergedApplicationIds": [
+        "518e8754-43cd-4050-a302-7580416c87ea",
+        "4edabc27-7099-45d6-a540-13a0a1067d07",
+        "86afe048-e0e7-406f-9923-f54acdb0dc17"
+      ],
+      "movedRentalIds": [
+        "7cbb4966-c82d-4033-a6a9-ed47d13eae30",
+        "d6c01ebd-ba1e-402b-9a4a-2e39aa4abb31",
+        "9c3049bf-5782-4726-a719-d01969444fdf"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000005",
+        "АР-25-000008",
+        "АР-25-000011"
+      ],
+      "newQuantity": 4,
+      "newTotalPrice": 5200
+    },
+    {
+      "mainApplicationId": "34400e0b-5e01-4cce-8a9a-4512709ca661",
+      "mainAppNumber": "АР-25-000022",
+      "mergedApplicationIds": [
+        "5dc9f2fe-27b8-4d46-96ba-4cb53395afb8",
+        "b325ac5a-9409-4593-a066-6d670dff454a",
+        "e52856e3-b6fb-4fce-ad5c-24fabacadd1a",
+        "13c1bf76-4096-40aa-b218-0f07acce53aa"
+      ],
+      "movedRentalIds": [
+        "0bef1683-a0d1-4b4c-a02b-4ba0f9b4ac64",
+        "ef76bea4-59bb-4a36-9792-c24d5e68dd5c",
+        "d06c26ea-7458-461a-9c58-9946f3aa98ec",
+        "e65d402b-bf19-4da1-9617-d4d5c0232e04"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000023",
+        "АР-25-000024",
+        "АР-25-000025",
+        "АР-25-000026"
+      ],
+      "newQuantity": 5,
+      "newTotalPrice": 6500
+    },
+    {
+      "mainApplicationId": "c529b59c-ec62-40cd-9636-259af3b1374e",
+      "mainAppNumber": "АР-25-000003",
+      "mergedApplicationIds": [
+        "b411d8a7-9ad3-4d65-88a8-82ff601b4b00",
+        "258925f4-33b6-45b4-80a6-0a6b3a501d33",
+        "c054db52-2ad0-4542-a9a7-8f9481aeb00c"
+      ],
+      "movedRentalIds": [
+        "1fd03c79-2320-43dd-b8d2-5f877d38fe4e",
+        "1317f68e-fc24-4ca3-b23a-c8e7b247687e",
+        "d30fe9c3-8cbf-46be-bab9-660cb667a822"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000006",
+        "АР-25-000009",
+        "АР-25-000012"
+      ],
+      "newQuantity": 4,
+      "newTotalPrice": 5200
+    },
+    {
+      "mainApplicationId": "aaa29dfc-8213-481d-ab43-e7b8acb37b7c",
+      "mainAppNumber": "АР-25-000028",
+      "mergedApplicationIds": [
+        "76a00222-e70b-48cf-bf3d-8002d3c20423",
+        "de2f2ae9-7cf2-4038-b1bc-84122ae3d927",
+        "6696ef88-3ea3-4b23-95a4-37d76fafb8be",
+        "80ecdf60-52ae-41d6-9e9a-3083a133a64c"
+      ],
+      "movedRentalIds": [
+        "8e689e22-3f58-412e-9ec1-40de22f51d7b",
+        "0fd47a6e-6e24-45a4-881d-4fc967f18675",
+        "16054a01-9973-4eee-86aa-cf9ac891d0c6",
+        "8ed37e82-d505-4db3-9222-31a75b3080dc"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000029",
+        "АР-25-000030",
+        "АР-25-000031",
+        "АР-25-000032"
+      ],
+      "newQuantity": 5,
+      "newTotalPrice": 6500
+    },
+    {
+      "mainApplicationId": "2558c774-5701-4919-badb-80615813ba3c",
+      "mainAppNumber": "АР-25-000080",
+      "mergedApplicationIds": [
+        "2ac242d9-5167-4e8b-b0fb-3a11acd96e22",
+        "9c617fcd-4816-420d-8502-40f5f3efdbdb"
+      ],
+      "movedRentalIds": [
+        "36ddcbba-4b70-42ea-9eb7-8c84482d7b19",
+        "80732734-fc56-4614-be71-9d097d648455"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000081",
+        "АР-25-000082"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2700
+    },
+    {
+      "mainApplicationId": "098c3ed2-1f37-4bc2-8688-212a6e0494a0",
+      "mainAppNumber": "АР-25-000083",
+      "mergedApplicationIds": [
+        "e99680b6-3164-4911-ba44-0073640c4dc3",
+        "c003e7de-e12a-42cf-a55d-c93e5f816891"
+      ],
+      "movedRentalIds": [
+        "f40b8817-abdf-4334-b915-f6885f51e15b",
+        "0cfb0371-f25d-4ff0-8563-296d0fc9e95b"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000084",
+        "АР-25-000085"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2700
+    },
+    {
+      "mainApplicationId": "1018ffbd-31ab-4af8-b6bb-6855792f72b2",
+      "mainAppNumber": "АР-25-000086",
+      "mergedApplicationIds": [
+        "8f83f428-1204-4b29-9ac8-2d1710ea0f33",
+        "bed87a3d-a5e3-4e11-8767-1624e78a9096"
+      ],
+      "movedRentalIds": [
+        "a3969c67-9d95-4a9d-931b-fb0b88f92966",
+        "52382a4a-20b6-4660-bf59-74779f800806"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000087",
+        "АР-25-000088"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2700
+    },
+    {
+      "mainApplicationId": "958071ff-e660-45a5-be1e-ef7ae56c9c26",
+      "mainAppNumber": "АР-25-000089",
+      "mergedApplicationIds": [
+        "b5d889aa-8a5f-4e76-a1e1-703a309426fc",
+        "5b31286e-9972-4caa-b74f-10322425adc7"
+      ],
+      "movedRentalIds": [
+        "918f6bc9-07bb-412b-822f-0793036ef04c",
+        "cf7d75b3-773b-467b-b4df-199d3d121c6d"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000090",
+        "АР-25-000091"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2700
+    },
+    {
+      "mainApplicationId": "1a6427b2-6ba1-4baa-8ba9-9d7dbc973bb6",
+      "mainAppNumber": "АР-25-000092",
+      "mergedApplicationIds": [
+        "51c0aae1-3e12-4f30-93f0-94fd8780da7c",
+        "c3e2e315-dd97-40e5-a317-6d12d67fb5c6"
+      ],
+      "movedRentalIds": [
+        "a58ba5eb-0856-4b61-a989-ab1e1960a1d5",
+        "f7e504a8-f464-49dd-a6a7-14cc27293171"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000093",
+        "АР-25-000094"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2700
+    },
+    {
+      "mainApplicationId": "5aabaec3-55e7-4811-9dd8-619fa9772ffa",
+      "mainAppNumber": "АР-25-000095",
+      "mergedApplicationIds": [
+        "a6a16497-9edd-41f4-8542-12b99bb36460",
+        "0be4a4dd-f314-40a7-8ff8-a4e3fcb6b786"
+      ],
+      "movedRentalIds": [
+        "247497c0-cc55-4d2c-a10b-bd8cd18d9fe7",
+        "1870f4f4-8430-4378-8c1f-24f448e4e1e0"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000096",
+        "АР-25-000097"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2700
+    },
+    {
+      "mainApplicationId": "52c05c5e-fbdf-4a7b-8f29-2a380fa68f0e",
+      "mainAppNumber": "АР-25-000122",
+      "mergedApplicationIds": [
+        "d5d647ae-a928-4b91-9a7f-a532ab16e8cb",
+        "a05c135e-3171-41a8-8e7c-dee2d95003e0"
+      ],
+      "movedRentalIds": [
+        "cf831dba-b6ce-4d8d-8a3b-166fd8f9fbc8",
+        "cd4f20e0-43f4-49b6-8269-25364d3ebbb5"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000123",
+        "АР-25-000130"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2400
+    },
+    {
+      "mainApplicationId": "01f2f295-5e26-489b-acf3-8184772d5319",
+      "mainAppNumber": "АР-25-000124",
+      "mergedApplicationIds": [
+        "7830b550-be94-4f67-a0a8-1e797b813b72",
+        "9d4cdefd-c00a-4a0d-9683-f98103ab2cb4"
+      ],
+      "movedRentalIds": [
+        "1c25dfda-78bd-4a2d-95b6-5d80aaad3dbe",
+        "b657ee03-3d0f-4f09-9acb-19f8f4079e4b"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000125",
+        "АР-25-000129"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2400
+    },
+    {
+      "mainApplicationId": "340480d1-a3cd-46e9-8c53-3a2d3a2b2c49",
+      "mainAppNumber": "АР-25-000126",
+      "mergedApplicationIds": [
+        "dcfacff1-23ba-4398-85b0-49c6287d353e",
+        "6106893f-a474-4df5-a318-a9e945de41cc"
+      ],
+      "movedRentalIds": [
+        "ac7ae1fc-aa29-4609-8b35-a27ee1391af9",
+        "7105d0ca-198c-4477-9d31-3f64c223b07e"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000127",
+        "АР-25-000128"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2400
+    },
+    {
+      "mainApplicationId": "dd10f736-af43-4edd-a420-074f07259b25",
+      "mainAppNumber": "АР-25-000050",
+      "mergedApplicationIds": [
+        "e4a5d8ff-a9b0-4327-87db-cb7502b932c7",
+        "c6543609-b790-43be-9577-016cd1ab9e0e"
+      ],
+      "movedRentalIds": [
+        "6ce6c3e7-12eb-4ada-bcc9-e79179a73d4d",
+        "80467bba-e1e3-413c-ab34-1b0a2224dc7f"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000051",
+        "АР-25-000052"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2700
+    },
+    {
+      "mainApplicationId": "74be2738-df62-4edd-bc07-ac81404eefe2",
+      "mainAppNumber": "АР-25-000053",
+      "mergedApplicationIds": [
+        "120fd228-a1b0-41d2-aa37-559e93be8ddc",
+        "adf8e8ba-0cd3-462a-808d-dc0c1c6ec800"
+      ],
+      "movedRentalIds": [
+        "6cdd80a1-821d-48ca-ac43-64ed07770667",
+        "8007c728-f90d-4cb9-95b0-59c8a38f04f7"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000054",
+        "АР-25-000055"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2700
+    },
+    {
+      "mainApplicationId": "aa79e0e9-d4bd-4899-9c72-9df11a223311",
+      "mainAppNumber": "АР-25-000056",
+      "mergedApplicationIds": [
+        "38d5fb3a-7ee9-47ae-8504-aa3c4b3d26c3",
+        "9c2d8571-589f-45f3-96c3-56c463fcdefb"
+      ],
+      "movedRentalIds": [
+        "c4235482-0865-4844-88c3-c5157ce94797",
+        "c00a331d-9e78-4bd0-a6a0-99b2e4ba70a6"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000057",
+        "АР-25-000058"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2700
+    },
+    {
+      "mainApplicationId": "d74e6eaf-fadb-498f-95e5-4fdbb5ffc483",
+      "mainAppNumber": "АР-25-000059",
+      "mergedApplicationIds": [
+        "5057db7a-dfb4-47fa-b55f-142fab299c26",
+        "292bf896-45bb-4411-b9c3-1d32a2903ac2"
+      ],
+      "movedRentalIds": [
+        "6ec41e8d-c52b-4282-a1f5-9967c539c992",
+        "af6290ad-1bed-4021-920f-159ba022790b"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000060",
+        "АР-25-000061"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2700
+    },
+    {
+      "mainApplicationId": "351bcfe5-ef31-4f28-8706-2b48194513eb",
+      "mainAppNumber": "АР-25-000062",
+      "mergedApplicationIds": [
+        "29f5cbf1-a5ec-4118-b053-fb0e02deaf16",
+        "6b0d3224-1954-4578-a0d6-4023ee49123f"
+      ],
+      "movedRentalIds": [
+        "0e5da633-0159-4acc-9b12-e524b310bb65",
+        "1a5a4826-368d-463c-b755-603bc15ab959"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000063",
+        "АР-25-000064"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2700
+    },
+    {
+      "mainApplicationId": "8eb86e04-cb74-4c40-9c6e-d5569a9bf334",
+      "mainAppNumber": "АР-25-000065",
+      "mergedApplicationIds": [
+        "2615f924-88c1-4cbe-937d-9c8a28610f7a",
+        "eda28ab5-847c-4243-b5a1-e735b8ee1a5f"
+      ],
+      "movedRentalIds": [
+        "73958dc9-53ad-4cac-964d-b82e816d3ae8",
+        "b26600cd-29ad-4775-9476-1d7570acdb3b"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000066",
+        "АР-25-000067"
+      ],
+      "newQuantity": 3,
+      "newTotalPrice": 2700
+    },
+    {
+      "mainApplicationId": "c58e00db-29dd-47a8-b86a-4aa64aa1def1",
+      "mainAppNumber": "АР-25-000131",
+      "mergedApplicationIds": [
+        "615e255e-98a2-4c2f-872d-ef1aad568266",
+        "05f0ce2e-7e88-43f5-bb32-2cc308a539e8",
+        "2a356a70-d7c4-407d-85e8-68903d618f90",
+        "eab84a61-362b-42bb-add6-b615469379eb",
+        "d5da643b-beaf-458d-9c0f-02749a983575",
+        "61bfc849-022f-41db-aa2a-76f14fb8b6f8",
+        "3f1cd7a8-7330-48d4-9341-01c5e84fe397",
+        "399f621a-5349-4976-819b-ba90e2278738",
+        "42218554-abfd-4fc7-956e-25079bf02cd4",
+        "6c4be0a5-52ea-44bd-835a-df08e6eb77e2",
+        "0c1c0c72-54b8-41c2-8854-b36b1feddb0a",
+        "5f004fb7-5ec7-4e20-bcc3-0097cd7c9a64"
+      ],
+      "movedRentalIds": [
+        "0a73079e-290a-4195-b510-aff0e4189f88",
+        "0d5cad55-d410-45ce-93cd-d94f40ab0102",
+        "7d83b9b8-7d8d-4653-8895-d0d6d07092ea",
+        "c83d8e51-48c2-4433-ba55-72e6826a4049",
+        "0f7291ae-d4b7-49d0-8c8d-c5fdaf783201",
+        "57c782f4-446b-4858-a77f-3e1f8df78cfb",
+        "178aa291-9333-4d7c-9f85-78d18232c3bc",
+        "246bf604-c624-4e89-8e6d-b25041afddae",
+        "04efb03d-814f-4b34-8a7e-f5082a4ca4a9",
+        "568837a3-7b05-4ab8-af33-d4b4ffab5366",
+        "3369f5d1-c7db-48b6-bc99-06cdc472b665",
+        "9bf3465d-7987-4a39-8d9d-2a05d6f5735e"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000132",
+        "АР-25-000133",
+        "АР-25-000134",
+        "АР-25-000135",
+        "АР-25-000136",
+        "АР-25-000137",
+        "АР-25-000138",
+        "АР-25-000139",
+        "АР-25-000140",
+        "АР-25-000141",
+        "АР-25-000142",
+        "АР-25-000143"
+      ],
+      "newQuantity": 13,
+      "newTotalPrice": 24700
+    },
+    {
+      "mainApplicationId": "bffb9d88-77cc-4473-a1d8-de157160c1ca",
+      "mainAppNumber": "АР-25-000144",
+      "mergedApplicationIds": [
+        "de0a7740-30eb-4df3-86c6-f43bc067ff73",
+        "8627ae77-7223-46f5-9927-662f8d8b62d3",
+        "b7de60d3-9c8e-48bc-884f-c249c3b46a2b",
+        "6ea3ce4d-5fab-4562-a2fd-83c00a8d6564",
+        "f50da249-97db-4899-8caf-60039b3699f4",
+        "5a500160-57ef-4bad-ba27-358397366902",
+        "58e537a0-8da7-4ad2-8e7a-244643f2f281",
+        "d9333ba9-9942-4d87-90f5-b412bf61a825",
+        "66e15fdf-1b95-4700-88a1-50d3499df70a",
+        "3ae784b8-4f51-457c-bc36-7724776849c7",
+        "fd94701b-bc49-4c20-97b8-4b76fb5a38fd",
+        "e47c617a-94a0-4c70-b4ca-994f3e1fe31c"
+      ],
+      "movedRentalIds": [
+        "9e9be987-4f4d-442d-b9f2-1298966ff4ee",
+        "69b5b665-d836-4c93-9aa4-bf4bfd227326",
+        "c7f7f7a4-14c4-4fbd-8fe0-07b16c7fbbee",
+        "db222618-c7a2-4f5a-a286-d015ed3152e1",
+        "ba3f3784-7b7c-4839-8ecc-a3522afe9117",
+        "65599d27-18fb-4fc6-8e6f-8ced58e48baf",
+        "4066f43d-4173-460c-9388-a6497757b1e9",
+        "cdd7a4f4-b451-413c-a513-747409641511",
+        "7ccf5c75-c53e-4d7c-8599-1d0b5323283f",
+        "a56de6b2-b064-498e-9840-ab406f14c076",
+        "e68a1456-a0ee-484c-b535-41a4543b9538",
+        "283170dd-50c0-4a2c-b1da-a281ab001061"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000145",
+        "АР-25-000146",
+        "АР-25-000147",
+        "АР-25-000148",
+        "АР-25-000149",
+        "АР-25-000150",
+        "АР-25-000151",
+        "АР-25-000152",
+        "АР-25-000153",
+        "АР-25-000154",
+        "АР-25-000155",
+        "АР-25-000156"
+      ],
+      "newQuantity": 13,
+      "newTotalPrice": 24700
+    },
+    {
+      "mainApplicationId": "dfc4dc6e-f7a4-48bc-92bd-e918bd131d85",
+      "mainAppNumber": "АР-25-000157",
+      "mergedApplicationIds": [
+        "79dc2c72-f557-4cad-8548-d30422c1d7a3",
+        "541aa50f-f157-4bc8-9d9f-317fb1ff1539",
+        "6a9897da-9b6a-4d62-bce5-e20586cc2172",
+        "c3fbfcb6-0c6b-46af-9cd5-9ea57b5bef68",
+        "5dde24b6-307f-48de-b1bf-066012a15d7e",
+        "6edb111c-fcae-48b6-b0ac-59dd579f16f2",
+        "0902ce32-283b-4087-b000-a0b210bc2bfa",
+        "fe8b7dc8-0a05-41af-bbf1-238967f627da",
+        "37300503-ca06-4bb8-ad1a-887682df398f",
+        "69aace35-224a-4e91-b8e9-05f8e23ef5b9",
+        "8f3ca88b-b237-4a96-be3a-5a0b57e21467",
+        "28754f9d-f544-487d-badf-671307d919f0"
+      ],
+      "movedRentalIds": [
+        "c2b2f245-7367-4cce-9fe8-51fdf1c48de4",
+        "d93db5b7-0772-4c97-9385-29df169a99dd",
+        "5bbfe4f2-cf9e-496e-a45f-4694fb8279d9",
+        "955e6458-fd1b-4d0e-83b2-5a19634a7fa7",
+        "a4de77fe-b1e1-46c6-9cfe-7735762e8245",
+        "297866aa-6048-4780-9c95-078f74846998",
+        "9b2b818c-6b4e-4489-b36a-d71929e066e5",
+        "f3f37a79-f247-4b7c-8368-f8fbe4064749",
+        "fec176a3-5ee4-4be8-846c-221b14ddfa76",
+        "6e0fca7e-6173-465b-84d8-39b786a5a852",
+        "11e5e9ab-315f-4869-a822-43cff0473398",
+        "6f187611-071e-47ce-a0b2-a64292456789"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000158",
+        "АР-25-000159",
+        "АР-25-000160",
+        "АР-25-000161",
+        "АР-25-000162",
+        "АР-25-000163",
+        "АР-25-000164",
+        "АР-25-000165",
+        "АР-25-000166",
+        "АР-25-000167",
+        "АР-25-000168",
+        "АР-25-000169"
+      ],
+      "newQuantity": 13,
+      "newTotalPrice": 24700
+    },
+    {
+      "mainApplicationId": "1e82046e-37a9-4e04-bb51-65e2fb80e1bc",
+      "mainAppNumber": "АР-25-000170",
+      "mergedApplicationIds": [
+        "a5ac6782-3733-4845-886a-67298a51fdd8",
+        "ac7a966a-809f-4174-9c23-5e76d15acb4e",
+        "1c03319e-c037-4850-8fe2-c39acb075ee0",
+        "d7bb5ec4-b48d-44aa-ba45-710d90d583a4",
+        "517ef512-4c19-44b8-939a-1f81e62d6954",
+        "2d93f025-1fa0-47ca-bf64-13f570e3c2ce",
+        "8ab7d044-e11b-46b4-8f35-70505d20278c",
+        "a49fea9a-578f-466f-9276-5ee9b40d107a",
+        "62d7a261-2196-475a-9fc1-41d5a5eb85fb",
+        "1d1399b9-2ddc-4310-a659-e5dc65af90a7",
+        "b16e6a7e-604c-4d26-aa33-690161d30468",
+        "ec4d4f17-8e24-4920-be6b-9fd62e9f3343"
+      ],
+      "movedRentalIds": [
+        "595f734b-775f-4dbf-90a5-b9b0fc89db26",
+        "2693b2ae-ced5-4036-98fd-50f9e0db4063",
+        "a97df995-27ab-4e5b-8a05-f5e20f84852e",
+        "50b55072-da2f-465e-840a-6a6e7454a3ac",
+        "b10a0a99-03b3-4929-af90-78c148c3538f",
+        "7ecec5f5-80c0-4a8b-8f8b-2cea737fa0e9",
+        "1c758020-b3ee-4ed4-b6f7-e9e9a7123907",
+        "3104cc3a-bd5e-4e23-8a49-a5b0ace9d676",
+        "8501914a-359d-4285-8529-da690bb2775a",
+        "a3ec7fd4-63d3-40c5-873c-4425cf350f31",
+        "89723ced-321e-493e-ba96-65afd0c2bae5",
+        "7fecbfa9-aa6e-4b67-bb9e-dbee5611083b"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000171",
+        "АР-25-000172",
+        "АР-25-000173",
+        "АР-25-000174",
+        "АР-25-000175",
+        "АР-25-000176",
+        "АР-25-000177",
+        "АР-25-000178",
+        "АР-25-000179",
+        "АР-25-000180",
+        "АР-25-000181",
+        "АР-25-000182"
+      ],
+      "newQuantity": 13,
+      "newTotalPrice": 24700
+    },
+    {
+      "mainApplicationId": "d1f0ad58-0247-4414-a456-fe1566cc4ba3",
+      "mainAppNumber": "АР-25-000116",
+      "mergedApplicationIds": [
+        "5af73cd5-dedc-4127-a2c4-3d75089189d2"
+      ],
+      "movedRentalIds": [
+        "a0eee4d7-c144-4627-9dd3-d0e0213392b7"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000117"
+      ],
+      "newQuantity": 2,
+      "newTotalPrice": 3000
+    },
+    {
+      "mainApplicationId": "edca01e1-9252-4931-9769-921bda06aa5b",
+      "mainAppNumber": "АР-25-000118",
+      "mergedApplicationIds": [
+        "6c7b27d4-17b7-4aa8-8359-abf7ed9c76c6"
+      ],
+      "movedRentalIds": [
+        "fb67cc3c-c3b5-49ad-a16a-2c15d5c83051"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000119"
+      ],
+      "newQuantity": 2,
+      "newTotalPrice": 3000
+    },
+    {
+      "mainApplicationId": "e7c7eac2-77cc-4c7e-959e-81456b840447",
+      "mainAppNumber": "АР-25-000120",
+      "mergedApplicationIds": [
+        "b351fa24-89d7-427f-8e78-9c1b4153d624"
+      ],
+      "movedRentalIds": [
+        "610f9377-6e66-4109-86e7-845dec82a2dc"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000121"
+      ],
+      "newQuantity": 2,
+      "newTotalPrice": 3000
+    },
+    {
+      "mainApplicationId": "796c3a70-d22b-4edf-8dd4-957c62f89df8",
+      "mainAppNumber": "АР-25-000110",
+      "mergedApplicationIds": [
+        "d58134e3-49a1-411e-9bd8-38ade37073f3"
+      ],
+      "movedRentalIds": [
+        "f537458c-fdd8-4c8f-a40d-2cc48b095f76"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000111"
+      ],
+      "newQuantity": 2,
+      "newTotalPrice": 2400
+    },
+    {
+      "mainApplicationId": "e1a18f98-3e54-4182-9d83-fe34fe42d3a5",
+      "mainAppNumber": "АР-25-000112",
+      "mergedApplicationIds": [
+        "785f909e-ca65-4c12-b50b-a188182796a5"
+      ],
+      "movedRentalIds": [
+        "0daffa04-4057-406f-90b6-453e4263507e"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000113"
+      ],
+      "newQuantity": 2,
+      "newTotalPrice": 2400
+    },
+    {
+      "mainApplicationId": "1582ef70-18f8-4b67-890d-a199e17d480c",
+      "mainAppNumber": "АР-25-000114",
+      "mergedApplicationIds": [
+        "c4990647-056d-4349-a511-2792fc70affb"
+      ],
+      "movedRentalIds": [
+        "ec782640-396b-421c-be29-66cafc213d58"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000115"
+      ],
+      "newQuantity": 2,
+      "newTotalPrice": 2400
+    },
+    {
+      "mainApplicationId": "816295d2-3940-4de7-b53e-b56a3a02c55e",
+      "mainAppNumber": "АР-25-000098",
+      "mergedApplicationIds": [
+        "7bf139a5-b9bb-4a8b-a313-51b496ba5def"
+      ],
+      "movedRentalIds": [
+        "7aae73a5-531d-4e54-bd4d-2a78d35e08e3"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000101"
+      ],
+      "newQuantity": 2,
+      "newTotalPrice": 3000
+    },
+    {
+      "mainApplicationId": "f8f199b5-8613-499f-b1ad-8a9414f5929d",
+      "mainAppNumber": "АР-25-000099",
+      "mergedApplicationIds": [
+        "59968b64-2d75-4b95-b8f7-6a41be71750e"
+      ],
+      "movedRentalIds": [
+        "ce738748-6b74-4343-a6df-4a85e32c31f6"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000102"
+      ],
+      "newQuantity": 2,
+      "newTotalPrice": 3000
+    },
+    {
+      "mainApplicationId": "5c7fb96f-2e35-411e-9bb7-854885c8963e",
+      "mainAppNumber": "АР-25-000100",
+      "mergedApplicationIds": [
+        "b8ef1c49-1233-4a88-b1ca-8cf261341875"
+      ],
+      "movedRentalIds": [
+        "42e7eaec-8a40-49f5-97ba-b0a493a59cc2"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000103"
+      ],
+      "newQuantity": 2,
+      "newTotalPrice": 3000
+    },
+    {
+      "mainApplicationId": "7550607e-4deb-4dfb-804a-5c885b3b7ecc",
+      "mainAppNumber": "АР-25-000104",
+      "mergedApplicationIds": [
+        "6950a600-ddc1-4c15-ba8f-ace4a91e695b"
+      ],
+      "movedRentalIds": [
+        "7d59ee6e-4034-4cc8-b3ec-928d243291a6"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000105"
+      ],
+      "newQuantity": 2,
+      "newTotalPrice": 3000
+    },
+    {
+      "mainApplicationId": "6321ce53-fd8f-42bf-a72e-a25f1ff3619e",
+      "mainAppNumber": "АР-25-000106",
+      "mergedApplicationIds": [
+        "073be4d6-9afa-4af0-9f16-19e0bb5b4bfb"
+      ],
+      "movedRentalIds": [
+        "082f9f71-6f16-4847-a8b8-9bfdef0e9a62"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000107"
+      ],
+      "newQuantity": 2,
+      "newTotalPrice": 3000
+    },
+    {
+      "mainApplicationId": "b938ba8a-cd21-40d1-a688-23395742d710",
+      "mainAppNumber": "АР-25-000108",
+      "mergedApplicationIds": [
+        "0965a5a1-3234-4a3a-93bd-9a0c6d09b443"
+      ],
+      "movedRentalIds": [
+        "9ed5bdb0-906d-4c80-aef4-378195dec83e"
+      ],
+      "deletedAppNumbers": [
+        "АР-25-000109"
+      ],
+      "newQuantity": 2,
+      "newTotalPrice": 3000
+    }
+  ],
+  "backup": {
+    "applicationsFile": "/home/nikita/artsvao/backend/scripts/backups/migration_backup_2025-12-04T20-01-34-051Z.json",
+    "rentalsFile": "/home/nikita/artsvao/backend/scripts/backups/migration_backup_2025-12-04T20-01-34-051Z.json"
+  }
+}

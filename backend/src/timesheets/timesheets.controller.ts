@@ -10,6 +10,7 @@ import {
   Request,
   Res,
   Header,
+  NotFoundException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import { TimesheetsService } from './timesheets.service';
@@ -32,7 +33,8 @@ export class TimesheetsController {
   }
 
   /**
-   * Экспорт табеля в Excel
+   * Экспорт табеля в Excel (синхронный, для обратной совместимости)
+   * Для больших табелей рекомендуется использовать /export/async
    */
   @Get('export')
   @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
@@ -44,6 +46,58 @@ export class TimesheetsController {
 
     // Формируем имя файла
     const month = filter.month || new Date().toISOString().slice(0, 7);
+    const filename = encodeURIComponent(`Табель_${month}.xlsx`);
+
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${filename}`);
+    res.send(buffer);
+  }
+
+  /**
+   * Запуск асинхронного экспорта табеля в Excel.
+   * Возвращает jobId для отслеживания статуса.
+   */
+  @Post('export/async')
+  async startExportAsync(@Body() filter: TimesheetFilterDto) {
+    return this.timesheetsService.startExportAsync(filter);
+  }
+
+  /**
+   * Получить статус задачи экспорта
+   */
+  @Get('export/status/:jobId')
+  async getExportStatus(@Param('jobId') jobId: string) {
+    const job = this.timesheetsService.getExportJob(jobId);
+    return {
+      jobId: job.id,
+      status: job.status,
+      progress: job.progress,
+      error: job.error,
+      createdAt: job.createdAt,
+      completedAt: job.completedAt,
+    };
+  }
+
+  /**
+   * Скачать результат экспорта
+   */
+  @Get('export/download/:jobId')
+  @Header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  async downloadExport(
+    @Param('jobId') jobId: string,
+    @Res() res: Response,
+  ) {
+    const job = this.timesheetsService.getExportJob(jobId);
+
+    if (job.status !== 'completed') {
+      throw new NotFoundException(`Экспорт ещё не готов. Статус: ${job.status}`);
+    }
+
+    const buffer = this.timesheetsService.getExportResult(jobId);
+    if (!buffer) {
+      throw new NotFoundException('Файл экспорта уже был скачан или истёк');
+    }
+
+    const month = job.filter.month || new Date().toISOString().slice(0, 7);
     const filename = encodeURIComponent(`Табель_${month}.xlsx`);
 
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"; filename*=UTF-8''${filename}`);

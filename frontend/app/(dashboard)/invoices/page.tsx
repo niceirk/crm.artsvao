@@ -56,12 +56,9 @@ export default function InvoicesPage() {
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
 
-  const { data: invoicesResponse, isLoading } = useInvoices(
+  const { data: invoices, isLoading } = useInvoices(
     statusFilter !== 'all' ? { status: statusFilter } : undefined
   );
-
-  const invoices = invoicesResponse?.data;
-  const meta = invoicesResponse?.meta;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ru-RU', {
@@ -92,7 +89,7 @@ export default function InvoicesPage() {
             <div>
               <CardTitle>Список счетов</CardTitle>
               <CardDescription>
-                Всего счетов: {meta?.total || 0}
+                Всего счетов: {invoices?.length || 0}
               </CardDescription>
             </div>
             <Select

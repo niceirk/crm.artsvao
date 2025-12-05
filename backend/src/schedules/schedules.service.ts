@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
@@ -8,6 +8,8 @@ import { updateWithVersionCheck } from '../common/utils/optimistic-lock.util';
 
 @Injectable()
 export class SchedulesService {
+  private readonly logger = new Logger(SchedulesService.name);
+
   constructor(
     private prisma: PrismaService,
     private conflictChecker: ConflictCheckerService,
@@ -15,28 +17,22 @@ export class SchedulesService {
   ) {}
 
   async create(createScheduleDto: CreateScheduleDto) {
-    // Verify group exists if provided
-    if (createScheduleDto.groupId) {
-      const group = await this.prisma.group.findUnique({
-        where: { id: createScheduleDto.groupId },
-      });
-      if (!group) {
-        throw new BadRequestException(`Group with ID ${createScheduleDto.groupId} not found`);
-      }
-    }
+    // Параллельная валидация существования связанных сущностей (оптимизация N+1)
+    const [group, teacher, room] = await Promise.all([
+      createScheduleDto.groupId
+        ? this.prisma.group.findUnique({ where: { id: createScheduleDto.groupId } })
+        : Promise.resolve(null),
+      this.prisma.teacher.findUnique({ where: { id: createScheduleDto.teacherId } }),
+      this.prisma.room.findUnique({ where: { id: createScheduleDto.roomId } }),
+    ]);
 
-    // Verify teacher exists
-    const teacher = await this.prisma.teacher.findUnique({
-      where: { id: createScheduleDto.teacherId },
-    });
+    // Валидация результатов
+    if (createScheduleDto.groupId && !group) {
+      throw new BadRequestException(`Group with ID ${createScheduleDto.groupId} not found`);
+    }
     if (!teacher) {
       throw new BadRequestException(`Teacher with ID ${createScheduleDto.teacherId} not found`);
     }
-
-    // Verify room exists
-    const room = await this.prisma.room.findUnique({
-      where: { id: createScheduleDto.roomId },
-    });
     if (!room) {
       throw new BadRequestException(`Room with ID ${createScheduleDto.roomId} not found`);
     }
@@ -340,7 +336,7 @@ export class SchedulesService {
     try {
       await this.notificationsService.sendScheduleChangeNotification(id);
     } catch (error) {
-      console.error('Failed to send schedule change notification:', error);
+      this.logger.error('Failed to send schedule change notification:', error);
       // Не прерываем выполнение если уведомление не отправилось
     }
 

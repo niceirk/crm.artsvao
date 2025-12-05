@@ -42,11 +42,11 @@ import type { SubscriptionType } from '@/lib/types/subscriptions';
 const formSchema = z.object({
   name: z.string().min(1, 'Введите название'),
   groupId: z.string().min(1, 'Выберите группу'),
-  type: z.enum(['UNLIMITED']),
-  price: z.coerce.number().min(0, 'Цена должна быть положительной'),
-  pricePerLesson: z.coerce.number().min(0, 'Цена за занятие не может быть отрицательной').optional(),
+  type: z.enum(['UNLIMITED', 'VISIT_PACK', 'SINGLE_VISIT']),
+  price: z.number().min(0, 'Цена должна быть положительной'),
+  pricePerLesson: z.number().min(0, 'Цена за занятие не может быть отрицательной').optional(),
   description: z.string().optional(),
-  isActive: z.boolean().default(true),
+  isActive: z.boolean(),
 });
 
 type FormValues = z.infer<typeof formSchema>;

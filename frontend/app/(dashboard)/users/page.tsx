@@ -45,7 +45,7 @@ export default function UsersPage() {
 
   const { data, isLoading } = useUsers({
     search: search || undefined,
-    role: roleFilter !== 'all' ? (roleFilter as 'ADMIN' | 'MANAGER' | 'TEACHER') : undefined,
+    role: roleFilter !== 'all' ? (roleFilter as 'ADMIN' | 'MANAGER') : undefined,
     status: statusFilter !== 'all' ? (statusFilter as 'ACTIVE' | 'BLOCKED') : undefined,
     page,
     limit: 20,

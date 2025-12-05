@@ -43,9 +43,9 @@ const formSchema = z.object({
   name: z.string().min(1, 'Введите название'),
   description: z.string().optional(),
   groupId: z.string().min(1, 'Выберите группу'),
-  price: z.coerce.number().min(0, 'Цена не может быть отрицательной'),
-  pricePerLesson: z.coerce.number().min(0, 'Цена за занятие не может быть отрицательной').optional(),
-  vatRate: z.coerce.number().min(0).max(100).optional(),
+  price: z.number().min(0, 'Цена не может быть отрицательной'),
+  pricePerLesson: z.number().min(0, 'Цена за занятие не может быть отрицательной').optional(),
+  vatRate: z.number().min(0).max(100).optional(),
   isActive: z.boolean(),
 });
 
@@ -128,7 +128,6 @@ export function SubscriptionTypeDialog({
         await updateMutation.mutateAsync({
           id: editItem.id,
           data: {
-            version: editItem.version,
             name: values.name,
             description: values.description,
             groupId: values.groupId,

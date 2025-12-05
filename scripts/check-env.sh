@@ -109,8 +109,10 @@ check_var "EMAIL_FROM" ".env.production" true
 check_var "FRONTEND_URL" ".env.production" true
 
 echo ""
-echo "Проверка переменных интеграций (опционально)..."
+echo "Проверка переменных интеграций..."
 echo "----------------------------------------"
+check_var "TELEGRAM_BOT_TOKEN" ".env.production" true
+check_var "TIMEPAD_API_TOKEN" ".env.production" true
 check_var "PYRUS_LOGIN" ".env.production" false
 check_var "PYRUS_SECURITY_KEY" ".env.production" false
 check_var "PYRUS_FORM_ID" ".env.production" false

@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Plus, Trash2, Edit, Calendar, Building } from 'lucide-react';
+import { FileText, Plus, Trash2, Edit, Calendar, Building, Copy, Hash, Globe, Clock } from 'lucide-react';
 import type { Client, ClientDocument, DocumentType } from '@/lib/types/clients';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -42,12 +42,50 @@ export function ClientDocumentsSection({ client, onRefresh }: ClientDocumentsSec
     }
   };
 
-  const getDocumentDisplay = (doc: ClientDocument) => {
-    const parts: string[] = [];
-    if (doc.series) parts.push(`Серия: ${doc.series}`);
-    if (doc.number) parts.push(`№ ${doc.number}`);
-    return parts.join(', ') || 'Данные не указаны';
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        // Fallback для HTTP
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        document.execCommand('copy');
+        textArea.remove();
+      }
+      toast.success(`${label} скопировано`);
+    } catch {
+      toast.error('Не удалось скопировать');
+    }
   };
+
+  const CopyableField = ({
+    value,
+    label,
+    icon: Icon,
+    prefix
+  }: {
+    value: string;
+    label: string;
+    icon?: React.ComponentType<{ className?: string }>;
+    prefix?: string;
+  }) => (
+    <div
+      className="flex items-center gap-1 cursor-pointer hover:text-foreground transition-colors group"
+      onClick={() => copyToClipboard(value, label)}
+      title={`Нажмите, чтобы скопировать`}
+    >
+      {Icon && <Icon className="h-3 w-3" />}
+      <span className="truncate max-w-[150px]">{prefix}{value}</span>
+      <Copy className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+    </div>
+  );
 
   const handleAdd = () => {
     setEditingDocument(null);
@@ -121,22 +159,59 @@ export function ClientDocumentsSection({ client, onRefresh }: ClientDocumentsSec
                       )}
                     </div>
 
-                    <p className="text-xs text-muted-foreground mb-1">
-                      {getDocumentDisplay(doc)}
-                    </p>
+                    <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground mb-1">
+                      {doc.series && (
+                        <CopyableField
+                          value={doc.series}
+                          label="Серия"
+                          prefix="Серия: "
+                        />
+                      )}
+                      {doc.number && (
+                        <CopyableField
+                          value={doc.number}
+                          label="Номер"
+                          prefix="№ "
+                        />
+                      )}
+                    </div>
 
                     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
                       {doc.issuedBy && (
-                        <div className="flex items-center gap-1">
-                          <Building className="h-3 w-3" />
-                          <span className="truncate max-w-[150px]">{doc.issuedBy}</span>
-                        </div>
+                        <CopyableField
+                          value={doc.issuedBy}
+                          label="Кем выдан"
+                          icon={Building}
+                        />
                       )}
                       {doc.issuedAt && (
-                        <div className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          <span>{formatDate(doc.issuedAt)}</span>
-                        </div>
+                        <CopyableField
+                          value={formatDate(doc.issuedAt)}
+                          label="Дата выдачи"
+                          icon={Calendar}
+                        />
+                      )}
+                      {doc.documentType === 'PASSPORT' && doc.departmentCode && (
+                        <CopyableField
+                          value={doc.departmentCode}
+                          label="Код подразделения"
+                          icon={Hash}
+                        />
+                      )}
+                      {doc.expiresAt && doc.documentType !== 'PASSPORT' && (
+                        <CopyableField
+                          value={formatDate(doc.expiresAt)}
+                          label="Срок действия"
+                          icon={Clock}
+                          prefix="До: "
+                        />
+                      )}
+                      {doc.documentType === 'FOREIGN_PASSPORT' && doc.citizenship && (
+                        <CopyableField
+                          value={doc.citizenship}
+                          label="Гражданство"
+                          icon={Globe}
+                        />
                       )}
                     </div>
                   </div>

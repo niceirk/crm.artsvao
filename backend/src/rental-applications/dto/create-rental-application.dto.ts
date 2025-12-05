@@ -1,5 +1,17 @@
-import { IsString, IsOptional, IsEnum, IsNumber, IsBoolean, IsArray, IsDateString, Matches, Min } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsNumber, IsBoolean, IsArray, IsDateString, Matches, Min, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import { RentalType, RentalPeriodType, PriceUnit, RentalPaymentType } from '@prisma/client';
+
+export class HourlySlotDto {
+  @IsDateString()
+  date: string;
+
+  @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: 'startTime must be in HH:MM format' })
+  startTime: string;
+
+  @Matches(/^([01]\d|2[0-3]):([0-5]\d)$/, { message: 'endTime must be in HH:MM format' })
+  endTime: string;
+}
 
 export class CreateRentalApplicationDto {
   @IsEnum(RentalType)
@@ -76,4 +88,10 @@ export class CreateRentalApplicationDto {
   @IsBoolean()
   @IsOptional()
   ignoreConflicts?: boolean;
+
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => HourlySlotDto)
+  @IsOptional()
+  hourlySlots?: HourlySlotDto[];
 }

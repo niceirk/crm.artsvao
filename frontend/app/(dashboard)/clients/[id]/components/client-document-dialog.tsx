@@ -86,7 +86,7 @@ const formSchema = z.object({
   issuedAt: z.date().optional(),
   expiresAt: z.date().optional(),
   departmentCode: z.string().optional(),
-  isPrimary: z.boolean().default(false),
+  isPrimary: z.boolean(),
   citizenship: z.string().optional(),
   fullDisplay: z.string().optional(),
 });

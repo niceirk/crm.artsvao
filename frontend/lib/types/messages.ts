@@ -46,6 +46,7 @@ export interface TelegramAccount {
     id: string;
     firstName: string;
     lastName: string;
+    middleName?: string | null;
     phone: string | null;
     email: string | null;
     photoUrl: string | null;

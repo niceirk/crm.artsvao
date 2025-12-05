@@ -23,6 +23,12 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
   private readonly maxInterval = 30000; // 30 seconds maximum
   private emptyQueueCount = 0;
 
+  // Circuit breaker state
+  private consecutiveErrors = 0;
+  private readonly maxConsecutiveErrors = 5;
+  private readonly errorBackoffMs = 60000; // 1 минута при активации circuit breaker
+  private circuitBreakerActive = false;
+
   // Rate limiting state
   private telegramSentThisSecond = 0;
   private emailSentThisHour = 0;
@@ -135,8 +141,32 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
 
         await this.processNotification(notification);
       }
+
+      // Успешная итерация - сбрасываем circuit breaker
+      if (this.consecutiveErrors > 0) {
+        this.logger.log('Queue processing successful, resetting error counter');
+      }
+      this.consecutiveErrors = 0;
+      if (this.circuitBreakerActive) {
+        this.circuitBreakerActive = false;
+        this.currentInterval = this.minInterval;
+        this.logger.log('Circuit breaker deactivated, resuming normal operation');
+      }
     } catch (error) {
-      this.logger.error(`Queue processing error: ${error.message}`, error.stack);
+      this.consecutiveErrors++;
+      this.logger.error(
+        `Queue processing error (${this.consecutiveErrors}/${this.maxConsecutiveErrors}): ${error.message}`,
+        error.stack,
+      );
+
+      // Активация circuit breaker при множественных ошибках
+      if (this.consecutiveErrors >= this.maxConsecutiveErrors && !this.circuitBreakerActive) {
+        this.circuitBreakerActive = true;
+        this.currentInterval = this.errorBackoffMs;
+        this.logger.warn(
+          `Circuit breaker activated! Too many consecutive errors. Pausing for ${this.errorBackoffMs / 1000}s`,
+        );
+      }
     } finally {
       // Schedule next poll
       this.scheduleNextPoll();
@@ -334,6 +364,11 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
       emailSentThisHour: number;
       emailSentToday: number;
     };
+    circuitBreaker: {
+      active: boolean;
+      consecutiveErrors: number;
+      currentInterval: number;
+    };
   }> {
     const [pending, processing, sent, failed] = await Promise.all([
       this.prisma.notification.count({
@@ -359,6 +394,11 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
         telegramSentThisSecond: this.telegramSentThisSecond,
         emailSentThisHour: this.emailSentThisHour,
         emailSentToday: this.emailSentToday,
+      },
+      circuitBreaker: {
+        active: this.circuitBreakerActive,
+        consecutiveErrors: this.consecutiveErrors,
+        currentInterval: this.currentInterval,
       },
     };
   }

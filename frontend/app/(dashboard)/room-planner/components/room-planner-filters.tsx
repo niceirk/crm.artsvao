@@ -36,6 +36,7 @@ interface RoomPlannerFiltersProps {
   onShowNowOnlyChange: (show: boolean) => void;
   hideNowOnlyFilter?: boolean;
   hideRoomsFilter?: boolean;
+  hideDateFilter?: boolean;
   viewMode?: 'day' | 'week';
 }
 
@@ -52,6 +53,7 @@ export function RoomPlannerFilters({
   onShowNowOnlyChange,
   hideNowOnlyFilter,
   hideRoomsFilter,
+  hideDateFilter,
   viewMode = 'day',
 }: RoomPlannerFiltersProps) {
   const { data: rooms = [] } = useRooms();
@@ -104,64 +106,66 @@ export function RoomPlannerFilters({
   return (
     <div className="flex flex-wrap items-center gap-3">
       {/* Дата / Неделя */}
-      <div className="flex items-center gap-1">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9"
-          onClick={handlePrev}
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className={cn(
-                'justify-start text-left font-normal',
-                isWeekMode ? 'w-[160px]' : 'w-[180px]',
-                !date && 'text-muted-foreground'
-              )}
-            >
-              <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
-              {isWeekMode
-                ? formatWeekRange(date)
-                : date
-                  ? format(parseISO(date), 'd MMMM yyyy', { locale: ru })
-                  : 'Выберите дату'}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <Calendar
-              mode="single"
-              selected={date ? parseISO(date) : undefined}
-              onSelect={(d) => d && onDateChange(format(d, 'yyyy-MM-dd'))}
-              captionLayout="dropdown"
-              fromYear={2020}
-              toYear={new Date().getFullYear() + 1}
-              initialFocus
-              locale={ru}
-            />
-          </PopoverContent>
-        </Popover>
-
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9"
-          onClick={handleNext}
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
-
-        {/* Кнопка "Сегодня" - для дневного режима если не сегодня, для недельного если не текущая неделя */}
-        {((isWeekMode && !isTodayWeek) || (!isWeekMode && !isToday)) && (
-          <Button variant="outline" size="sm" onClick={handleToday}>
-            Сегодня
+      {!hideDateFilter && (
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            onClick={handlePrev}
+          >
+            <ChevronLeft className="h-4 w-4" />
           </Button>
-        )}
-      </div>
+
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  'justify-start text-left font-normal',
+                  isWeekMode ? 'w-[160px]' : 'w-[180px]',
+                  !date && 'text-muted-foreground'
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4 flex-shrink-0" />
+                {isWeekMode
+                  ? formatWeekRange(date)
+                  : date
+                    ? format(parseISO(date), 'd MMMM yyyy', { locale: ru })
+                    : 'Выберите дату'}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={date ? parseISO(date) : undefined}
+                onSelect={(d) => d && onDateChange(format(d, 'yyyy-MM-dd'))}
+                captionLayout="dropdown"
+                fromYear={2020}
+                toYear={new Date().getFullYear() + 1}
+                initialFocus
+                locale={ru}
+              />
+            </PopoverContent>
+          </Popover>
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            onClick={handleNext}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+
+          {/* Кнопка "Сегодня" - для дневного режима если не сегодня, для недельного если не текущая неделя */}
+          {((isWeekMode && !isTodayWeek) || (!isWeekMode && !isToday)) && (
+            <Button variant="outline" size="sm" onClick={handleToday}>
+              Сегодня
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Помещения */}
       {!hideRoomsFilter && (

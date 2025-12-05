@@ -47,7 +47,7 @@ const formSchema = z.object({
   phone: z.string().min(1, 'Введите телефон'),
   email: z.string().email('Введите корректный email').optional().or(z.literal('')),
   specialization: z.string().optional(),
-  salaryPercentage: z.coerce.number().min(0, 'Минимум 0').max(100, 'Максимум 100'),
+  salaryPercentage: z.number().min(0, 'Минимум 0').max(100, 'Максимум 100'),
   status: z.enum(['ACTIVE', 'ON_LEAVE', 'RETIRED']).optional(),
 });
 

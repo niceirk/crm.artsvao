@@ -44,7 +44,7 @@ export default function TelephonySettingsPage() {
   const [showSecrets, setShowSecrets] = useState(false);
 
   // Загружаем сотрудников и номера только если есть токен
-  const hasToken = settings?.accessToken && settings.accessToken.length > 0;
+  const hasToken = Boolean(settings?.accessToken && settings.accessToken.length > 0);
   const { data: employees, isLoading: employeesLoading, refetch: refetchEmployees } = useNovofonEmployees(hasToken);
   const { data: virtualNumbers, isLoading: numbersLoading, refetch: refetchNumbers } = useNovofonVirtualNumbers(hasToken);
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, memo } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useWeekActivities, type Activity, type ActivityType } from '@/hooks/use-room-planner';
@@ -249,7 +249,7 @@ export function ChessWeekView({
     <TooltipProvider delayDuration={200}>
       <ChessGridLayout
         columns={columns}
-        containerHeight="calc(100vh - 100px)"
+        containerHeight="100%"
         scale={scale}
         onCellMouseDown={handleCellMouseDown}
         onCellMouseEnter={handleCellMouseEnter}
@@ -272,7 +272,7 @@ interface WeekActivityCardProps {
   scale: number;
 }
 
-function WeekActivityCard({ activity, style, onClick, roomName, scale }: WeekActivityCardProps) {
+const WeekActivityCard = memo(function WeekActivityCard({ activity, style, onClick, roomName, scale }: WeekActivityCardProps) {
   const isCancelled = activity.status === 'CANCELLED';
 
   // Собираем полный текст
@@ -333,4 +333,4 @@ function WeekActivityCard({ activity, style, onClick, roomName, scale }: WeekAct
       </TooltipContent>
     </Tooltip>
   );
-}
+});

@@ -1,7 +1,7 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, timeout, catchError, throwError } from 'rxjs';
 import {
   TimepadOrdersResponse,
   TimepadOrder,
@@ -17,6 +17,9 @@ import {
 export class TimepadService {
   private readonly logger = new Logger(TimepadService.name);
   private readonly API_URL = 'https://api.timepad.ru/v1';
+
+  // Timeout для API запросов (15 секунд)
+  private readonly API_TIMEOUT_MS = 15000;
 
   constructor(
     private readonly configService: ConfigService,
@@ -87,12 +90,29 @@ export class TimepadService {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        }),
+          timeout: this.API_TIMEOUT_MS,
+        }).pipe(
+          timeout(this.API_TIMEOUT_MS),
+          catchError((error) => {
+            if (error.name === 'TimeoutError') {
+              this.logger.error(`Timepad API timeout after ${this.API_TIMEOUT_MS}ms for event ${eventId}`);
+              return throwError(() => new HttpException(
+                `Превышено время ожидания ответа от Timepad (${this.API_TIMEOUT_MS / 1000} сек)`,
+                HttpStatus.GATEWAY_TIMEOUT,
+              ));
+            }
+            return throwError(() => error);
+          }),
+        ),
       );
 
       this.logger.log(`Получено ${response.data.values?.length || 0} заказов из ${response.data.total}`);
       return response.data;
     } catch (error: any) {
+      // Пробрасываем HttpException как есть (включая timeout ошибки)
+      if (error instanceof HttpException) {
+        throw error;
+      }
       this.logger.error(`Ошибка при получении заказов: ${error.message}`);
 
       // Проверяем ответ от Timepad API (он возвращает ошибки в теле ответа)

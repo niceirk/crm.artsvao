@@ -5,11 +5,12 @@ export interface ClientNote {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
-  author: {
+  author?: {
     id: string;
     firstName: string;
     lastName: string;
   };
+  authorName?: string; // Fallback for legacy data
 }
 
 export interface CreateClientNoteDto {

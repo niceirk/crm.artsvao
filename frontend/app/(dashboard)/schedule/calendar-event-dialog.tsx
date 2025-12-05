@@ -83,7 +83,7 @@ const scheduleFormSchema = z.object({
   date: z.string().min(1, 'Выберите дату'),
   startTime: z.string().min(1, 'Введите время начала'),
   endTime: z.string().min(1, 'Введите время окончания'),
-  type: z.enum(['GROUP_CLASS', 'INDIVIDUAL_CLASS']),
+  type: z.enum(['GROUP_CLASS', 'INDIVIDUAL_CLASS', 'OPEN_CLASS', 'EVENT']),
   status: z.enum(['PLANNED', 'ONGOING', 'COMPLETED', 'CANCELLED']).optional(),
   notes: z.string().optional(),
 });
@@ -95,7 +95,7 @@ const rentalFormSchema = z.object({
   clientPhone: z.string().optional(),
   clientEmail: z.string().email('Неверный формат email').optional().or(z.literal('')),
   eventType: z.string().optional(),
-  totalPrice: z.coerce.number().min(0).optional(),
+  totalPrice: z.number().min(0).optional(),
   date: z.string().min(1, 'Выберите дату'),
   startTime: z.string().min(1, 'Введите время начала'),
   endTime: z.string().min(1, 'Введите время окончания'),
@@ -1243,7 +1243,24 @@ export function CalendarEventDialog({
                 )}
               </>
             )}
-            {selectedEventType === 'rental' && 'Аренда будет удалена без возможности восстановления.'}
+            {selectedEventType === 'rental' && rental && (
+              rental.rentalApplication ? (
+                <>
+                  Эта аренда является частью заявки №{rental.rentalApplication.applicationNumber}.
+                  {rental.rentalApplication._count?.rentals === 1 ? (
+                    <span className="block mt-2 font-medium text-destructive">
+                      Это единственный слот в заявке. Заявка будет полностью удалена.
+                    </span>
+                  ) : (
+                    <span className="block mt-2">
+                      Слот будет удален из заявки. Стоимость заявки будет пересчитана.
+                    </span>
+                  )}
+                </>
+              ) : (
+                'Аренда будет удалена без возможности восстановления.'
+              )
+            )}
             {selectedEventType === 'event' && 'Мероприятие будет удалено без возможности восстановления.'}
             {selectedEventType === 'reservation' && 'Резерв будет удален без возможности восстановления.'}
           </AlertDialogDescription>

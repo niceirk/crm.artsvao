@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import {
@@ -21,13 +22,19 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
-import { MoreHorizontal, Check, RefreshCw, X, Trash2, Eye } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import { MoreHorizontal, Check, RefreshCw, X, Trash2, Eye, Clock, Monitor, Building } from 'lucide-react';
 import {
   RentalApplication,
+  RentalType,
   RENTAL_TYPE_LABELS,
   RENTAL_STATUS_LABELS,
   RENTAL_STATUS_COLORS,
-  PRICE_UNIT_LABELS,
 } from '@/lib/types/rental-applications';
 import {
   useConfirmRentalApplication,
@@ -51,11 +58,36 @@ interface RentalsTableProps {
   onEdit: (id: string) => void;
 }
 
+function getRentalTypeIcon(type: RentalType) {
+  if (type === 'HOURLY') {
+    return <Clock className="h-4 w-4" />;
+  }
+  if (type.startsWith('WORKSPACE_')) {
+    return <Monitor className="h-4 w-4" />;
+  }
+  return <Building className="h-4 w-4" />;
+}
+
 export function RentalsTable({ applications, isLoading, onEdit }: RentalsTableProps) {
+  const router = useRouter();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [cancelId, setCancelId] = useState<string | null>(null);
 
   const confirmMutation = useConfirmRentalApplication();
+
+  const handleRowClick = (id: string, e: React.MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button')) {
+      return;
+    }
+
+    if (e.ctrlKey || e.metaKey) {
+      window.open(`/rentals/${id}`, '_blank');
+      return;
+    }
+
+    router.push(`/rentals/${id}`);
+  };
   const cancelMutation = useCancelRentalApplication();
   const deleteMutation = useDeleteRentalApplication();
 
@@ -76,20 +108,15 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
   };
 
   const formatPeriod = (app: RentalApplication) => {
-    const start = format(new Date(app.startDate), 'd MMM yyyy', { locale: ru });
+    const start = format(new Date(app.startDate), 'dd.MM.yyyy', { locale: ru });
     if (app.endDate) {
-      const end = format(new Date(app.endDate), 'd MMM yyyy', { locale: ru });
+      const end = format(new Date(app.endDate), 'dd.MM.yyyy', { locale: ru });
       if (start !== end) return `${start} - ${end}`;
     }
     if (app.startTime && app.endTime) {
       return `${start} (${app.startTime.slice(11, 16)}-${app.endTime.slice(11, 16)})`;
     }
     return start;
-  };
-
-  const formatPrice = (app: RentalApplication) => {
-    const price = app.adjustedPrice ?? app.basePrice;
-    return `${price.toLocaleString('ru-RU')} ₽/${PRICE_UNIT_LABELS[app.priceUnit]}`;
   };
 
   if (isLoading) {
@@ -118,10 +145,10 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
             <TableRow>
               <TableHead>Номер</TableHead>
               <TableHead>Клиент</TableHead>
-              <TableHead>Тип аренды</TableHead>
-              <TableHead>Объект</TableHead>
+              <TableHead className="w-[50px]">Тип</TableHead>
+              <TableHead>Помещение</TableHead>
               <TableHead>Период</TableHead>
-              <TableHead>Цена</TableHead>
+              <TableHead>Слоты</TableHead>
               <TableHead>Итого</TableHead>
               <TableHead>Статус</TableHead>
               <TableHead className="w-[50px]"></TableHead>
@@ -129,7 +156,11 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
           </TableHeader>
           <TableBody>
             {applications.map((app) => (
-              <TableRow key={app.id}>
+              <TableRow
+                key={app.id}
+                className="cursor-pointer hover:bg-muted/50"
+                onClick={(e) => handleRowClick(app.id, e)}
+              >
                 <TableCell className="font-medium">{app.applicationNumber}</TableCell>
                 <TableCell>
                   <div>
@@ -139,18 +170,29 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
                     <div className="text-sm text-muted-foreground">{app.client.phone}</div>
                   </div>
                 </TableCell>
-                <TableCell>{RENTAL_TYPE_LABELS[app.rentalType]}</TableCell>
+                <TableCell>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger>
+                        {getRentalTypeIcon(app.rentalType)}
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {RENTAL_TYPE_LABELS[app.rentalType]}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </TableCell>
                 <TableCell>
                   {app.room ? (
-                    <span>{app.room.name}{app.room.number ? ` №${app.room.number}` : ''}</span>
+                    <span>{app.room.name}</span>
                   ) : app.workspaces.length > 0 ? (
                     <span>{app.workspaces.map(w => w.workspace.name).join(', ')}</span>
                   ) : '-'}
                 </TableCell>
                 <TableCell>{formatPeriod(app)}</TableCell>
-                <TableCell>{formatPrice(app)}</TableCell>
+                <TableCell>{app._count?.rentals || app.rentals?.length || 0}</TableCell>
                 <TableCell className="font-medium">
-                  {app.totalPrice.toLocaleString('ru-RU')} ₽
+                  {Number(app.totalPrice).toLocaleString('ru-RU')} ₽
                 </TableCell>
                 <TableCell>
                   <Badge className={RENTAL_STATUS_COLORS[app.status]}>

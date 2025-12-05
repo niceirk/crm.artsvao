@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { S3StorageService } from '../common/services/s3-storage.service';
 import {
@@ -11,6 +11,8 @@ import {
 
 @Injectable()
 export class MedicalCertificatesService {
+  private readonly logger = new Logger(MedicalCertificatesService.name);
+
   constructor(
     private prisma: PrismaService,
     private s3StorageService: S3StorageService,
@@ -384,7 +386,7 @@ export class MedicalCertificatesService {
       try {
         await this.s3StorageService.deleteImage(certificate.fileUrl);
       } catch (error) {
-        console.error('Ошибка удаления файла из S3:', error);
+        this.logger.error('Ошибка удаления файла из S3:', error);
       }
     }
 
@@ -402,11 +404,11 @@ export class MedicalCertificatesService {
    */
   async previewSchedules(dto: PreviewSchedulesDto) {
     const { clientId, startDate, endDate } = dto;
-    console.log('[previewSchedules] Called with:', { clientId, startDate, endDate });
+    this.logger.debug('[previewSchedules] Called with:', { clientId, startDate, endDate });
 
     const start = new Date(startDate);
     const end = new Date(endDate);
-    console.log('[previewSchedules] Parsed dates:', { start, end });
+    this.logger.debug('[previewSchedules] Parsed dates:', { start, end });
 
     // 0. Получить клиента с льготной категорией для расчета скидки
     const client = await this.prisma.client.findUnique({
@@ -474,9 +476,9 @@ export class MedicalCertificatesService {
     // Объединяем группы из членств и абонементов
     const allGroupIds = [...new Set([...groupIdsFromMembers, ...groupIdsFromSubscriptions])];
 
-    console.log('[previewSchedules] Groups from members:', groupIdsFromMembers.length);
-    console.log('[previewSchedules] Groups from subscriptions:', groupIdsFromSubscriptions.length);
-    console.log('[previewSchedules] Total unique groups:', allGroupIds.length);
+    this.logger.debug('[previewSchedules] Groups from members:', groupIdsFromMembers.length);
+    this.logger.debug('[previewSchedules] Groups from subscriptions:', groupIdsFromSubscriptions.length);
+    this.logger.debug('[previewSchedules] Total unique groups:', allGroupIds.length);
 
     if (allGroupIds.length === 0) {
       return [];
@@ -517,7 +519,7 @@ export class MedicalCertificatesService {
       orderBy: { date: 'asc' },
     });
 
-    console.log('[previewSchedules] Found schedules:', schedules.length);
+    this.logger.debug('[previewSchedules] Found schedules:', schedules.length);
 
     // Подготовить данные для fallback расчёта pricePerLesson
     // Собираем все уникальные комбинации groupId + validMonth из абонементов
@@ -549,7 +551,7 @@ export class MedicalCertificatesService {
       return hasActiveSubscription;
     });
 
-    console.log('[previewSchedules] Filtered result:', result.length);
+    this.logger.debug('[previewSchedules] Filtered result:', result.length);
 
     // Преобразуем в нужный формат с информацией об абонементе и компенсации
     return result.map((schedule) => {

@@ -16,6 +16,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          memory: 128M
 
   backend:
     build:
@@ -31,6 +38,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      # PM2_CLUSTER_MODE: "true" - включить cluster mode (default: true)
+      # PM2_CLUSTER_MODE: "false" - отключить для отладки
     networks:
       - artsvao-network
     healthcheck:
@@ -41,6 +50,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'       # Увеличено для 2 PM2 instances
+          memory: 2048M     # Увеличено для 2 PM2 instances
+        reservations:
+          cpus: '0.5'
+          memory: 512M
 
   frontend:
     build:
@@ -65,6 +82,13 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          memory: 128M
 
   nginx:
     image: nginx:alpine
@@ -84,6 +108,13 @@ services:
     networks:
       - artsvao-network
     command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+        reservations:
+          memory: 64M
 
   certbot:
     image: certbot/certbot

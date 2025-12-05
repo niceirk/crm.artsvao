@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/select';
 import { useCreateService, useUpdateService } from '@/hooks/use-services';
 import { useServiceCategories } from '@/hooks/use-service-categories';
-import type { Service, ServiceType, UnitOfMeasure, WriteOffTiming } from '@/lib/types/services';
+import type { Service, ServiceType, UnitOfMeasure, WriteOffTiming, UpdateServiceDto, CreateServiceDto } from '@/lib/types/services';
 
 const formSchema = z.object({
   name: z.string().min(1, 'Введите название'),
@@ -113,9 +113,9 @@ export function ServiceDialog({ open, onOpenChange, service }: ServiceDialogProp
   const onSubmit = async (values: FormValues) => {
     try {
       if (service) {
-        await updateMutation.mutateAsync({ id: service.id, data: { ...values, version: service.version } });
+        await updateMutation.mutateAsync({ id: service.id, data: { ...values, version: service.version } as UpdateServiceDto });
       } else {
-        await createMutation.mutateAsync(values);
+        await createMutation.mutateAsync(values as CreateServiceDto);
       }
       onOpenChange(false);
       form.reset();

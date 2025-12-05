@@ -1,4 +1,4 @@
-import { Controller, Sse, Query, UseGuards } from '@nestjs/common';
+import { Controller, Sse, Get, Query, UseGuards } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { MessageEvent } from '@nestjs/common';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -11,6 +11,21 @@ import { DataEventsService, TrackedEntity } from './data-events.service';
 @Controller('data-events')
 export class DataEventsController {
   constructor(private readonly dataEventsService: DataEventsService) {}
+
+  /**
+   * Health endpoint для мониторинга SSE соединений.
+   * Возвращает количество активных соединений и uptime.
+   *
+   * @example GET /data-events/health
+   */
+  @Get('health')
+  getHealth() {
+    return {
+      activeConnections: this.dataEventsService.getActiveConnections(),
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    };
+  }
 
   /**
    * SSE endpoint для подписки на изменения данных.

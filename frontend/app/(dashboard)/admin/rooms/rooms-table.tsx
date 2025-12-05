@@ -313,7 +313,14 @@ export function RoomsTable({ rooms, isLoading, sortDirection = 'asc', onSortChan
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, room, group.rooms)}
                 onDragEnd={handleDragEnd}
-                className={`${dragOverRoom === room.id ? 'bg-blue-50 border-t-2 border-blue-400' : ''} ${draggedRoom?.id === room.id ? 'opacity-50' : ''}`}
+                onClick={(e) => {
+                  const target = e.target as HTMLElement;
+                  if (target.closest('button') || target.closest('input') || target.closest('[role="menu"]')) {
+                    return;
+                  }
+                  handleEdit(room);
+                }}
+                className={`cursor-pointer hover:bg-muted/50 ${dragOverRoom === room.id ? 'bg-blue-50 border-t-2 border-blue-400' : ''} ${draggedRoom?.id === room.id ? 'opacity-50' : ''}`}
               >
                 <TableCell className="w-[40px]">
                   <GripVertical className="h-4 w-4 text-muted-foreground cursor-grab active:cursor-grabbing" />

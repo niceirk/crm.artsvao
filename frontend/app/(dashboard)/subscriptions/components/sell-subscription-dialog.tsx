@@ -48,9 +48,9 @@ const formSchema = z.object({
   groupId: z.string().min(1, 'Выберите группу'),
   subscriptionTypeId: z.string().min(1, 'Выберите тип абонемента'),
   startDate: z.date({
-    required_error: 'Выберите дату начала занятий',
+    message: 'Выберите дату начала занятий',
   }),
-  applyBenefit: z.boolean().default(true),
+  applyBenefit: z.boolean(),
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -120,7 +120,7 @@ export function SellSubscriptionDialog({
   const groupList = groups?.data ?? [];
   const normalizedGroupSearch = groupSearch.trim().toLowerCase();
   const filteredGroups = groupList.filter((group) => {
-    const label = `${group.name} ${group.studio.name}`.toLowerCase();
+    const label = `${group.name} ${group.studio?.name ?? ''}`.toLowerCase();
     return label.includes(normalizedGroupSearch);
   });
 
@@ -141,7 +141,7 @@ export function SellSubscriptionDialog({
 
   const groupOptions: ComboboxOption[] = filteredGroups.map((group) => ({
     value: group.id,
-    label: `${group.name} (${group.studio.name})`,
+    label: `${group.name} (${group.studio?.name ?? '-'})`,
   }));
 
   const subscriptionOptions: ComboboxOption[] =

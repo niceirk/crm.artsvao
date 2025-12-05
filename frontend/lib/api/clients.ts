@@ -14,6 +14,7 @@ import type {
   DocumentType,
   DocumentTypesConfig,
   TelegramAccount,
+  RelationType,
 } from '../types/clients';
 
 /**

@@ -56,7 +56,7 @@ export function RoomDetailSheet({
     startTime: string;
     endTime: string;
     roomId: string;
-  } | null>(null);
+  } | undefined>(undefined);
 
   if (!roomWithActivities) return null;
 

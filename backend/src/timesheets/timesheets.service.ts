@@ -1,7 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { ExportJobService, ExportJob } from './export-job.service';
 import { TimesheetFilterDto } from './dto/timesheet-filter.dto';
 import { UpdateCompensationDto } from './dto/update-compensation.dto';
 import { CreateBulkInvoicesDto } from './dto/create-bulk-invoices.dto';
@@ -10,11 +11,14 @@ import * as ExcelJS from 'exceljs';
 
 @Injectable()
 export class TimesheetsService {
+  private readonly logger = new Logger(TimesheetsService.name);
+
   constructor(
     private prisma: PrismaService,
     @Inject(forwardRef(() => InvoicesService))
     private invoicesService: InvoicesService,
     private notificationsService: NotificationsService,
+    private exportJobService: ExportJobService,
   ) {}
 
   /**
@@ -664,11 +668,11 @@ export class TimesheetsService {
             await this.notificationsService.sendInvoiceNotification(invoice.id);
             results.notificationsSent++;
           } catch (error) {
-            console.error(`Failed to send notification for invoice ${invoice.id}:`, error);
+            this.logger.error(`Failed to send notification for invoice ${invoice.id}:`, error);
           }
         }
       } catch (error) {
-        console.error(`Failed to create invoice for client ${clientId}:`, error);
+        this.logger.error(`Failed to create invoice for client ${clientId}:`, error);
       }
     }
 
@@ -1003,5 +1007,63 @@ export class TimesheetsService {
     // Последний день месяца: переходим на следующий месяц и вычитаем 1 день
     const monthEnd = new Date(Date.UTC(year, monthNum, 0, 23, 59, 59, 999));
     return { monthStart, monthEnd };
+  }
+
+  /**
+   * Запуск асинхронного экспорта табеля в Excel.
+   * Возвращает ID задачи, которую можно отслеживать через getExportJob.
+   */
+  async startExportAsync(filter: TimesheetFilterDto): Promise<{ jobId: string }> {
+    const job = this.exportJobService.createJob(filter);
+
+    // Запускаем экспорт асинхронно (не ждём завершения)
+    this.processExportJob(job.id).catch((error) => {
+      this.logger.error(`Export job ${job.id} failed: ${error.message}`);
+    });
+
+    return { jobId: job.id };
+  }
+
+  /**
+   * Получить статус задачи экспорта
+   */
+  getExportJob(jobId: string): ExportJob {
+    return this.exportJobService.getJob(jobId);
+  }
+
+  /**
+   * Получить результат экспорта (Buffer)
+   */
+  getExportResult(jobId: string): Buffer | null {
+    const job = this.exportJobService.getJob(jobId);
+    if (job.status !== 'completed' || !job.result) {
+      return null;
+    }
+    // Очищаем результат после скачивания для экономии памяти
+    const result = job.result;
+    this.exportJobService.clearJobResult(jobId);
+    return result;
+  }
+
+  /**
+   * Обработка задачи экспорта в фоне
+   */
+  private async processExportJob(jobId: string): Promise<void> {
+    try {
+      this.exportJobService.updateJobStatus(jobId, 'processing', { progress: 0 });
+
+      const job = this.exportJobService.getJob(jobId);
+
+      // Генерируем Excel
+      const buffer = await this.exportToExcel(job.filter);
+
+      this.exportJobService.updateJobStatus(jobId, 'completed', { result: buffer, progress: 100 });
+      this.logger.log(`Export job ${jobId} completed successfully`);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      this.exportJobService.updateJobStatus(jobId, 'failed', { error: errorMessage });
+      this.logger.error(`Export job ${jobId} failed: ${errorMessage}`);
+      throw error;
+    }
   }
 }

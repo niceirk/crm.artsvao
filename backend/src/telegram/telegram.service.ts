@@ -935,7 +935,8 @@ export class TelegramService {
         }
       })
       .catch((error) => {
-        this.logger.debug(`Failed to update profile photo for user ${user.id}: ${error.message}`);
+        // Используем warn вместо debug, чтобы ошибки были видны в production
+        this.logger.warn(`Failed to update profile photo for user ${user.id}: ${error.message}`);
       });
 
     this.logger.log(`${telegramAccount.createdAt === telegramAccount.updatedAt ? 'Created' : 'Updated'} TelegramAccount for user ${user.id}`);

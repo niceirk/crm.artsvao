@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { format, addMonths, addDays, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Calendar as CalendarIcon, ArrowLeft, AlertTriangle, Loader2, Building2, Clock, Briefcase, DoorOpen, Save, X, Eye } from 'lucide-react';
+import { Calendar as CalendarIcon, ArrowLeft, AlertTriangle, Loader2, Building2, Clock, Briefcase, DoorOpen, Save, X, Eye, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -49,6 +49,7 @@ import {
   useUpdateRentalApplication,
   useCheckAvailability,
   useCalculatePrice,
+  useRemoveRental,
 } from '@/hooks/use-rental-applications';
 import { WorkspaceAvailabilityGrid } from '../new/components/workspace-availability-grid';
 import { HourlyTimeSlotGrid } from '../new/components/hourly-time-slot-grid';
@@ -193,27 +194,61 @@ function mapApplicationToFormData(app: RentalApplication): FormData {
     }
   }
 
-  // Для HOURLY - создать слоты для каждого часа
+  // Для HOURLY - восстановить слоты из rentals или создать из startTime/endTime
   let selectedHourlySlots: HourlyTimeSlot[] = [];
   if (category === 'hourly') {
-    const startHour = parseInt(startTime.split(':')[0]);
-    const endHour = parseInt(endTime.split(':')[0]);
+    // Если есть rentals - восстановить слоты из них
+    if (app.rentals && app.rentals.length > 0) {
+      app.rentals.forEach((rental: any) => {
+        const rentalDate = new Date(rental.date);
 
-    // Получаем даты для создания слотов
-    const datesForSlots = selectedDays.length > 0 ? selectedDays : [startDate];
+        // Извлечь часы из startTime/endTime
+        let rentalStartHour = 9, rentalEndHour = 10;
+        if (rental.startTime) {
+          const timeStr = rental.startTime.includes('T')
+            ? rental.startTime.slice(11, 16)
+            : rental.startTime;
+          rentalStartHour = parseInt(timeStr.split(':')[0]);
+        }
+        if (rental.endTime) {
+          const timeStr = rental.endTime.includes('T')
+            ? rental.endTime.slice(11, 16)
+            : rental.endTime;
+          rentalEndHour = parseInt(timeStr.split(':')[0]);
+        }
 
-    // Создаём отдельный слот для каждого часа на каждый день
-    datesForSlots.forEach(date => {
-      for (let hour = startHour; hour < endHour; hour++) {
         selectedHourlySlots.push({
-          date,
-          startHour: hour,
-          endHour: hour + 1,
+          date: rentalDate,
+          startHour: rentalStartHour,
+          endHour: rentalEndHour
         });
-      }
-    });
+      });
 
-    console.log('HOURLY slots created:', selectedHourlySlots);
+      // Обновить selectedDays из уникальных дат в rentals
+      const uniqueDateStrings = Array.from(new Set(app.rentals.map((r: any) =>
+        new Date(r.date).toISOString().split('T')[0]
+      )));
+      selectedDays = uniqueDateStrings.map(d => new Date(d)).sort((a, b) => a.getTime() - b.getTime());
+
+      console.log('HOURLY slots restored from rentals:', selectedHourlySlots.length);
+    } else {
+      // Fallback: создать слоты из startTime/endTime (для старых заявок без rentals)
+      const startHour = parseInt(startTime.split(':')[0]);
+      const endHour = parseInt(endTime.split(':')[0]);
+      const datesForSlots = selectedDays.length > 0 ? selectedDays : [startDate];
+
+      datesForSlots.forEach(date => {
+        for (let hour = startHour; hour < endHour; hour++) {
+          selectedHourlySlots.push({
+            date,
+            startHour: hour,
+            endHour: hour + 1,
+          });
+        }
+      });
+
+      console.log('HOURLY slots created from startTime/endTime:', selectedHourlySlots);
+    }
   }
 
   console.log('Final startTime:', startTime);
@@ -280,6 +315,7 @@ export default function EditRentalPage() {
   const updateMutation = useUpdateRentalApplication();
   const checkAvailabilityMutation = useCheckAvailability();
   const calculatePriceMutation = useCalculatePrice();
+  const removeRentalMutation = useRemoveRental();
 
   // Инициализация формы данными заявки
   useEffect(() => {
@@ -506,6 +542,15 @@ export default function EditRentalPage() {
 
     if (!rentalType || !periodType || !formData.startDate || !formData.clientId) return;
 
+    // Для HOURLY - преобразуем selectedHourlySlots в формат API
+    const hourlySlots = formData.category === 'hourly' && formData.selectedHourlySlots.length > 0
+      ? formData.selectedHourlySlots.map(slot => ({
+          date: format(slot.date, 'yyyy-MM-dd'),
+          startTime: `${slot.startHour.toString().padStart(2, '0')}:00`,
+          endTime: `${slot.endHour.toString().padStart(2, '0')}:00`,
+        }))
+      : undefined;
+
     const dto = {
       rentalType,
       roomId: formData.roomId || undefined,
@@ -517,11 +562,12 @@ export default function EditRentalPage() {
       startTime: formData.category === 'hourly' ? formData.startTime : undefined,
       endTime: formData.category === 'hourly' ? formData.endTime : undefined,
       selectedDays: formData.selectedDays.length > 0 ? formData.selectedDays.map(d => format(d, 'yyyy-MM-dd')) : undefined,
+      hourlySlots, // Передаём слоты для HOURLY заявок
       basePrice: formData.basePrice,
       adjustedPrice: formData.adjustedPrice || undefined,
       adjustmentReason: formData.adjustmentReason || undefined,
       priceUnit: priceCalculation?.priceUnit || 'DAY',
-      quantity: priceCalculation?.quantity || 1,
+      quantity: formData.category === 'hourly' ? formData.selectedHourlySlots.length : (priceCalculation?.quantity || 1),
       paymentType: formData.paymentType,
       eventType: formData.eventType || undefined,
       notes: formData.notes || undefined,
@@ -601,170 +647,132 @@ export default function EditRentalPage() {
         {/* Основная форма */}
         <div className="space-y-6">
           {/* Тип аренды */}
-          <div className="space-y-3">
-            <RadioGroup
-              value={formData.category || ''}
-              onValueChange={(value) => setFormData(prev => ({
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Почасовая */}
+            <Button
+              variant={formData.category === 'hourly' ? 'default' : 'outline'}
+              disabled={isViewMode}
+              onClick={() => setFormData(prev => ({
                 ...prev,
-                category: value as RentalCategory,
-                periodUnit: value === 'hourly' ? null : (value === 'workspace' || value === 'room' ? 'day' : prev.periodUnit),
+                category: 'hourly',
+                periodUnit: null,
                 roomId: null,
                 workspaceIds: [],
                 startDate: null,
                 endDate: null,
                 selectedDays: [],
               }))}
-              className="flex items-center gap-4 flex-wrap"
-              disabled={isViewMode}
             >
-              {/* Почасовая */}
-              <Label
-                htmlFor="hourly"
-                className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-5 py-3 cursor-pointer transition-colors",
-                  formData.category === 'hourly'
-                    ? "bg-green-50"
-                    : "border-2 border-muted hover:border-green-300",
-                  isViewMode && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                <RadioGroupItem value="hourly" id="hourly" className="sr-only" />
-                <Clock className={cn("h-5 w-5", formData.category === 'hourly' ? "text-green-600" : "text-muted-foreground")} />
-                <span className="font-medium text-base">Почасовая</span>
-              </Label>
+              <Clock className="h-4 w-4 mr-2" />
+              Почасовая
+            </Button>
 
-              {/* Рабочее место */}
-              <Label
-                htmlFor="workspace"
-                className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-5 py-3 cursor-pointer transition-colors",
-                  formData.category === 'workspace'
-                    ? "bg-green-50"
-                    : "border-2 border-muted hover:border-green-300",
-                  isViewMode && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                <RadioGroupItem value="workspace" id="workspace" className="sr-only" />
-                <Briefcase className={cn("h-5 w-5", formData.category === 'workspace' ? "text-green-600" : "text-muted-foreground")} />
-                <span className="font-medium text-base">Рабочее место</span>
-              </Label>
+            {/* Рабочее место */}
+            <Button
+              variant={formData.category === 'workspace' ? 'default' : 'outline'}
+              disabled={isViewMode}
+              onClick={() => setFormData(prev => ({
+                ...prev,
+                category: 'workspace',
+                periodUnit: 'day',
+                roomId: null,
+                workspaceIds: [],
+                startDate: null,
+                endDate: null,
+                selectedDays: [],
+              }))}
+            >
+              <Briefcase className="h-4 w-4 mr-2" />
+              Рабочее место
+            </Button>
 
-              {/* Подварианты после Рабочего места */}
-              {formData.category === 'workspace' && (
-                <>
-                  <div className="h-8 w-px bg-border" />
-                  <RadioGroup
-                    value={formData.periodUnit || ''}
-                    onValueChange={(value) => setFormData(prev => ({
-                      ...prev,
-                      periodUnit: value as 'day' | 'month',
-                      startDate: null,
-                      endDate: null,
-                      selectedDays: [],
-                    }))}
-                    className="flex gap-2"
-                    disabled={isViewMode}
-                  >
-                    <Label
-                      htmlFor="day"
-                      className={cn(
-                        "flex items-center gap-2 rounded-full px-4 py-1.5 cursor-pointer transition-colors text-sm",
-                        formData.periodUnit === 'day'
-                          ? "bg-green-50"
-                          : "border-2 border-muted hover:border-green-300",
-                        isViewMode && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      <RadioGroupItem value="day" id="day" className="sr-only" />
-                      <span className="font-medium">День</span>
-                    </Label>
+            {/* Подварианты для Рабочего места */}
+            {formData.category === 'workspace' && (
+              <>
+                <div className="h-6 w-px bg-border mx-1" />
+                <Button
+                  variant={formData.periodUnit === 'day' ? 'default' : 'outline'}
+                  size="sm"
+                  disabled={isViewMode}
+                  onClick={() => setFormData(prev => ({
+                    ...prev,
+                    periodUnit: 'day',
+                    startDate: null,
+                    endDate: null,
+                    selectedDays: [],
+                  }))}
+                >
+                  День
+                </Button>
+                <Button
+                  variant={formData.periodUnit === 'month' ? 'default' : 'outline'}
+                  size="sm"
+                  disabled={isViewMode}
+                  onClick={() => setFormData(prev => ({
+                    ...prev,
+                    periodUnit: 'month',
+                    startDate: null,
+                    endDate: null,
+                    selectedDays: [],
+                  }))}
+                >
+                  Месяц
+                </Button>
+              </>
+            )}
 
-                    <Label
-                      htmlFor="month"
-                      className={cn(
-                        "flex items-center gap-2 rounded-full px-4 py-1.5 cursor-pointer transition-colors text-sm",
-                        formData.periodUnit === 'month'
-                          ? "bg-green-50"
-                          : "border-2 border-muted hover:border-green-300",
-                        isViewMode && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      <RadioGroupItem value="month" id="month" className="sr-only" />
-                      <span className="font-medium">Месяц</span>
-                    </Label>
-                  </RadioGroup>
-                </>
-              )}
+            {/* Кабинет */}
+            <Button
+              variant={formData.category === 'room' ? 'default' : 'outline'}
+              disabled={isViewMode}
+              onClick={() => setFormData(prev => ({
+                ...prev,
+                category: 'room',
+                periodUnit: 'day',
+                roomId: null,
+                workspaceIds: [],
+                startDate: null,
+                endDate: null,
+                selectedDays: [],
+              }))}
+            >
+              <DoorOpen className="h-4 w-4 mr-2" />
+              Кабинет
+            </Button>
 
-              {/* Кабинет */}
-              <Label
-                htmlFor="room"
-                className={cn(
-                  "flex items-center gap-2.5 rounded-lg px-5 py-3 cursor-pointer transition-colors",
-                  formData.category === 'room'
-                    ? "bg-green-50"
-                    : "border-2 border-muted hover:border-green-300",
-                  isViewMode && "opacity-50 cursor-not-allowed"
-                )}
-              >
-                <RadioGroupItem value="room" id="room" className="sr-only" />
-                <DoorOpen className={cn("h-5 w-5", formData.category === 'room' ? "text-green-600" : "text-muted-foreground")} />
-                <span className="font-medium text-base">Кабинет</span>
-              </Label>
-
-              {/* Подварианты после Кабинета */}
-              {formData.category === 'room' && (
-                <>
-                  <div className="h-8 w-px bg-border" />
-                  <RadioGroup
-                    value={formData.periodUnit || ''}
-                    onValueChange={(value) => setFormData(prev => ({
-                      ...prev,
-                      periodUnit: value as 'day' | 'month',
-                      startDate: null,
-                      endDate: null,
-                      selectedDays: [],
-                    }))}
-                    className="flex gap-2"
-                    disabled={isViewMode}
-                  >
-                    <Label
-                      htmlFor="day-room"
-                      className={cn(
-                        "flex items-center gap-2 rounded-full px-4 py-1.5 cursor-pointer transition-colors text-sm",
-                        formData.periodUnit === 'day'
-                          ? "bg-green-50"
-                          : "border-2 border-muted hover:border-green-300",
-                        isViewMode && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      <RadioGroupItem value="day" id="day-room" className="sr-only" />
-                      <span className="font-medium">День</span>
-                    </Label>
-
-                    <Label
-                      htmlFor="month-room"
-                      className={cn(
-                        "flex items-center gap-2 rounded-full px-4 py-1.5 cursor-pointer transition-colors text-sm",
-                        formData.periodUnit === 'month'
-                          ? "bg-green-50"
-                          : "border-2 border-muted hover:border-green-300",
-                        isViewMode && "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      <RadioGroupItem value="month" id="month-room" className="sr-only" />
-                      <span className="font-medium">Месяц</span>
-                    </Label>
-                  </RadioGroup>
-                </>
-              )}
-            </RadioGroup>
-
-            {/* Подсказка для выбранного периода */}
-            {formData.category && (formData.category === 'workspace' || formData.category === 'room') && formData.periodUnit && (
-              <p className="text-xs text-muted-foreground ml-1">
-                {formData.periodUnit === 'day' ? 'Выбор конкретных дней' : 'Календарный или скользящий месяц'}
-              </p>
+            {/* Подварианты для Кабинета */}
+            {formData.category === 'room' && (
+              <>
+                <div className="h-6 w-px bg-border mx-1" />
+                <Button
+                  variant={formData.periodUnit === 'day' ? 'default' : 'outline'}
+                  size="sm"
+                  disabled={isViewMode}
+                  onClick={() => setFormData(prev => ({
+                    ...prev,
+                    periodUnit: 'day',
+                    startDate: null,
+                    endDate: null,
+                    selectedDays: [],
+                  }))}
+                >
+                  День
+                </Button>
+                <Button
+                  variant={formData.periodUnit === 'month' ? 'default' : 'outline'}
+                  size="sm"
+                  disabled={isViewMode}
+                  onClick={() => setFormData(prev => ({
+                    ...prev,
+                    periodUnit: 'month',
+                    startDate: null,
+                    endDate: null,
+                    selectedDays: [],
+                  }))}
+                >
+                  Месяц
+                </Button>
+              </>
             )}
           </div>
 
@@ -1159,6 +1167,83 @@ export default function EditRentalPage() {
                       </div>
                     </div>
                   </>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Забронированные слоты - для HOURLY заявок */}
+          {formData.category === 'hourly' && application?.rentals && application.rentals.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Забронированные слоты</CardTitle>
+                <CardDescription>
+                  {application.rentals.length} слот(ов) в этой заявке
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {application.rentals
+                    .sort((a, b) => {
+                      const dateA = new Date(a.date);
+                      const dateB = new Date(b.date);
+                      if (dateA.getTime() !== dateB.getTime()) return dateA.getTime() - dateB.getTime();
+                      const timeA = new Date(a.startTime).getTime();
+                      const timeB = new Date(b.startTime).getTime();
+                      return timeA - timeB;
+                    })
+                    .map((rental: any) => (
+                      <div
+                        key={rental.id}
+                        className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50"
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <CalendarIcon className="h-4 w-4" />
+                            <span className="font-medium">
+                              {format(new Date(rental.date), 'd MMMM yyyy', { locale: ru })}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <Clock className="h-4 w-4" />
+                            <span>
+                              {new Date(rental.startTime).toISOString().slice(11, 16)} - {new Date(rental.endTime).toISOString().slice(11, 16)}
+                            </span>
+                          </div>
+                          <Badge variant="outline">
+                            {rental.totalPrice?.toLocaleString('ru-RU')} ₽
+                          </Badge>
+                        </div>
+                        {/* Кнопка удаления - только если DRAFT и слотов больше 1 */}
+                        {application.status === 'DRAFT' && application.rentals && application.rentals.length > 1 && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                            onClick={() => {
+                              if (confirm('Удалить этот слот?')) {
+                                removeRentalMutation.mutate({
+                                  applicationId: application.id,
+                                  rentalId: rental.id,
+                                });
+                              }
+                            }}
+                            disabled={removeRentalMutation.isPending}
+                          >
+                            {removeRentalMutation.isPending ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                </div>
+                {application.status !== 'DRAFT' && (
+                  <p className="text-xs text-muted-foreground mt-3">
+                    Удаление слотов доступно только для заявок в статусе "Черновик"
+                  </p>
                 )}
               </CardContent>
             </Card>

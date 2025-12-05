@@ -206,11 +206,6 @@ export default function SchedulePage() {
           onEventClick={handleEventClick}
           onDateSelect={handleDateSelect}
           onEventDrop={handleEventDrop}
-          filters={filters}
-          onFiltersChange={setFilters}
-          onDateRangeChange={setDateRangeFilters}
-          showPlanButton={user?.role === 'ADMIN'}
-          onAddClick={() => setIsCreateDialogOpen(true)}
         />
       </div>
 

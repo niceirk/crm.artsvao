@@ -47,6 +47,7 @@ import { useNomenclature, useIndependentServices } from '@/hooks/use-nomenclatur
 import { useCreateInvoice } from '@/hooks/use-invoices';
 import type { CreateInvoiceDto, CreateInvoiceItemDto } from '@/lib/types/invoices';
 import type { NomenclatureItem } from '@/lib/types/nomenclature';
+import { ServiceType, WriteOffTiming } from '@/lib/types/services';
 
 interface CreateInvoiceDialogProps {
   open: boolean;
@@ -59,17 +60,17 @@ const invoiceItemSchema = z.object({
   serviceType: z.enum(['SUBSCRIPTION', 'RENTAL', 'SINGLE_SESSION', 'INDIVIDUAL_LESSON', 'OTHER']),
   serviceName: z.string().min(1, 'Укажите название услуги'),
   serviceDescription: z.string().optional(),
-  quantity: z.coerce.number().min(1, 'Количество должно быть больше 0'),
-  basePrice: z.coerce.number().min(0, 'Цена должна быть положительной'),
-  vatRate: z.coerce.number().min(0).max(100),
-  discountPercent: z.coerce.number().min(0).max(100).optional().default(0),
+  quantity: z.number().min(1, 'Количество должно быть больше 0'),
+  basePrice: z.number().min(0, 'Цена должна быть положительной'),
+  vatRate: z.number().min(0).max(100),
+  discountPercent: z.number().min(0).max(100).optional(),
   writeOffTiming: z.enum(['ON_SALE', 'ON_USE']),
 });
 
 const createInvoiceSchema = z.object({
   clientId: z.string().min(1, 'Выберите клиента'),
   items: z.array(invoiceItemSchema).min(1, 'Добавьте хотя бы одну позицию'),
-  discountAmount: z.coerce.number().min(0).optional().default(0),
+  discountAmount: z.number().min(0).optional(),
   dueDate: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -142,7 +143,7 @@ export function CreateInvoiceDialog({ open, onOpenChange }: CreateInvoiceDialogP
       form.setValue(`items.${index}.writeOffTiming`, item.type === 'SUBSCRIPTION' ? 'ON_USE' : 'ON_SALE');
 
       // Извлекаем groupId из номенклатуры (для разовых посещений и абонементов)
-      if (item.group?.id) {
+      if ('group' in item && item.group?.id) {
         form.setValue(`items.${index}.groupId`, item.group.id);
       } else if (item.id.startsWith('single-')) {
         // Для разовых посещений ID имеет формат single-{groupId}
@@ -176,7 +177,7 @@ export function CreateInvoiceDialog({ open, onOpenChange }: CreateInvoiceDialogP
         items: values.items.map((item) => ({
           serviceId: item.serviceId,
           groupId: item.groupId,
-          serviceType: item.serviceType,
+          serviceType: item.serviceType as ServiceType,
           serviceName: item.serviceName,
           serviceDescription: item.serviceDescription,
           quantity: item.quantity,
@@ -184,7 +185,7 @@ export function CreateInvoiceDialog({ open, onOpenChange }: CreateInvoiceDialogP
           unitPrice: item.basePrice,
           vatRate: item.vatRate,
           discountPercent: item.discountPercent || 0,
-          writeOffTiming: item.writeOffTiming,
+          writeOffTiming: item.writeOffTiming as WriteOffTiming,
         })),
         discountAmount: values.discountAmount,
         dueDate: values.dueDate,
@@ -343,7 +344,7 @@ export function CreateInvoiceDialog({ open, onOpenChange }: CreateInvoiceDialogP
                               {allItems?.map((item) => (
                                 <SelectItem key={item.id} value={item.id}>
                                   {item.name} ({item.price} руб.)
-                                  {item.group && ` - ${item.group.name}`}
+                                  {'group' in item && item.group && ` - ${item.group.name}`}
                                 </SelectItem>
                               ))}
                             </SelectContent>

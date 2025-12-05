@@ -397,10 +397,10 @@ export default function MedicalCertificatesPage() {
               </Table>
 
               {/* Pagination */}
-              {data.totalPages > 1 && (
+              {data && data.totalPages > 1 && (
                 <div className="flex items-center justify-between px-4 py-3 border-t">
                   <div className="text-sm text-muted-foreground">
-                    Показано {data.items.length} из {data.total}
+                    Показано {data.items?.length ?? 0} из {data.total ?? 0}
                   </div>
                   <div className="flex gap-2">
                     <Button

@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar, Settings, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, CalendarDays, Clock, MapPin, Users, UserCheck } from 'lucide-react';
 import { Combobox } from '@/components/ui/combobox';
 import { schedulesApi, type CreateRecurringScheduleDto } from '@/lib/api/schedules';
-import { WeeklyScheduleItem, DAY_LABELS, DAYS_OF_WEEK } from '@/lib/types/weekly-schedule';
+import { WeeklyScheduleItem, DAY_LABELS, DAYS_OF_WEEK, type DayOfWeek } from '@/lib/types/weekly-schedule';
 import { toast } from '@/lib/utils/toast';
 
 interface Room {
@@ -215,14 +215,14 @@ export function MonthPlanner({
       let totalCreated = 0;
       let totalSkipped = 0;
 
-      for (const [groupKey, { days, roomId: groupRoomId }] of scheduleGroups) {
+      for (const [groupKey, { days, roomId: groupRoomId }] of Array.from(scheduleGroups.entries())) {
         const startTime = groupKey.split('|')[0];
         const endTime = calculateEndTime(startTime, duration);
         const daysOfWeek = days.map(dayToApiDay);
 
         // Проверяем, что помещение указано
         if (!groupRoomId) {
-          toast.error(`Помещение не указано для дней: ${days.map(d => DAY_LABELS[d]).join(', ')}`);
+          toast.error(`Помещение не указано для дней: ${days.map((d: DayOfWeek) => DAY_LABELS[d]).join(', ')}`);
           continue;
         }
 
@@ -411,7 +411,7 @@ export function MonthPlanner({
                       <div className={`text-xs font-medium uppercase ${enabled ? 'text-primary' : 'text-muted-foreground'}`}>
                         {DAY_LABELS[day]}
                       </div>
-                      {enabled ? (
+                      {enabled && scheduleItem ? (
                         <div className="text-sm font-semibold tabular-nums">
                           {scheduleItem.startTime}
                         </div>

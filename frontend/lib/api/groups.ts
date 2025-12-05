@@ -7,6 +7,10 @@ import {
   AddMemberResult,
   GroupScheduleEntry,
 } from '../types/groups';
+
+// Re-export types for external usage
+export { GroupMemberStatus };
+export type { GroupAvailability, AddMemberResult, GroupScheduleEntry, NewGroupMember };
 import type { SubscriptionType } from '../types/subscriptions';
 
 export interface Group {

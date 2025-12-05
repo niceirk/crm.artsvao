@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Inject, forwardRef, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { InvoicesService } from '../invoices/invoices.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -18,6 +18,8 @@ import {
 
 @Injectable()
 export class SubscriptionsService {
+  private readonly logger = new Logger(SubscriptionsService.name);
+
   constructor(
     private prisma: PrismaService,
     private invoicesService: InvoicesService,
@@ -99,7 +101,7 @@ export class SubscriptionsService {
       vatIncluded: subscriptionType.vatIncluded ?? true,
     });
 
-    console.log(`💰 НДС расчёт: ставка ${vatData.effectiveVatRate}%, сумма ${vatData.vatAmount} ₽${vatData.isChildDiscount ? ' (детская скидка)' : ''}`);
+    this.logger.log(`💰 НДС расчёт: ставка ${vatData.effectiveVatRate}%, сумма ${vatData.vatAmount} ₽${vatData.isChildDiscount ? ' (детская скидка)' : ''}`);
 
     // 4. Проверить минимальный порог (для первого месяца)
     if (sellDto.purchasedMonths === 1) {
@@ -154,7 +156,7 @@ export class SubscriptionsService {
             waitlistPosition: null,
           },
         });
-        console.log(`✅ Client ${sellDto.clientId} automatically added to group ${sellDto.groupId}`);
+        this.logger.log(`✅ Client ${sellDto.clientId} automatically added to group ${sellDto.groupId}`);
       } else if (existingMember.status === 'EXPELLED') {
         // Восстановить отчисленного клиента как ACTIVE
         await tx.groupMember.update({
@@ -165,7 +167,7 @@ export class SubscriptionsService {
             leftAt: null,
           },
         });
-        console.log(`✅ Client ${sellDto.clientId} restored from EXPELLED to ACTIVE in group ${sellDto.groupId}`);
+        this.logger.log(`✅ Client ${sellDto.clientId} restored from EXPELLED to ACTIVE in group ${sellDto.groupId}`);
       } else if (existingMember.status === 'WAITLIST') {
         // Переместить из листа ожидания в ACTIVE (купил абонемент = гарантированное место)
         await tx.groupMember.update({
@@ -175,7 +177,7 @@ export class SubscriptionsService {
             waitlistPosition: null,
           },
         });
-        console.log(`✅ Client ${sellDto.clientId} moved from WAITLIST to ACTIVE in group ${sellDto.groupId}`);
+        this.logger.log(`✅ Client ${sellDto.clientId} moved from WAITLIST to ACTIVE in group ${sellDto.groupId}`);
       }
       // Если уже ACTIVE - ничего не делаем
 
@@ -214,7 +216,7 @@ export class SubscriptionsService {
         },
       });
 
-      console.log(`✅ Created subscription ${newSubscription.id} with invoice ${invoice.id}`);
+      this.logger.log(`✅ Created subscription ${newSubscription.id} with invoice ${invoice.id}`);
 
       // Вернуть абонемент с нужными связями
       return tx.subscription.findUnique({
@@ -243,6 +245,9 @@ export class SubscriptionsService {
           subscriptionType: true,
         },
       });
+    }, {
+      maxWait: 5000,
+      timeout: 30000,
     });
 
     // 6. Отправить уведомление клиенту (вне транзакции - не критично)
@@ -251,7 +256,7 @@ export class SubscriptionsService {
         subscription!.id,
       );
     } catch (error) {
-      console.error(
+      this.logger.error(
         'Failed to send subscription purchase notification:',
         error,
       );
@@ -852,7 +857,7 @@ export class SubscriptionsService {
       vatIncluded: true,
     });
 
-    console.log(`💰 НДС разовое (${quantity} шт): ставка ${vatData.effectiveVatRate}%, сумма ${vatData.vatAmount} ₽${vatData.isChildDiscount ? ' (детская скидка)' : ''}`);
+    this.logger.log(`💰 НДС разовое (${quantity} шт): ставка ${vatData.effectiveVatRate}%, сумма ${vatData.vatAmount} ₽${vatData.isChildDiscount ? ' (детская скидка)' : ''}`);
 
     // 6. Выполнить все критические операции в транзакции
     const subscription = await this.prisma.$transaction(async (tx) => {
@@ -921,7 +926,7 @@ export class SubscriptionsService {
             waitlistPosition: null,
           },
         });
-        console.log(`✅ Client ${dto.clientId} automatically added to group ${dto.groupId}`);
+        this.logger.log(`✅ Client ${dto.clientId} automatically added to group ${dto.groupId}`);
       } else if (existingMember.status === 'EXPELLED') {
         // Восстановить отчисленного клиента как ACTIVE
         await tx.groupMember.update({
@@ -932,7 +937,7 @@ export class SubscriptionsService {
             leftAt: null,
           },
         });
-        console.log(`✅ Client ${dto.clientId} restored from EXPELLED to ACTIVE in group ${dto.groupId}`);
+        this.logger.log(`✅ Client ${dto.clientId} restored from EXPELLED to ACTIVE in group ${dto.groupId}`);
       } else if (existingMember.status === 'WAITLIST') {
         // Переместить из листа ожидания в ACTIVE (купил абонемент = гарантированное место)
         await tx.groupMember.update({
@@ -942,7 +947,7 @@ export class SubscriptionsService {
             waitlistPosition: null,
           },
         });
-        console.log(`✅ Client ${dto.clientId} moved from WAITLIST to ACTIVE in group ${dto.groupId}`);
+        this.logger.log(`✅ Client ${dto.clientId} moved from WAITLIST to ACTIVE in group ${dto.groupId}`);
       }
       // Если уже ACTIVE - ничего не делаем
 
@@ -988,7 +993,7 @@ export class SubscriptionsService {
         },
       });
 
-      console.log(`✅ Sold ${quantity} single session(s) for client ${dto.clientId} in group ${dto.groupId}`);
+      this.logger.log(`✅ Sold ${quantity} single session(s) for client ${dto.clientId} in group ${dto.groupId}`);
 
       // Вернуть подписку с нужными связями
       return tx.subscription.findUnique({
@@ -1012,6 +1017,9 @@ export class SubscriptionsService {
           subscriptionType: true,
         },
       });
+    }, {
+      maxWait: 5000,
+      timeout: 30000,
     });
 
     return subscription;
@@ -1062,7 +1070,7 @@ export class SubscriptionsService {
     const vatRate = Number(service.vatRate);
     const vatAmount = vatRate > 0 ? this.toMoney(totalPrice * vatRate / (100 + vatRate)) : 0;
 
-    console.log(`💰 Продажа услуги: ${service.name}, кол-во: ${quantity}, сумма: ${totalPrice} ₽, НДС ${vatRate}%: ${vatAmount} ₽`);
+    this.logger.log(`💰 Продажа услуги: ${service.name}, кол-во: ${quantity}, сумма: ${totalPrice} ₽, НДС ${vatRate}%: ${vatAmount} ₽`);
 
     // 5. Выполнить операции в транзакции
     const result = await this.prisma.$transaction(async (tx) => {
@@ -1113,7 +1121,7 @@ export class SubscriptionsService {
         },
       });
 
-      console.log(`✅ Продана услуга ${service.name} клиенту ${dto.clientId}, invoice ${invoice.id}`);
+      this.logger.log(`✅ Продана услуга ${service.name} клиенту ${dto.clientId}, invoice ${invoice.id}`);
 
       // Вернуть запись продажи с нужными связями
       return tx.serviceSale.findUnique({
@@ -1148,6 +1156,9 @@ export class SubscriptionsService {
           },
         },
       });
+    }, {
+      maxWait: 5000,
+      timeout: 30000,
     });
 
     return result;
@@ -1254,12 +1265,15 @@ export class SubscriptionsService {
         where: { id },
       });
 
-      console.log(`🗑️ Удалён абонемент ${id}, удалено ${deletedAttendances.count} записей посещений`);
+      this.logger.log(`🗑️ Удалён абонемент ${id}, удалено ${deletedAttendances.count} записей посещений`);
 
       return {
         deleted: true,
         attendanceDeleted: deletedAttendances.count,
       };
+    }, {
+      maxWait: 5000,
+      timeout: 30000,
     });
   }
 }

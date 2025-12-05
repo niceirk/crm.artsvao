@@ -1,5 +1,6 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { Prisma, ScheduleType, CalendarEventStatus } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import {
   PreviewRecurringScheduleDto,
@@ -28,6 +29,8 @@ const DAY_TO_NUMBER: Record<string, number> = {
 
 @Injectable()
 export class SchedulePlannerService {
+  private readonly logger = new Logger(SchedulePlannerService.name);
+
   constructor(private prisma: PrismaService) {}
 
   /**
@@ -291,18 +294,25 @@ export class SchedulePlannerService {
   }
 
   /**
-   * Массовое создание занятий
+   * Массовое создание занятий (оптимизированная версия с batch операциями)
    */
   async bulkCreateRecurring(dto: BulkCreateRecurringDto): Promise<BulkCreateResult> {
     const created: any[] = [];
     const failed: Array<{ schedule: BulkScheduleItemDto; reason: string }> = [];
+
+    // Валидация и подготовка данных
+    const validSchedules: Array<{
+      dto: BulkScheduleItemDto;
+      data: Prisma.ScheduleCreateManyInput;
+    }> = [];
 
     for (const scheduleDto of dto.schedules) {
       try {
         const [startHour, startMin] = scheduleDto.startTime.split(':').map(Number);
         const [endHour, endMin] = scheduleDto.endTime.split(':').map(Number);
 
-        const schedule = await this.prisma.schedule.create({
+        validSchedules.push({
+          dto: scheduleDto,
           data: {
             groupId: scheduleDto.groupId,
             teacherId: scheduleDto.teacherId,
@@ -310,10 +320,37 @@ export class SchedulePlannerService {
             date: new Date(scheduleDto.date),
             startTime: new Date(Date.UTC(1970, 0, 1, startHour, startMin, 0)),
             endTime: new Date(Date.UTC(1970, 0, 1, endHour, endMin, 0)),
-            type: 'GROUP_CLASS',
+            type: ScheduleType.GROUP_CLASS,
             isRecurring: false,
-            status: 'PLANNED',
+            status: CalendarEventStatus.PLANNED,
           },
+        });
+      } catch (error) {
+        failed.push({
+          schedule: scheduleDto,
+          reason: error.message || 'Invalid schedule data',
+        });
+      }
+    }
+
+    if (validSchedules.length === 0) {
+      return {
+        created: { count: 0, schedules: [] },
+        failed: { count: failed.length, errors: failed },
+      };
+    }
+
+    // Используем транзакцию для batch создания (быстрая операция)
+    try {
+      const transactionResult = await this.prisma.$transaction(async (tx) => {
+        // Создаём все расписания одним batch запросом (createManyAndReturn доступен в Prisma 5.14+)
+        const createdSchedules = await tx.schedule.createManyAndReturn({
+          data: validSchedules.map(v => v.data),
+        });
+
+        // Получаем созданные расписания с связанными данными
+        const schedulesWithRelations = await tx.schedule.findMany({
+          where: { id: { in: createdSchedules.map(s => s.id) } },
           include: {
             group: {
               select: {
@@ -331,21 +368,68 @@ export class SchedulePlannerService {
           },
         });
 
-        // Автозапись клиентов
-        let enrolledClients = 0;
-        if (dto.autoEnrollClients) {
-          enrolledClients = await this.enrollClientsToSchedule(
-            schedule.id,
-            scheduleDto.groupId,
-            new Date(scheduleDto.date),
-          );
-        }
+        // Создаём map для быстрого поиска
+        const scheduleMap = new Map(
+          schedulesWithRelations.map(s => [
+            `${s.groupId}-${s.date.toISOString()}-${s.startTime.toISOString()}`,
+            s,
+          ])
+        );
 
-        created.push({ ...schedule, enrolledClients });
-      } catch (error) {
+        return { schedulesWithRelations, scheduleMap };
+      }, {
+        maxWait: 5000,
+        timeout: 30000, // 30 секунд - транзакция теперь быстрее
+      });
+
+      // Автозапись клиентов ПОСЛЕ транзакции (не блокирует основную операцию)
+      const enrollmentResults: Map<string, number> = new Map();
+
+      if (dto.autoEnrollClients) {
+        for (const schedule of transactionResult.schedulesWithRelations) {
+          try {
+            const enrolled = await this.enrollClientsToSchedule(
+              schedule.id,
+              schedule.groupId,
+              schedule.date,
+            );
+            enrollmentResults.set(schedule.id, enrolled);
+          } catch (enrollError) {
+            // Логируем ошибку, но не прерываем процесс - schedules уже созданы
+            this.logger.warn(
+              `Failed to auto-enroll clients for schedule ${schedule.id}: ${(enrollError as Error).message}`,
+            );
+            enrollmentResults.set(schedule.id, 0);
+          }
+        }
+      }
+
+      const results = { ...transactionResult, enrollmentResults };
+
+      // Формируем результат
+      for (const validSchedule of validSchedules) {
+        // Приводим типы, т.к. мы всегда передаём Date объекты
+        const date = validSchedule.data.date as Date;
+        const startTime = validSchedule.data.startTime as Date;
+        const key = `${validSchedule.data.groupId}-${date.toISOString()}-${startTime.toISOString()}`;
+        const schedule = results.scheduleMap.get(key);
+
+        if (schedule) {
+          const enrolledClients = results.enrollmentResults.get(schedule.id) || 0;
+          created.push({ ...schedule, enrolledClients });
+        } else {
+          failed.push({
+            schedule: validSchedule.dto,
+            reason: 'Schedule not found after creation',
+          });
+        }
+      }
+    } catch (error) {
+      // Если транзакция провалилась, помечаем все как failed
+      for (const validSchedule of validSchedules) {
         failed.push({
-          schedule: scheduleDto,
-          reason: error.message || 'Unknown error',
+          schedule: validSchedule.dto,
+          reason: error.message || 'Transaction failed',
         });
       }
     }
@@ -472,9 +556,27 @@ export class SchedulePlannerService {
     groupId: string,
     scheduleDate: Date,
   ): Promise<number> {
+    return this.enrollClientsToScheduleInTransaction(
+      this.prisma,
+      scheduleId,
+      groupId,
+      scheduleDate,
+    );
+  }
+
+  /**
+   * Автоматическая запись клиентов группы на занятие (внутри транзакции)
+   * Использует переданный клиент Prisma для поддержки транзакций
+   */
+  private async enrollClientsToScheduleInTransaction(
+    tx: Prisma.TransactionClient,
+    scheduleId: string,
+    groupId: string,
+    scheduleDate: Date,
+  ): Promise<number> {
     const scheduleMonth = this.formatMonth(scheduleDate);
 
-    const activeSubscriptions = await this.prisma.subscription.findMany({
+    const activeSubscriptions = await tx.subscription.findMany({
       where: {
         groupId,
         status: 'ACTIVE',
@@ -490,7 +592,7 @@ export class SchedulePlannerService {
     }
 
     // Use createMany for batch insert (instead of N+1 queries)
-    await this.prisma.attendance.createMany({
+    await tx.attendance.createMany({
       data: activeSubscriptions.map((subscription) => ({
         scheduleId,
         clientId: subscription.clientId,

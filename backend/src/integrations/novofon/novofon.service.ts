@@ -68,10 +68,14 @@ export class NovofonService {
   private readonly DATA_API_URL = 'https://dataapi-jsonrpc.novofon.ru/v2.0';
   private readonly CALL_API_URL = 'https://callapi-jsonrpc.novofon.ru/v4.0';
 
+  // Timeout для API запросов (15 секунд)
+  private readonly API_TIMEOUT_MS = 15000;
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Выполнить JSON-RPC запрос к Novofon API 2.0
+   * Включает timeout через AbortController для предотвращения зависания
    */
   private async jsonRpcRequest<T>(
     url: string,
@@ -91,25 +95,43 @@ export class NovofonService {
 
     this.logger.debug(`Novofon API request: ${method}`);
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json; charset=UTF-8',
-      },
-      body: JSON.stringify(body),
-    });
+    // Создаём AbortController для timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.API_TIMEOUT_MS);
 
-    const data: NovofonJsonRpcResponse<T> = await response.json();
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
 
-    if (data.error) {
-      this.logger.error(`Novofon API error: ${data.error.message} (${data.error.data?.mnemonic})`);
-      throw new HttpException(
-        data.error.message || 'Ошибка Novofon API',
-        HttpStatus.BAD_REQUEST,
-      );
+      const data: NovofonJsonRpcResponse<T> = await response.json();
+
+      if (data.error) {
+        this.logger.error(`Novofon API error: ${data.error.message} (${data.error.data?.mnemonic})`);
+        throw new HttpException(
+          data.error.message || 'Ошибка Novofon API',
+          HttpStatus.BAD_REQUEST,
+        );
+      }
+
+      return data.result?.data as T;
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        this.logger.error(`Novofon API timeout after ${this.API_TIMEOUT_MS}ms for method: ${method}`);
+        throw new HttpException(
+          `Превышено время ожидания ответа от телефонии (${this.API_TIMEOUT_MS / 1000} сек)`,
+          HttpStatus.GATEWAY_TIMEOUT,
+        );
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    return data.result?.data as T;
   }
 
   /**

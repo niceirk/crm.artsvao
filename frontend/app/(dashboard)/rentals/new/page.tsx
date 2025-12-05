@@ -320,8 +320,8 @@ export default function NewRentalPage() {
       periodType,
       startDate: format(formData.startDate, 'yyyy-MM-dd'),
       endDate: formData.endDate ? format(formData.endDate, 'yyyy-MM-dd') : undefined,
-      startTime: formData.category === 'hourly' ? formData.startTime : undefined,
-      endTime: formData.category === 'hourly' ? formData.endTime : undefined,
+      startTime: formData.startTime || undefined,
+      endTime: formData.endTime || undefined,
       selectedDays: formData.selectedDays.length > 0 ? formData.selectedDays.map(d => format(d, 'yyyy-MM-dd')) : undefined,
     };
 
@@ -361,8 +361,8 @@ export default function NewRentalPage() {
       periodType,
       startDate: format(formData.startDate, 'yyyy-MM-dd'),
       endDate: formData.endDate ? format(formData.endDate, 'yyyy-MM-dd') : undefined,
-      startTime: formData.category === 'hourly' ? formData.startTime : undefined,
-      endTime: formData.category === 'hourly' ? formData.endTime : undefined,
+      startTime: formData.startTime || undefined,
+      endTime: formData.endTime || undefined,
       selectedDays: formData.selectedDays.length > 0 ? formData.selectedDays.map(d => format(d, 'yyyy-MM-dd')) : undefined,
     };
 
@@ -386,7 +386,7 @@ export default function NewRentalPage() {
       return formData.roomId !== null && formData.selectedHourlySlots.length > 0;
     }
 
-    if (formData.category !== 'hourly' && !formData.periodUnit) return false;
+    if (!formData.periodUnit) return false;
     if (!formData.startDate) return false;
 
     if (formData.category === 'workspace') {
@@ -400,7 +400,7 @@ export default function NewRentalPage() {
 
   // Отправка формы
   const handleSubmit = async () => {
-    // Для HOURLY - создаем множественные заявки
+    // Для HOURLY - создаем одну заявку с массивом слотов
     if (formData.category === 'hourly') {
       if (formData.selectedHourlySlots.length === 0) {
         toast.error('Выберите хотя бы один часовой слот');
@@ -410,47 +410,57 @@ export default function NewRentalPage() {
       const room = rooms?.find(r => r.id === formData.roomId);
       if (!room) return;
 
-      let createdCount = 0;
-      const failedSlots: HourlyTimeSlot[] = [];
+      // Преобразуем слоты в формат API
+      const hourlySlots = formData.selectedHourlySlots.map(slot => ({
+        date: format(slot.date, 'yyyy-MM-dd'),
+        startTime: `${slot.startHour.toString().padStart(2, '0')}:00`,
+        endTime: `${slot.endHour.toString().padStart(2, '0')}:00`,
+      }));
 
-      // Создаём по одной заявке на каждый слот
-      for (const slot of formData.selectedHourlySlots) {
-        try {
-          await createMutation.mutateAsync({
-            rentalType: 'HOURLY',
-            roomId: formData.roomId!,
-            clientId: formData.clientId!,
-            periodType: 'HOURLY',
-            startDate: format(slot.date, 'yyyy-MM-dd'),
-            startTime: `${slot.startHour.toString().padStart(2, '0')}:00`,
-            endTime: `${slot.endHour.toString().padStart(2, '0')}:00`,
-            basePrice: Number(room.hourlyRate),
-            adjustedPrice: formData.adjustedPrice || undefined,
-            adjustmentReason: formData.adjustmentReason || undefined,
-            priceUnit: 'HOUR',
-            quantity: 1,
-            paymentType: formData.paymentType,
-            eventType: formData.eventType || undefined,
-            notes: formData.notes || undefined,
-            ignoreConflicts,
-          });
-          createdCount++;
-        } catch (error) {
-          console.error('Failed to create slot:', slot, error);
-          failedSlots.push(slot);
+      // Определяем диапазон дат
+      const sortedDates = [...formData.selectedHourlySlots]
+        .sort((a, b) => a.date.getTime() - b.date.getTime());
+      const startDate = format(sortedDates[0].date, 'yyyy-MM-dd');
+      const lastDate = sortedDates[sortedDates.length - 1].date;
+      const endDate = sortedDates.length > 1 && lastDate.getTime() !== sortedDates[0].date.getTime()
+        ? format(lastDate, 'yyyy-MM-dd')
+        : undefined;
+
+      try {
+        await createMutation.mutateAsync({
+          rentalType: 'HOURLY',
+          roomId: formData.roomId!,
+          clientId: formData.clientId!,
+          periodType: 'HOURLY',
+          startDate,
+          endDate,
+          hourlySlots,
+          basePrice: Number(room.hourlyRate),
+          adjustedPrice: formData.adjustedPrice || undefined,
+          adjustmentReason: formData.adjustmentReason || undefined,
+          priceUnit: 'HOUR',
+          quantity: hourlySlots.length,
+          paymentType: formData.paymentType,
+          eventType: formData.eventType || undefined,
+          notes: formData.notes || undefined,
+          ignoreConflicts,
+        });
+        toast.success(`Создана заявка на ${hourlySlots.length} ч. почасовой аренды`);
+        router.push('/rentals');
+      } catch (error: any) {
+        // Обработка конфликтов
+        if (error?.response?.status === 409) {
+          const conflictData = error?.response?.data?.conflicts;
+          if (conflictData && Array.isArray(conflictData)) {
+            setConflicts(conflictData);
+            toast.error('Обнаружены конфликты бронирования. Проверьте и подтвердите создание.');
+          } else {
+            toast.error(error?.response?.data?.message || 'Обнаружены конфликты бронирования');
+          }
+        } else {
+          console.error('Failed to create hourly rental:', error);
+          toast.error(error?.response?.data?.message || 'Ошибка при создании заявки');
         }
-      }
-
-      if (createdCount > 0) {
-        toast.success(`Создано ${createdCount} заявок на почасовую аренду`);
-        if (failedSlots.length === 0) {
-          router.push('/rentals');
-          return;
-        }
-      }
-
-      if (failedSlots.length > 0) {
-        toast.error(`Не удалось создать ${failedSlots.length} заявок. Проверьте конфликты.`);
       }
 
       return;
@@ -469,8 +479,8 @@ export default function NewRentalPage() {
       periodType,
       startDate: format(formData.startDate, 'yyyy-MM-dd'),
       endDate: formData.endDate ? format(formData.endDate, 'yyyy-MM-dd') : undefined,
-      startTime: formData.category === 'hourly' ? formData.startTime : undefined,
-      endTime: formData.category === 'hourly' ? formData.endTime : undefined,
+      startTime: formData.startTime || undefined,
+      endTime: formData.endTime || undefined,
       selectedDays: formData.selectedDays.length > 0 ? formData.selectedDays.map(d => format(d, 'yyyy-MM-dd')) : undefined,
       basePrice: formData.basePrice,
       adjustedPrice: formData.adjustedPrice || undefined,

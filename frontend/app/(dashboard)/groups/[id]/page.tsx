@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { groupsApi, type Group, type GroupMember, type UpdateGroupDto, type GroupMemberStatus, type GroupAvailability } from '@/lib/api/groups';
+import { groupsApi, type Group, type NewGroupMember as GroupMember, type UpdateGroupDto, GroupMemberStatus, type GroupAvailability } from '@/lib/api/groups';
 import { roomsApi, type Room } from '@/lib/api/rooms';
 import { teachersApi, type Teacher } from '@/lib/api/teachers';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -156,9 +156,9 @@ export default function GroupDetailPage() {
     try {
       setLoadingMembers(true);
       const [active, waitlist, expelled, avail] = await Promise.all([
-        groupsApi.getGroupMembers(groupId, 'ACTIVE'),
-        groupsApi.getGroupMembers(groupId, 'WAITLIST'),
-        groupsApi.getGroupMembers(groupId, 'EXPELLED'),
+        groupsApi.getGroupMembers(groupId, GroupMemberStatus.ACTIVE),
+        groupsApi.getGroupMembers(groupId, GroupMemberStatus.WAITLIST),
+        groupsApi.getGroupMembers(groupId, GroupMemberStatus.EXPELLED),
         groupsApi.checkGroupAvailability(groupId),
       ]);
       setActiveMembers(active);
@@ -284,7 +284,7 @@ export default function GroupDetailPage() {
     }
 
     try {
-      await groupsApi.updateMemberStatus(member.id, 'ACTIVE');
+      await groupsApi.updateMemberStatus(member.id, GroupMemberStatus.ACTIVE);
       toast.success('Участник переведен в активные');
       setMemberToPromote(null);
       await fetchMembers();
@@ -301,7 +301,7 @@ export default function GroupDetailPage() {
     }
 
     try {
-      await groupsApi.updateMemberStatus(member.id, 'ACTIVE');
+      await groupsApi.updateMemberStatus(member.id, GroupMemberStatus.ACTIVE);
       toast.success('Участник восстановлен в группе');
       setMemberToRestore(null);
       await fetchMembers();

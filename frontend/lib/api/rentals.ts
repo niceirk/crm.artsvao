@@ -32,6 +32,12 @@ export interface Rental {
     id: string;
     applicationNumber: string;
     status: string;
+    client?: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      phone: string;
+    };
     invoices: {
       id: string;
       invoiceNumber: string;
@@ -39,6 +45,9 @@ export interface Rental {
       totalAmount: number;
       paidAt: string | null;
     }[];
+    _count?: {
+      rentals: number;
+    };
   };
 }
 

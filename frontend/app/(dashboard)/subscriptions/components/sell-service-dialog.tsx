@@ -32,7 +32,7 @@ import type { ServiceSale } from '@/lib/types/subscriptions';
 const formSchema = z.object({
   clientId: z.string().min(1, 'Выберите клиента'),
   serviceId: z.string().min(1, 'Выберите услугу'),
-  quantity: z.coerce.number().min(1, 'Минимум 1').default(1),
+  quantity: z.number().min(1, 'Минимум 1'),
   notes: z.string().optional(),
 });
 

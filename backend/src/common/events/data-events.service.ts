@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { MessageEvent } from '@nestjs/common';
-import { Subject, Observable } from 'rxjs';
-import { filter, map } from 'rxjs/operators';
+import { Observable } from 'rxjs';
+import { filter } from 'rxjs/operators';
+import { BaseSseService } from './base-sse.service';
 
 /**
  * Типы событий изменения данных
@@ -36,47 +37,48 @@ export interface DataChangeEvent {
 /**
  * Сервис для рассылки событий об изменениях данных (SSE).
  * Позволяет frontend подписаться на изменения и автоматически обновлять UI.
+ *
+ * Поддерживает:
+ * - Heartbeat каждые 30 секунд для поддержания соединений через nginx
+ * - Автоматическую очистку при отключении клиента
+ * - Graceful shutdown при остановке модуля
+ * - Мониторинг активных соединений
  */
 @Injectable()
-export class DataEventsService {
-  private readonly events$ = new Subject<DataChangeEvent>();
-
+export class DataEventsService extends BaseSseService<DataChangeEvent> {
   /**
    * Получить стрим всех событий (для SSE контроллера)
    */
   getEventsStream(): Observable<MessageEvent> {
-    return this.events$.pipe(
-      map((event) => ({
-        type: 'data-change',
-        data: JSON.stringify(event),
-      })),
-    );
+    return this.createSseStream(this.events$.asObservable(), (event) => ({
+      type: 'data-change',
+      data: JSON.stringify(event),
+    }));
   }
 
   /**
-   * Получить стрим событий для конкретных сущностей
+   * Получить стрим событий для конкретных сущностей с heartbeat
    */
   getFilteredStream(entities?: TrackedEntity[]): Observable<MessageEvent> {
-    return this.events$.pipe(
+    const filteredEvents$ = this.events$.asObservable().pipe(
       filter((event) => !entities || entities.includes(event.entity)),
-      map((event) => ({
-        type: 'data-change',
-        data: JSON.stringify(event),
-      })),
     );
-  }
 
-  /**
-   * Базовый метод отправки события
-   */
-  emit(event: DataChangeEvent): void {
-    this.events$.next(event);
+    return this.createSseStream(filteredEvents$, (event) => ({
+      type: 'data-change',
+      data: JSON.stringify(event),
+    }));
   }
 
   /**
    * Отправить событие о создании записи
    */
-  emitCreated(entity: TrackedEntity, entityId: string, data: any, userId?: string): void {
+  emitCreated(
+    entity: TrackedEntity,
+    entityId: string,
+    data: any,
+    userId?: string,
+  ): void {
     this.emit({
       type: 'created',
       entity,
@@ -90,7 +92,12 @@ export class DataEventsService {
   /**
    * Отправить событие об обновлении записи
    */
-  emitUpdated(entity: TrackedEntity, entityId: string, data: any, userId?: string): void {
+  emitUpdated(
+    entity: TrackedEntity,
+    entityId: string,
+    data: any,
+    userId?: string,
+  ): void {
     this.emit({
       type: 'updated',
       entity,

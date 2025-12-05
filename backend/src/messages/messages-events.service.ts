@@ -1,29 +1,47 @@
 import { Injectable } from '@nestjs/common';
 import { MessageEvent } from '@nestjs/common';
-import { Subject, Observable } from 'rxjs';
+import { Observable } from 'rxjs';
+import { BaseSseService } from '../common/events/base-sse.service';
+
+/**
+ * Событие мессенджера
+ */
+export interface MessagesEvent {
+  type: 'unread-count' | 'new-message';
+  count?: number;
+  conversationId?: string;
+  createdAt?: Date;
+}
 
 /**
  * Сервис для рассылки событий мессенджера (SSE).
  * Отдельный провайдер, чтобы использовать его и в TelegramModule, и в MessagesModule без циклов.
+ *
+ * Поддерживает:
+ * - Heartbeat каждые 30 секунд для поддержания соединений через nginx
+ * - Автоматическую очистку при отключении клиента
+ * - Graceful shutdown при остановке модуля
+ * - Мониторинг активных соединений
  */
 @Injectable()
-export class MessagesEventsService {
-  private readonly events$ = new Subject<MessageEvent>();
-
+export class MessagesEventsService extends BaseSseService<MessagesEvent> {
   /**
-   * Стрим событий для SSE контроллера.
+   * Стрим событий для SSE контроллера с heartbeat.
    */
   getEventsStream(): Observable<MessageEvent> {
-    return this.events$.asObservable();
+    return this.createSseStream(this.events$.asObservable(), (event) => ({
+      type: event.type,
+      data: event,
+    }));
   }
 
   /**
    * Рассылает новое значение счётчика непрочитанных.
    */
   emitUnreadCount(count: number) {
-    this.events$.next({
+    this.emit({
       type: 'unread-count',
-      data: { type: 'unread-count', count },
+      count,
     });
   }
 
@@ -31,13 +49,10 @@ export class MessagesEventsService {
    * Рассылает событие о новом входящем сообщении.
    */
   emitNewMessage(conversationId: string, createdAt: Date) {
-    this.events$.next({
+    this.emit({
       type: 'new-message',
-      data: {
-        type: 'new-message',
-        conversationId,
-        createdAt,
-      },
+      conversationId,
+      createdAt,
     });
   }
 }

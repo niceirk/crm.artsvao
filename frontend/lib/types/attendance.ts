@@ -29,6 +29,7 @@ export interface Attendance {
   };
   schedule: {
     id: string;
+    date: string;
     startTime: string;
     endTime: string;
     group: {

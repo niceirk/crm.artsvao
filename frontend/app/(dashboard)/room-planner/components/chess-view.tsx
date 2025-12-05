@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ClipboardPaste } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Tooltip,
@@ -28,6 +28,7 @@ import {
 import { isActivityCurrentlyActive } from '@/lib/utils/time-slots';
 import { useRoomPlannerScaleStore } from '@/lib/stores/room-planner-scale-store';
 import { useRoomPlannerSortStore } from '@/lib/stores/room-planner-sort-store';
+import { useActivityPaste } from '@/hooks/use-activity-paste';
 import type { Room } from '@/lib/api/rooms';
 
 interface ChessViewProps {
@@ -73,6 +74,9 @@ export function ChessView({
   const scale = useRoomPlannerScaleStore((state) => state.scale);
   const sortByIndex = useRoomPlannerSortStore((state) => state.sortByIndex);
 
+  // Хук для вставки скопированных событий
+  const { pasteActivity, isPasting, clipboard, hasClipboard } = useActivityPaste();
+
   // Получаем данные
   const { roomsWithActivities, isLoading, isToday: isTodayDate } = useRoomPlanner({
     date,
@@ -117,6 +121,14 @@ export function ChessView({
   const [selection, setSelection] = useState<SelectionState | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
 
+  // Состояние контекстного меню для вставки
+  const [cellContextMenu, setCellContextMenu] = useState<{
+    x: number;
+    y: number;
+    roomId: string;
+    slotIndex: number;
+  } | null>(null);
+
   // Преобразуем помещения в колонки для ChessGridLayout
   const columns: ChessColumn[] = useMemo(() => {
     return roomsWithActivities.map((rwa) => ({
@@ -135,8 +147,31 @@ export function ChessView({
     return map;
   }, [roomsWithActivities]);
 
-  // Обработчик начала выделения
+  // Предвычисляем позиции и стили для всех активностей (кэширование)
+  const activityStyles = useMemo(() => {
+    const styles = new Map<string, { position: { top: number; height: number }; style: React.CSSProperties; isCurrentlyActive: boolean }>();
+    roomsWithActivities.forEach((rwa) => {
+      rwa.activities.forEach((activity) => {
+        const position = getActivityPositionPercent(activity.startTime, activity.endTime);
+        const isCurrentlyActive = isTodayDate && isActivityCurrentlyActive(
+          activity.date,
+          activity.startTime,
+          activity.endTime,
+          date
+        );
+        styles.set(activity.id, {
+          position,
+          style: getSimpleCardStyle(position.top, position.height),
+          isCurrentlyActive,
+        });
+      });
+    });
+    return styles;
+  }, [roomsWithActivities, isTodayDate, date]);
+
+  // Обработчик начала выделения (только левый клик)
   const handleCellMouseDown = useCallback((columnId: string, rowIndex: number, e: React.MouseEvent) => {
+    if (e.button === 2) return; // Игнорируем правый клик
     e.preventDefault();
     setIsSelecting(true);
     setSelection({ roomId: columnId, startRow: rowIndex, endRow: rowIndex });
@@ -172,6 +207,36 @@ export function ChessView({
     const maxRow = Math.max(selection.startRow, selection.endRow);
     return rowIndex >= minRow && rowIndex <= maxRow;
   }, [selection]);
+
+  // Обработчик контекстного меню на ячейке (для вставки)
+  const handleCellContextMenu = useCallback((columnId: string, slotIndex: number, e: React.MouseEvent) => {
+    if (!hasClipboard) return; // Показываем меню только если есть что вставить
+    e.preventDefault();
+    e.stopPropagation();
+    setCellContextMenu({ x: e.clientX, y: e.clientY, roomId: columnId, slotIndex });
+  }, [hasClipboard]);
+
+  // Обработчик вставки события
+  const handlePaste = useCallback(async () => {
+    if (!cellContextMenu || !clipboard) return;
+
+    const { roomId, slotIndex } = cellContextMenu;
+    const room = roomsMap.get(roomId);
+    const roomActivities = activitiesByRoom.get(roomId) || [];
+
+    // Рассчитываем время из slotIndex
+    const { startTime } = getTimeFromRowIndex(slotIndex);
+
+    await pasteActivity({
+      targetRoomId: roomId,
+      targetDate: date,
+      preferredStartTime: startTime,
+      roomActivities,
+      roomHourlyRate: room?.hourlyRate,
+    });
+
+    setCellContextMenu(null);
+  }, [cellContextMenu, clipboard, pasteActivity, date, roomsMap, activitiesByRoom]);
 
   // Глобальный обработчик mouseup (на случай если мышь отпустили вне колонки)
   useEffect(() => {
@@ -232,23 +297,18 @@ export function ChessView({
       // Если рабочих мест нет - показываем обычные активности (как для обычных помещений)
       // Это позволяет создавать брони для коворкинга без рабочих мест
       if (!coworkingStatus || coworkingStatus.totalWorkspaces === 0) {
-        // Рендерим как обычное помещение - с активностями
+        // Рендерим как обычное помещение - с активностями (используем кэшированные стили)
         return activities.map((activity) => {
-          const position = getActivityPositionPercent(activity.startTime, activity.endTime);
-          const isCurrentlyActive = isTodayDate && isActivityCurrentlyActive(
-            activity.date,
-            activity.startTime,
-            activity.endTime,
-            date
-          );
+          const cached = activityStyles.get(activity.id);
+          if (!cached) return null;
 
           return (
             <ChessActivityCard
               key={activity.id}
               activity={activity}
-              style={getSimpleCardStyle(position.top, position.height)}
+              style={cached.style}
               onClick={() => onActivityClick(activity)}
-              isCurrentlyActive={isCurrentlyActive}
+              isCurrentlyActive={cached.isCurrentlyActive}
               scale={scale}
             />
           );
@@ -265,28 +325,23 @@ export function ChessView({
       );
     }
 
-    // Для обычных помещений - существующая логика
+    // Для обычных помещений - используем кэшированные стили
     return activities.map((activity) => {
-      const position = getActivityPositionPercent(activity.startTime, activity.endTime);
-      const isCurrentlyActive = isTodayDate && isActivityCurrentlyActive(
-        activity.date,
-        activity.startTime,
-        activity.endTime,
-        date
-      );
+      const cached = activityStyles.get(activity.id);
+      if (!cached) return null;
 
       return (
         <ChessActivityCard
           key={activity.id}
           activity={activity}
-          style={getSimpleCardStyle(position.top, position.height)}
+          style={cached.style}
           onClick={() => onActivityClick(activity)}
-          isCurrentlyActive={isCurrentlyActive}
+          isCurrentlyActive={cached.isCurrentlyActive}
           scale={scale}
         />
       );
     });
-  }, [roomsMap, coworkingMap, isLoadingCoworking, handleWorkspaceClick, activitiesByRoom, isTodayDate, date, onActivityClick, scale]);
+  }, [roomsMap, coworkingMap, isLoadingCoworking, handleWorkspaceClick, activitiesByRoom, activityStyles, onActivityClick, scale]);
 
   // Загрузка
   if (isLoading) {
@@ -316,6 +371,7 @@ export function ChessView({
           onCellMouseDown={handleCellMouseDown}
           onCellMouseEnter={handleCellMouseEnter}
           onCellMouseUp={handleCellMouseUp}
+          onCellContextMenu={handleCellContextMenu}
           isCellSelected={isCellSelected}
           renderColumnContent={renderColumnContent}
           currentTimePosition={currentTimePosition}
@@ -329,6 +385,33 @@ export function ChessView({
         room={selectedWorkspaceData?.room ?? null}
         date={date}
       />
+
+      {/* Контекстное меню для вставки события */}
+      {cellContextMenu && hasClipboard && (
+        <>
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setCellContextMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setCellContextMenu(null);
+            }}
+          />
+          <div
+            className="fixed z-50 bg-popover border rounded-md shadow-md p-1 min-w-[10rem]"
+            style={{ left: cellContextMenu.x, top: cellContextMenu.y }}
+          >
+            <button
+              className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground disabled:opacity-50"
+              onClick={handlePaste}
+              disabled={isPasting}
+            >
+              <ClipboardPaste className="mr-2 h-4 w-4" />
+              {isPasting ? 'Вставка...' : 'Вставить'}
+            </button>
+          </div>
+        </>
+      )}
     </>
   );
 }

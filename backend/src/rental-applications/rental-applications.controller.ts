@@ -131,4 +131,13 @@ export class RentalApplicationsController {
   remove(@Param('id') id: string) {
     return this.rentalApplicationsService.remove(id);
   }
+
+  @Delete(':applicationId/rentals/:rentalId')
+  @UseGuards(AdminGuard)
+  removeRental(
+    @Param('applicationId') applicationId: string,
+    @Param('rentalId') rentalId: string,
+  ) {
+    return this.rentalApplicationsService.removeRental(applicationId, rentalId);
+  }
 }

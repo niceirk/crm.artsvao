@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
-import { Calendar, CalendarDays, LayoutList, Grid3x3, Search, ZoomIn, ZoomOut, ArrowUpDown } from 'lucide-react';
+import { Calendar, CalendarDays, LayoutList, Grid3x3, Search, ZoomIn, ZoomOut, ArrowUpDown, ChevronLeft, ChevronRight } from 'lucide-react';
+import { format, parseISO, addDays, subDays } from 'date-fns';
+import { ru } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { getCurrentDate } from '@/lib/utils/time-slots';
@@ -24,6 +26,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import type { Schedule } from '@/lib/api/schedules';
 import type { Rental } from '@/lib/api/rentals';
 import type { Event } from '@/lib/api/events';
@@ -202,6 +210,19 @@ export default function RoomPlannerPage() {
     }
   };
 
+  // Навигация по датам
+  const handlePrevDate = () => {
+    const currentDate = parseISO(date);
+    const daysToSubtract = chessViewMode === 'week' ? 7 : 1;
+    setDate(format(subDays(currentDate, daysToSubtract), 'yyyy-MM-dd'));
+  };
+
+  const handleNextDate = () => {
+    const currentDate = parseISO(date);
+    const daysToAdd = chessViewMode === 'week' ? 7 : 1;
+    setDate(format(addDays(currentDate, daysToAdd), 'yyyy-MM-dd'));
+  };
+
   // Компонент кликабельной надписи-таба
   const TabLink = ({
     value,
@@ -229,9 +250,9 @@ export default function RoomPlannerPage() {
   );
 
   return (
-    <div className="flex flex-col gap-4 px-1 sm:px-2 md:px-3 lg:px-4 pt-2 pb-2">
+    <div className="flex flex-col h-full px-1 sm:px-2 md:px-3 lg:px-4 pt-2 pb-2 overflow-hidden">
       {/* Верхний заголовок с табами */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex items-center justify-between gap-4 flex-wrap flex-shrink-0 mb-4">
         <div className="flex items-center gap-4 min-h-8">
           <TabLink value="schedule" label="Расписание" icon={LayoutList} isActive={activeTab === 'schedule'} />
           <TabLink value="chess" label="Шахматка" icon={Grid3x3} isActive={activeTab === 'chess'} />
@@ -273,12 +294,48 @@ export default function RoomPlannerPage() {
 
         {/* Дата по центру для режима шахматки */}
         {activeTab === 'chess' && (
-          <span className="text-sm font-medium text-foreground">
-            {chessViewMode === 'day'
-              ? formatDateFull(date)
-              : formatWeekRange(getWeekStart(date))
-            }
-          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={handlePrevDate}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <button className="text-sm font-medium text-foreground hover:text-primary transition-colors cursor-pointer border-b border-dashed border-transparent hover:border-primary px-1">
+                  {chessViewMode === 'day'
+                    ? formatDateFull(date)
+                    : formatWeekRange(getWeekStart(date))
+                  }
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="center">
+                <CalendarComponent
+                  mode="single"
+                  selected={parseISO(date)}
+                  onSelect={(d) => d && setDate(format(d, 'yyyy-MM-dd'))}
+                  captionLayout="dropdown"
+                  fromYear={2020}
+                  toYear={new Date().getFullYear() + 1}
+                  initialFocus
+                  locale={ru}
+                />
+              </PopoverContent>
+            </Popover>
+
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={handleNextDate}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
         )}
 
         {/* Контролы масштабирования и сортировки для режима шахматки */}
@@ -345,6 +402,7 @@ export default function RoomPlannerPage() {
             onShowNowOnlyChange={setShowNowOnly}
             hideNowOnlyFilter
             hideRoomsFilter={chessViewMode === 'week'}
+            hideDateFilter
             viewMode={chessViewMode}
           />
         )}
@@ -387,7 +445,7 @@ export default function RoomPlannerPage() {
 
       {/* Режим "Шахматка" */}
       {activeTab === 'chess' && (
-        <>
+        <div className="flex-1 min-h-0">
           {/* Шахматка - День или Неделя */}
           {chessViewMode === 'day' ? (
             <ChessView
@@ -406,7 +464,7 @@ export default function RoomPlannerPage() {
               onEmptySlotClick={handleWeekEmptySlotClick}
             />
           )}
-        </>
+        </div>
       )}
 
       {/* Режим "Подбор помещений" */}

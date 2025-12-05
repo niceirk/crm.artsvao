@@ -253,28 +253,30 @@ export function RoomDialog({ open, onOpenChange, room }: RoomDialogProps) {
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="dailyRate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Дневная ставка</FormLabel>
-                    <FormControl>
-                      <Input
-                        type="number"
-                        placeholder="7000"
-                        value={field.value ?? ''}
-                        onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                        onBlur={field.onBlur}
-                        name={field.name}
-                        ref={field.ref}
-                      />
-                    </FormControl>
-                    <FormDescription>Рублей в день</FormDescription>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              {!form.watch('isCoworking') && (
+                <FormField
+                  control={form.control}
+                  name="dailyRate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Дневная ставка</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          placeholder="7000"
+                          value={field.value ?? ''}
+                          onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          ref={field.ref}
+                        />
+                      </FormControl>
+                      <FormDescription>Рублей в день</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
             </div>
 
             <FormField

@@ -134,7 +134,9 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
       const calendarApi = calendarRef.current?.getApi();
       if (!calendarApi) return;
 
-      const titleElement = calendarApi.el.querySelector('.fc-toolbar-title') as HTMLElement;
+      const calendarEl = (calendarRef.current as unknown as { elRef: { current: HTMLElement | null } })?.elRef?.current;
+      if (!calendarEl) return;
+      const titleElement = calendarEl.querySelector('.fc-toolbar-title') as HTMLElement;
       if (titleElement && titleRef.current) {
         titleElement.style.cursor = 'pointer';
         titleElement.style.userSelect = 'none';
@@ -369,6 +371,8 @@ export function ScheduleCalendar({ schedules, rentals, events: eventItems, reser
     calendarEvents.forEach(event => {
       // Фильтруем события по текущему диапазону дат
       if (currentDateRange && event.start && event.resourceId) {
+        // DateInput может быть string | number | Date | number[], проверяем что это не массив
+        if (Array.isArray(event.start)) return;
         const eventStart = new Date(event.start);
         if (eventStart >= currentDateRange.start && eventStart < currentDateRange.end) {
           usedRoomIds.add(event.resourceId);

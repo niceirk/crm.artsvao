@@ -16,19 +16,7 @@ const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
   ({ className, onChange, value, defaultCountry = 'ru', ...props }, ref) => {
     const handleChange = (phone: string) => {
       if (onChange) {
-        // Создаем синтетическое событие для совместимости с react-hook-form
-        const event = {
-          target: { value: phone },
-          currentTarget: { value: phone },
-        } as React.ChangeEvent<HTMLInputElement>
-
-        // Если onChange принимает строку (новый API)
-        if (onChange.length === 1) {
-          (onChange as (value: string) => void)(phone)
-        } else {
-          // Если onChange принимает event (старый API для обратной совместимости)
-          (onChange as (event: React.ChangeEvent<HTMLInputElement>) => void)(event)
-        }
+        onChange(phone)
       }
     }
 

@@ -69,10 +69,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {/* Page Content */}
             <main
               className={cn(
-                'flex-1 overflow-y-auto bg-muted/40',
+                'flex-1 bg-muted/40',
                 pathname === '/room-planner' || pathname === '/schedule'
-                  ? 'p-0' // Убираем padding для полноэкранных страниц
-                  : 'p-4 md:p-6'
+                  ? 'p-0 overflow-hidden' // Полноэкранные страницы - без скролла, контент адаптируется
+                  : 'p-4 md:p-6 overflow-y-auto'
               )}
             >
               <div className="mx-auto max-w-screen-2xl h-full">{children}</div>

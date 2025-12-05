@@ -30,8 +30,8 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '@prisma/client';
 import { MessagesEventsService } from './messages-events.service';
-import { merge, from } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { merge, from, of } from 'rxjs';
+import { map, catchError, timeout } from 'rxjs/operators';
 
 @Controller('messages')
 @UseGuards(RolesGuard)
@@ -42,6 +42,19 @@ export class MessagesController {
     private readonly messagesService: MessagesService,
     private readonly messagesEventsService: MessagesEventsService,
   ) {}
+
+  /**
+   * Health endpoint для мониторинга SSE соединений мессенджера.
+   * GET /api/messages/sse-health
+   */
+  @Get('sse-health')
+  getSseHealth() {
+    return {
+      activeConnections: this.messagesEventsService.getActiveConnections(),
+      uptime: process.uptime(),
+      timestamp: new Date().toISOString(),
+    };
+  }
 
   /**
    * Текущий счётчик непрочитанных входящих сообщений
@@ -57,18 +70,34 @@ export class MessagesController {
   /**
    * SSE поток событий для обновления счётчика в реальном времени
    * GET /api/messages/stream
+   *
+   * Включает:
+   * - Начальное значение счётчика непрочитанных
+   * - Heartbeat каждые 30 секунд для поддержания соединения
+   * - Автоматическую очистку при отключении клиента
+   * - Обработку ошибок БД
    */
   @Sse('stream')
   @Roles(UserRole.ADMIN, UserRole.MANAGER)
-  streamMessages(): Promise<MessageEvent> | any {
-    // Сразу отправляем текущее значение счётчика, затем подписываемся на события
+  streamMessages(): any {
+    // Получаем начальное значение с таймаутом 5 секунд и обработкой ошибок
     const initial$ = from(this.messagesService.getUnreadCount()).pipe(
+      timeout(5000),
       map((count) => ({
         type: 'unread-count',
         data: { type: 'unread-count', count },
       })),
+      catchError((error) => {
+        this.logger.error(`Failed to get initial unread count: ${error.message}`);
+        // При ошибке отправляем 0, чтобы не блокировать SSE соединение
+        return of({
+          type: 'unread-count',
+          data: { type: 'unread-count', count: 0, error: true },
+        });
+      }),
     );
 
+    // Объединяем начальное значение и поток событий (с heartbeat)
     return merge(initial$, this.messagesEventsService.getEventsStream());
   }
 

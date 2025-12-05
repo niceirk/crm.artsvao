@@ -1,0 +1,720 @@
+# ARTSVAO CRM – Пакет для аудита
+
+## 1. Техническое задание (ТЗ)
+# Техническое задание на аудит стабильности и производительности ARTSVAO CRM
+
+(… здесь полный текст ТЗ, адаптированный ранее …)
+
+
+## 2. Технический отчёт проекта
+```
+
+  Краткое содержание документа:
+
+  Архитектура
+
+  - Стек: TypeScript + NestJS 10 + Prisma 6.19 + PostgreSQL 16 + Next.js 14
+  - Тип: Монолит (28,900 строк, 45 модулей, 54 сервиса)
+  - Worker'ы: Нет отдельных (всё в одном процессе)
+
+  Запуск
+
+  - Backend: node dist/src/main (не gunicorn/uvicorn)
+  - Graceful shutdown: 30 сек timeout
+
+  Docker
+
+  - 5 сервисов: postgres, backend, frontend, nginx, certbot
+  - Backend: 1.5 CPU, 1536M RAM, healthcheck /api/health/liveness
+  - Start period: 120s для миграций
+
+  База данных
+
+  - Облачная PostgreSQL (Timeweb Cloud)
+  - Pool: 10 соединений, timeout 20 сек
+  - Keepalive ping каждые 15 сек (для облачной БД)
+
+  Критичные проблемы найдены:
+
+  | Проблема                      | Severity |
+  |-------------------------------|----------|
+  | Novofon API БЕЗ timeout       | CRITICAL |
+  | Excel export синхронный       | HIGH     |
+  | Timepad/Pyrus API БЕЗ timeout | HIGH     |
+  | 548 console.log вместо logger | MEDIUM   |
+  | N+1 в schedules.create        | MEDIUM   |
+
+  Документ готов к использованию. Хотите что-то дополнить или уточнить?
+
+● User approved Claude's plan
+  ⎿  Plan saved to: ~/.claude/plans/sleepy-purring-gray.md · /plan to edit
+     Техническая документация проекта ARTSVAO CRM
+
+     1. Общая архитектура проекта
+
+     1.1. Языки и основные фреймворки
+
+     | Компонент          | Технология | Версия           |
+     |--------------------|------------|------------------|
+     | Язык               | TypeScript | ES2021           |
+     | Backend Framework  | NestJS     | 10.x             |
+     | Frontend Framework | Next.js    | 14.2.33          |
+     | ORM                | Prisma     | 6.19.0           |
+     | База данных        | PostgreSQL | 16 (Alpine)      |
+     | UI библиотека      | React      | 18.3.1           |
+     | HTTP провайдер     | Express.js | встроен в NestJS |
+
+     НЕ используются: Flask, FastAPI, Django, Celery, SQLAlchemy, Redis, BullMQ
+
+     1.2. Как устроен backend
+
+     Тип архитектуры: Монолит
+
+     - Отдельные worker'ы: НЕТ (всё в одном процессе)
+     - Очередь уведомлений: Встроенная реализация через NotificationQueueService с adaptive polling
+     - Real-time: Server-Sent Events (SSE) для данных и мессенджера
+     - Размер кода: ~28,900 строк TypeScript, 45 модулей, 54 сервиса
+
+     1.3. Структура репозитория
+
+     /home/nikita/artsvao/
+     ├── backend/                          # NestJS Backend
+     │   ├── src/
+     │   │   ├── auth/                     # JWT аутентификация
+     │   │   ├── users/                    # Пользователи
+     │   │   ├── clients/                  # Клиенты CRM
+     │   │   ├── groups/                   # Группы учеников
+     │   │   ├── schedules/                # Расписание занятий
+     │   │   ├── attendance/               # Посещаемость
+     │   │   ├── subscriptions/            # Абонементы
+     │   │   ├── invoices/                 # Счета
+     │   │   ├── payments/                 # Платежи
+     │   │   ├── rentals/                  # Аренда помещений
+     │   │   ├── rental-applications/      # Заявки на аренду
+     │   │   ├── telegram/                 # Telegram бот
+     │   │   ├── email/                    # Email рассылки
+     │   │   ├── unified-notifications/    # Система уведомлений
+     │   │   │   ├── notification-queue.service.ts  # Worker очереди (412 строк)
+     │   │   │   └── channels/             # Адаптеры (Telegram, Email)
+     │   │   ├── integrations/
+     │   │   │   ├── timepad/              # Timepad API
+     │   │   │   ├── pyrus/                # Pyrus CRM
+     │   │   │   └── novofon/              # Телефония
+     │   │   ├── common/
+     │   │   │   ├── events/               # SSE сервисы
+     │   │   │   └── filters/              # Exception фильтры
+     │   │   ├── prisma/                   # ORM конфигурация
+     │   │   └── health/                   # Health checks
+     │   ├── prisma/
+     │   │   └── schema.prisma             # Схема БД (1669 строк)
+     │   ├── Dockerfile
+     │   └── docker-entrypoint.sh
+     ├── frontend/                         # Next.js Frontend
+     │   ├── app/                          # App Router
+     │   ├── components/                   # UI компоненты
+     │   └── Dockerfile
+     ├── nginx/
+     │   └── conf.d/artsvao.conf           # Nginx конфигурация
+     ├── docker-compose.prod.yml           # Production compose
+     ├── .env.production                   # Production переменные
+     └── scripts/
+         └── check-env.sh                  # Валидация ENV
+
+     ---
+     2. Конфигурация запуска приложения
+
+     2.1. Чем запускается API
+
+     Backend: node dist/src/main (чистый Node.js, НЕ gunicorn/uvicorn)
+
+     Frontend: node server.js (Next.js standalone server)
+
+     2.2. Точные параметры запуска
+
+     Backend (npm scripts):
+     "start:prod": "node dist/main"           # Production
+     "start:dev": "nest start --watch"        # Development
+     "start:debug": "nest start --debug --watch"
+
+     Docker entrypoint (/backend/docker-entrypoint.sh):
+     #!/bin/sh
+     exec node dist/src/main
+
+     Параметры Node.js:
+     - Воркеры: 1 (single process)
+     - Тип: async/await (event loop)
+     - Timeout: 30 сек (graceful shutdown)
+
+     2.3. Dev/Prod конфиги
+
+     | Параметр      | Development   | Production     |
+     |---------------|---------------|----------------|
+     | NODE_ENV      | development   | production     |
+     | Debug logging | Включен       | Только errors  |
+     | CORS          | Все источники | crm.artsvao.ru |
+     | Rate limit    | 100 req/60s   | 100 req/60s    |
+     | DB pool       | 10 соединений | 10 соединений  |
+     | SSL БД        | verify-full   | verify-full    |
+
+     ---
+     3. Docker и сервер
+
+     3.1. Dockerfile Backend
+
+     Путь: /home/nikita/artsvao/backend/Dockerfile
+
+     # ===== STAGE 1: Builder =====
+     FROM node:20-alpine AS builder
+     WORKDIR /app
+     COPY package*.json ./
+     COPY prisma ./prisma/
+     RUN npm ci
+     COPY . .
+     RUN npx prisma generate
+     RUN npm run build
+
+     # ===== STAGE 2: Production =====
+     FROM node:20-alpine
+     WORKDIR /app
+     COPY package*.json ./
+     COPY prisma ./prisma/
+     RUN npm ci --only=production && \
+         npx prisma generate && \
+         npm cache clean --force
+     COPY --from=builder /app/dist ./dist
+     COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+     RUN chmod +x /app/docker-entrypoint.sh
+
+     EXPOSE 3000
+     CMD ["/app/docker-entrypoint.sh"]
+
+     3.2. docker-compose.prod.yml
+
+     Путь: /home/nikita/artsvao/docker-compose.prod.yml
+
+     Список сервисов:
+
+     | Сервис   | Образ              | Порт    | CPU     | RAM        | Healthcheck                                  |
+     |----------|--------------------|---------|---------|------------|----------------------------------------------|
+     | postgres | postgres:16-alpine | 5432    | 0.5     | 512M       | pg_isready каждые 10s                        |
+     | backend  | node:20-alpine     | 3000    | 0.5-1.5 | 256M-1536M | /api/health/liveness каждые 30s, start: 120s |
+     | frontend | node:20-alpine     | 3001    | 0.5     | 128M-512M  | HTTP GET каждые 30s, start: 40s              |
+     | nginx    | nginx:alpine       | 80, 443 | 0.25    | 64M-256M   | -                                            |
+     | certbot  | certbot/certbot    | -       | -       | -          | Renewal каждые 12h                           |
+
+     Рестарт политика: restart: unless-stopped для всех
+
+     Полная конфигурация backend:
+     backend:
+       build:
+         context: ./backend
+         dockerfile: Dockerfile
+       container_name: artsvao-backend
+       restart: unless-stopped
+       depends_on:
+         postgres:
+           condition: service_healthy
+       env_file:
+         - .env.production
+       environment:
+         NODE_ENV: production
+         PORT: 3000
+       networks:
+         - artsvao-network
+       healthcheck:
+         test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider",
+                "http://localhost:3000/api/health/liveness"]
+         interval: 30s
+         timeout: 10s
+         retries: 3
+         start_period: 120s
+       deploy:
+         resources:
+           limits:
+             cpus: '1.5'
+             memory: 1536M
+           reservations:
+             cpus: '0.5'
+             memory: 256M
+
+     3.3. Отдельные worker-сервисы
+
+     НЕТ отдельных worker-контейнеров.
+
+     Все фоновые задачи выполняются в основном backend процессе:
+     - NotificationQueueService - очередь уведомлений (adaptive polling 5-30 сек)
+     - PrismaService.startKeepalive() - keepalive пинг БД каждые 15 сек
+     - DataEventsService - SSE heartbeat каждые 30 сек
+
+     ---
+     4. База данных и доступ к ней
+
+     4.1. Тип БД
+
+     PostgreSQL 16 (облачная БД Timeweb Cloud)
+
+     - Хост: ad58d335a4d560f18508292d.twc1.net:5432
+     - SSL: sslmode=verify-full
+     - Сертификат: /home/nikita/artsvao/.cloud-certs/root.crt
+
+     4.2. Чем ходим в БД
+
+     Prisma ORM (НЕ SQLAlchemy)
+
+     - Версия: 6.19.0
+     - Генератор: prisma-client-js
+     - Схема: /backend/prisma/schema.prisma (1669 строк, 80+ моделей)
+
+     Сырые запросы: Только для keepalive ping (SELECT 1)
+
+     4.3. Конфиг подключения
+
+     Формат DSN:
+     postgresql://USER:PASSWORD@HOST:5432/DATABASE?sslmode=verify-full&sslrootcert=PATH&connection_limit=10&pool_timeout=20&connect_timeout=10
+
+     Pool настройки:
+
+     | Параметр          | Значение | Описание                          |
+     |-------------------|----------|-----------------------------------|
+     | connection_limit  | 10       | Макс соединений в пуле            |
+     | pool_timeout      | 20       | Timeout ожидания соединения (сек) |
+     | connect_timeout   | 10       | Timeout подключения (сек)         |
+     | statement_timeout | 10000    | Timeout запроса (мс) - в коде     |
+
+     Дополнительные параметры в PrismaService:
+     KEEPALIVE_INTERVAL_MS = 15000        // Ping каждые 15 сек
+     MAX_CONNECT_RETRIES = 5              // Retry при старте
+     RECONNECT_BASE_DELAY_MS = 500        // Exponential backoff
+     HEALTH_CHECK_TIMEOUT_MS = 5000       // Health check timeout
+     SLOW_QUERY_THRESHOLD_MS = 1000       // Логирование медленных запросов
+
+     4.4. Где и как создаётся engine/session
+
+     Глобально через Dependency Injection (Singleton):
+
+     // /backend/src/prisma/prisma.service.ts
+     @Injectable()
+     export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+       async onModuleInit() {
+         await this.connectWithRetry();  // Подключение при старте
+         this.startKeepalive();          // Keepalive пинг
+       }
+
+       async onModuleDestroy() {
+         await this.disconnect();        // Graceful shutdown
+       }
+     }
+
+     Использование в сервисах:
+     @Injectable()
+     export class ClientsService {
+       constructor(private prisma: PrismaService) {}
+
+       async findAll() {
+         return this.prisma.client.findMany({...});
+       }
+     }
+
+     4.5. Явные ручные connect()/cursor()
+
+     НЕТ - все соединения управляются Prisma пулом автоматически.
+
+     ---
+     5. Работа с БД в коде
+
+     5.1. Основной паттерн работы с сессией
+
+     Создание: При старте приложения (onModuleInit)
+     Закрытие: При завершении (onModuleDestroy, graceful shutdown 30 сек)
+
+     Транзакции через helper:
+     // /backend/src/prisma/prisma-transaction.helper.ts
+     await safeTransaction(this.prisma, async (tx) => {
+       const subscription = await tx.subscription.create({...});
+       const invoice = await tx.invoice.create({...});
+       return { subscription, invoice };
+     }, {
+       maxRetries: 3,
+       baseDelayMs: 100,
+       timeoutMs: 30000
+     });
+
+     5.2. Глобальные/модульные переменные session/db
+
+     НЕТ глобальных переменных - только DI через PrismaService.
+
+     5.3. Примеры тяжёлых запросов
+
+     a) N+1 в schedules.service.ts (строка 17-51)
+
+     // ПРОБЛЕМА: 3 последовательных запроса вместо Promise.all()
+     async create(createScheduleDto: CreateScheduleDto) {
+       if (createScheduleDto.groupId) {
+         const group = await this.prisma.group.findUnique({...});  // Query 1
+       }
+       const teacher = await this.prisma.teacher.findUnique({...}); // Query 2
+       const room = await this.prisma.room.findUnique({...});       // Query 3
+     }
+
+     b) Последовательное создание в bulk операциях
+
+     // /backend/src/schedules/schedule-planner.service.ts (строка 296)
+     for (const scheduleDto of dto.schedules) {
+       const schedule = await this.prisma.schedule.create({...});  // N queries!
+       await this.enrollClientsToSchedule(...);                    // +N queries!
+     }
+
+     c) While цикл с датами (потенциально долгий)
+
+     // /backend/src/rental-applications/rental-applications.service.ts (строка 240)
+     while (current <= appEnd) {
+       appOccupiedDates.add(current.toISOString().split('T')[0]);
+       current.setDate(current.getDate() + 1);  // Нет лимита на период
+     }
+
+     ---
+     6. Фоновые задачи и циклы
+
+     6.1. Используемые системы
+
+     НЕ используются: Celery, RQ, BullMQ, apscheduler, Redis
+
+     Используется: Собственная реализация через setTimeout/setInterval
+
+     6.2. Бесконечные/долгоживущие циклы
+
+     a) NotificationQueueService (основной worker)
+
+     Файл: /backend/src/unified-notifications/notification-queue.service.ts
+
+     private async processQueue(): Promise<void> {
+       if (!this.isRunning) return;
+
+       try {
+         const notifications = await this.prisma.notification.findMany({
+           where: { status: 'PENDING' },
+           take: 50  // Batch size
+         });
+
+         for (const notification of notifications) {
+           await this.processNotification(notification);
+         }
+       } finally {
+         this.scheduleNextPoll();  // setTimeout на следующий цикл
+       }
+     }
+
+     private scheduleNextPoll() {
+       setTimeout(() => this.processQueue(), this.currentInterval);
+       // currentInterval: 5-30 сек (adaptive)
+     }
+
+     Параметры:
+     - Min interval: 5 сек
+     - Max interval: 30 сек (при пустой очереди)
+     - Circuit breaker: после 5 ошибок → пауза 60 сек
+     - Rate limits: Telegram 30/сек, Email 20/час, 500/день
+
+     b) Database Keepalive
+
+     Файл: /backend/src/prisma/prisma.service.ts
+
+     private startKeepalive() {
+       this.keepaliveInterval = setInterval(async () => {
+         for (let i = 0; i < 3; i++) {
+           await this.$queryRaw`SELECT 1`;  // Ping
+         }
+       }, 15000);  // Каждые 15 сек
+     }
+
+     c) SSE Heartbeat
+
+     Файл: /backend/src/common/events/base-sse.service.ts
+
+     const heartbeat$ = interval(30000).pipe(  // Каждые 30 сек
+       map(() => ({ type: 'heartbeat', data: {...} }))
+     );
+
+     6.3. Демоны при старте сервера
+
+     Все запускаются в onModuleInit():
+     1. NotificationQueueService.onModuleInit() → startQueue()
+     2. PrismaService.onModuleInit() → startKeepalive()
+     3. SSE сервисы запускаются при первом подключении клиента
+
+     ---
+     7. Внешние интеграции
+
+     7.1. Список интеграций
+
+     | Сервис       | Файл                                     | Тип           | Async | Timeout    | Retry     |
+     |--------------|------------------------------------------|---------------|-------|------------|-----------|
+     | Telegram Bot | /telegram/telegram.service.ts            | WebHook + API | ✓     | ❌          | ✓ (queue) |
+     | Email (SMTP) | /email/email.service.ts                  | SMTP          | ✓     | ✓ (mailer) | ✓ (queue) |
+     | Timepad      | /integrations/timepad/timepad.service.ts | REST          | ✓     | ❌          | ❌         |
+     | Novofon      | /integrations/novofon/novofon.service.ts | JSON-RPC      | ✓     | ❌          | ❌         |
+     | Pyrus CRM    | /integrations/pyrus/pyrus.service.ts     | REST          | ✓     | ❌          | ❌         |
+     | AWS S3       | @aws-sdk/client-s3                       | SDK           | ✓     | ✓          | ✓         |
+
+     7.2. Примеры вызовов
+
+     Timepad (БЕЗ timeout и retry):
+     const response = await firstValueFrom(
+       this.httpService.get<TimepadOrdersResponse>(
+         `${this.API_URL}/events/${eventId}/orders`,
+         { headers: { Authorization: `Bearer ${token}` } }
+       )
+     );
+
+     Novofon (БЕЗ timeout, использует fetch):
+     const response = await fetch(url, {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify(body)
+     });
+
+     7.3. Блокирующие операции в HTTP-обработчиках
+
+     | Endpoint                   | Операция          | Проблема                     |
+     |----------------------------|-------------------|------------------------------|
+     | POST /api/calls/initiate   | Novofon JSON-RPC  | БЕЗ timeout, может зависнуть |
+     | GET /api/timesheets/export | Excel генерация   | Синхронная, 5-15 сек         |
+     | POST /api/schedules/bulk   | Массовое создание | 100 queries последовательно  |
+     | GET /api/pyrus/tasks       | Pyrus API         | БЕЗ timeout, до 20000 items  |
+
+     ---
+     8. Обработка ошибок и логирование
+
+     8.1. Логирование
+
+     Логгер: NestJS Logger (встроенный)
+
+     private readonly logger = new Logger(ClassName.name);
+     this.logger.log('Info message');
+     this.logger.warn('Warning message');
+     this.logger.error('Error message', stack);
+     this.logger.debug('Debug message');  // Только в dev
+
+     Вывод: stdout/stderr (Docker logs)
+
+     Проблема: 548 вызовов console.log/console.error БЕЗ logger!
+
+     8.2. Централизованный обработчик ошибок
+
+     Файл: /backend/src/common/filters/prisma-exception.filter.ts
+
+     @Catch(
+       Prisma.PrismaClientKnownRequestError,
+       Prisma.PrismaClientUnknownRequestError,
+       Prisma.PrismaClientInitializationError,
+     )
+     export class PrismaExceptionFilter implements ExceptionFilter {
+       catch(exception, host: ArgumentsHost) {
+         // Маппинг Prisma кодов на HTTP статусы
+         // P2002 → 409 CONFLICT
+         // P2025 → 404 NOT_FOUND
+         // P2028 → 408 GATEWAY_TIMEOUT (retryable)
+         // Connection errors → 503 SERVICE_UNAVAILABLE (retryable)
+       }
+     }
+
+     8.3. Проблемные catch блоки
+
+     a) Telegram photo update (потеря ошибки):
+     // /telegram/telegram.service.ts (строка 937)
+     .catch((error) => {
+       this.logger.debug(`Failed to update...`);  // debug level в prod не виден!
+     });
+
+     b) Scripts с console.error:
+     // /scripts/import-clients.ts
+     importClients().catch(console.error);  // БЕЗ proper logging
+
+     ---
+     9. Критичные эндпоинты и сценарии
+
+     9.1. Наиболее нагруженные эндпоинты
+
+     | Endpoint                    | Операция          | Нагрузка                      |
+     |-----------------------------|-------------------|-------------------------------|
+     | GET /api/clients            | Список клиентов   | 7 queries + пагинация         |
+     | GET /api/schedules          | Расписание        | JOIN с группами, комнатами    |
+     | POST /api/attendance        | Отметка посещения | Транзакция + декремент visits |
+     | GET /api/data-events/stream | SSE подписка      | Long-lived connection         |
+
+     9.2. Тяжёлые операции
+
+     | Операция                 | Файл                            | Выполнение    | Проблема                   |
+     |--------------------------|---------------------------------|---------------|----------------------------|
+     | Excel export табелей     | timesheets.service.ts:681       | СИНХРОННО     | 7 queries + форматирование |
+     | Bulk создание расписаний | schedule-planner.service.ts:296 | СИНХРОННО     | N queries в цикле          |
+     | Email bulk рассылка      | email.service.ts:182            | ЧЕРЕЗ ОЧЕРЕДЬ | ✓ OK                       |
+     | Массовые уведомления     | notification-queue.service.ts   | ЧЕРЕЗ ОЧЕРЕДЬ | ✓ OK                       |
+
+     9.3. Что в очереди vs синхронно
+
+     ЧЕРЕЗ ОЧЕРЕДЬ (асинхронно):
+     - Telegram уведомления
+     - Email уведомления
+     - Push уведомления
+
+     СИНХРОННО В ЗАПРОСЕ:
+     - Excel генерация
+     - Bulk создание расписаний
+     - Click-to-call (Novofon)
+     - Импорт из Timepad
+
+     ---
+     10. Наблюдаемые проблемы (по коду)
+
+     10.1. Потенциальные проблемы
+
+     | #   | Проблема                | Файл                      | Severity |
+     |-----|-------------------------|---------------------------|----------|
+     | 1   | Novofon API БЕЗ timeout | novofon.service.ts:94     | CRITICAL |
+     | 2   | Excel export синхронный | timesheets.service.ts:681 | HIGH     |
+     | 3   | Timepad API БЕЗ timeout | timepad.service.ts:84     | HIGH     |
+     | 4   | Pyrus API БЕЗ timeout   | pyrus.service.ts:140      | HIGH     |
+     | 5   | 548 console.log вызовов | разные файлы              | MEDIUM   |
+     | 6   | N+1 в schedules.create  | schedules.service.ts:17   | MEDIUM   |
+
+     10.2. Конструкции требующие внимания
+
+     Соединения без закрытия: НЕТ (Prisma управляет пулом)
+
+     While без sleep:
+     // rental-applications.service.ts - while с датами
+     // Ограничен периодом заявки, но нет явного лимита
+     while (current <= appEnd) {
+       current.setDate(current.getDate() + 1);
+     }
+
+     For + запрос внутри:
+     // schedule-planner.service.ts (строка 296)
+     for (const scheduleDto of dto.schedules) {
+       await this.prisma.schedule.create({...});  // N queries
+     }
+
+     ---
+     11. Точная техническая инфа для ТЗ
+
+     11.1. Полный текст команд запуска
+
+     Dockerfile CMD:
+     CMD ["/app/docker-entrypoint.sh"]
+
+     docker-entrypoint.sh:
+     #!/bin/sh
+     exec node dist/src/main
+
+     docker-compose команды:
+     # Backend
+     command: ["/app/docker-entrypoint.sh"]
+
+     # Frontend
+     command: ["node", "server.js"]
+
+     # Nginx
+     command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+
+     # Certbot
+     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+     11.2. Конфигурация Node.js/NestJS
+
+     // main.ts
+     const app = await NestFactory.create(AppModule);
+
+     app.setGlobalPrefix('api');
+     app.useGlobalPipes(new ValidationPipe({
+       whitelist: true,
+       transform: true,
+     }));
+     app.useGlobalFilters(new PrismaExceptionFilter());
+     app.enableCors();
+
+     // Rate limiting
+     app.use(rateLimit({
+       windowMs: 60000,
+       max: 100
+     }));
+
+     // Graceful shutdown
+     process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+     process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+     await app.listen(3000);
+
+     11.3. Настройки Prisma ORM
+
+     schema.prisma:
+     datasource db {
+       provider  = "postgresql"
+       url       = env("DATABASE_URL")
+       directUrl = env("DIRECT_DATABASE_URL")
+     }
+
+     generator client {
+       provider = "prisma-client-js"
+     }
+
+     PrismaService конфигурация:
+     // Keepalive
+     KEEPALIVE_INTERVAL_MS = 15000
+     KEEPALIVE_PING_COUNT = 3
+
+     // Retry
+     MAX_CONNECT_RETRIES = 5
+     CONNECT_RETRY_BASE_DELAY_MS = 2000
+     MAX_RECONNECT_ATTEMPTS = 5
+     RECONNECT_BASE_DELAY_MS = 500
+
+     // Timeouts
+     HEALTH_CHECK_TIMEOUT_MS = 5000
+     SLOW_QUERY_THRESHOLD_MS = 1000
+
+     // Transaction defaults (helper)
+     maxRetries = 3
+     baseDelayMs = 100
+     timeoutMs = 30000
+
+     11.4. Список файлов по категориям
+
+     Доступ к БД:
+     /backend/src/prisma/prisma.service.ts
+     /backend/src/prisma/prisma-retry.extension.ts
+     /backend/src/prisma/prisma-transaction.helper.ts
+     /backend/src/common/filters/prisma-exception.filter.ts
+     /backend/prisma/schema.prisma
+
+     Фоновые задачи:
+     /backend/src/unified-notifications/notification-queue.service.ts
+     /backend/src/messages/messages-events.service.ts
+     /backend/src/common/events/data-events.service.ts
+     /backend/src/common/events/base-sse.service.ts
+
+     Внешние интеграции:
+     /backend/src/telegram/telegram.service.ts
+     /backend/src/email/email.service.ts
+     /backend/src/integrations/timepad/timepad.service.ts
+     /backend/src/integrations/novofon/novofon.service.ts
+     /backend/src/integrations/pyrus/pyrus.service.ts
+
+     Конфигурация:
+     /docker-compose.prod.yml
+     /backend/Dockerfile
+     /backend/docker-entrypoint.sh
+     /nginx/conf.d/artsvao.conf
+     /.env.production
+     /scripts/check-env.sh
+
+     ---
+     Резюме
+
+     ARTSVAO CRM - монолитное NestJS приложение с:
+     - ✅ Хорошей архитектурой БД (keepalive, retry, graceful shutdown)
+     - ✅ Встроенной системой очередей с circuit breaker
+     - ⚠️ HTTP интеграциями БЕЗ timeout (Novofon, Timepad, Pyrus)
+     - ⚠️ Синхронными тяжёлыми операциями (Excel, bulk create)
+     - ⚠️ 548 console.log вызовами вместо logger
+```

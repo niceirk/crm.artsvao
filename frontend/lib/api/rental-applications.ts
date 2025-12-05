@@ -110,4 +110,10 @@ export const rentalApplicationsApi = {
     });
     return response.data;
   },
+
+  // Удалить отдельный слот (Rental) из заявки
+  removeRental: async (applicationId: string, rentalId: string): Promise<RentalApplication> => {
+    const response = await apiClient.delete(`/rental-applications/${applicationId}/rentals/${rentalId}`);
+    return response.data;
+  },
 };

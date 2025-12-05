@@ -39,7 +39,7 @@ import type { ServiceCategory } from '@/lib/types/nomenclature';
 const formSchema = z.object({
   name: z.string().min(1, 'Введите название категории'),
   description: z.string().optional(),
-  defaultVatRate: z.coerce.number().min(0).max(100),
+  defaultVatRate: z.number().min(0).max(100),
 });
 
 type FormValues = z.infer<typeof formSchema>;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, ReactNode, useRef, CSSProperties } from 'react';
+import { useMemo, ReactNode, useRef, CSSProperties, useCallback, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import {
   Tooltip,
@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { CHESS_GRID, TOTAL_ROWS, generateTimeSlots, formatTimeLabel } from '@/lib/utils/chess-grid';
+import { useRoomPlannerScrollStore } from '@/lib/stores/room-planner-scroll-store';
 
 // Константы layout
 export const CHESS_LAYOUT = {
@@ -31,6 +32,7 @@ interface ChessGridLayoutProps {
   onCellMouseDown?: (columnId: string, slotIndex: number, e: React.MouseEvent) => void;
   onCellMouseEnter?: (columnId: string, slotIndex: number) => void;
   onCellMouseUp?: () => void;
+  onCellContextMenu?: (columnId: string, slotIndex: number, e: React.MouseEvent) => void;
   isCellSelected?: (columnId: string, slotIndex: number) => boolean;
   renderColumnHeader?: (column: ChessColumn) => ReactNode;
   renderColumnContent?: (column: ChessColumn, columnIndex: number) => ReactNode;
@@ -53,6 +55,7 @@ export function ChessGridLayout({
   onCellMouseDown,
   onCellMouseEnter,
   onCellMouseUp,
+  onCellContextMenu,
   isCellSelected,
   renderColumnHeader,
   renderColumnContent,
@@ -60,15 +63,33 @@ export function ChessGridLayout({
 }: ChessGridLayoutProps) {
   const timeSlots = useMemo(() => generateTimeSlots(), []);
 
+  // Сохранение и восстановление позиции скролла
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const { scrollLeft, setScrollLeft } = useRoomPlannerScrollStore();
+
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    setScrollLeft(e.currentTarget.scrollLeft);
+  }, [setScrollLeft]);
+
+  // Восстановление позиции при монтировании
+  useEffect(() => {
+    if (scrollContainerRef.current && scrollLeft > 0) {
+      scrollContainerRef.current.scrollLeft = scrollLeft;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Только при монтировании
+
   // Масштабированные размеры
   const scaledColumnWidth = Math.round(CHESS_LAYOUT.MIN_COLUMN_WIDTH * scale);
   const scaledTimeColumnWidth = Math.round(CHESS_LAYOUT.TIME_COLUMN_WIDTH * scale);
 
   return (
     <div
+      ref={scrollContainerRef}
       className="border rounded-lg bg-background overflow-x-auto overflow-y-hidden"
       style={{ height: containerHeight }}
       onMouseUp={onCellMouseUp}
+      onScroll={handleScroll}
     >
       {/* CSS Grid: время слева (sticky), заголовки сверху (sticky), данные справа */}
       <div
@@ -145,7 +166,7 @@ export function ChessGridLayout({
                 rowIndex % 2 === 0 ? 'font-medium' : 'text-[10px] opacity-60'
               )}
             >
-              <span className="-mt-1.5">
+              <span>
                 {rowIndex % 2 === 0 ? formatTimeLabel(time) : ''}
               </span>
             </div>
@@ -175,6 +196,7 @@ export function ChessGridLayout({
                   )}
                   onMouseDown={(e) => onCellMouseDown?.(column.id, rowIndex, e)}
                   onMouseEnter={() => onCellMouseEnter?.(column.id, rowIndex)}
+                  onContextMenu={(e) => onCellContextMenu?.(column.id, rowIndex, e)}
                 />
               );
             })}

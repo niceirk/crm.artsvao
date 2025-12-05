@@ -34,9 +34,9 @@ const formSchema = z.object({
   roomId: z.string().min(1, 'Выберите комнату'),
   name: z.string().min(1, 'Введите название'),
   number: z.string().optional(),
-  dailyRate: z.coerce.number().min(0, 'Введите стоимость за день'),
-  monthlyRate: z.coerce.number().min(0, 'Введите стоимость за месяц'),
-  status: z.enum(['AVAILABLE', 'OCCUPIED', 'MAINTENANCE']).default('AVAILABLE'),
+  dailyRate: z.number().min(0, 'Введите стоимость за день'),
+  monthlyRate: z.number().min(0, 'Введите стоимость за месяц'),
+  status: z.enum(['AVAILABLE', 'OCCUPIED', 'MAINTENANCE']),
   description: z.string().optional(),
   amenities: z.string().optional(),
 });

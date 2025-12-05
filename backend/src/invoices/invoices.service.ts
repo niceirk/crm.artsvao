@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { UpdateInvoiceDto } from './dto/update-invoice.dto';
@@ -10,6 +10,8 @@ import { updateWithVersionCheck } from '../common/utils/optimistic-lock.util';
 
 @Injectable()
 export class InvoicesService {
+  private readonly logger = new Logger(InvoicesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly qrGenerator: QRGeneratorService,
@@ -453,7 +455,7 @@ export class InvoicesService {
         });
       }
 
-      console.log(`✅ Создана подписка для клиента ${invoice.clientId} из счёта ${invoice.invoiceNumber}: ${item.serviceName}`);
+      this.logger.log(`✅ Создана подписка для клиента ${invoice.clientId} из счёта ${invoice.invoiceNumber}: ${item.serviceName}`);
     }
   }
 

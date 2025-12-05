@@ -11,18 +11,21 @@ const SLOW_QUERY_THRESHOLD_MS = 1000;
 const MAX_CONNECT_RETRIES = 5;
 const CONNECT_RETRY_BASE_DELAY_MS = 2000;
 
-// Keepalive настройки - более агрессивные для облачных БД
-// Облачные PostgreSQL (TWC, Supabase и др.) закрывают idle соединения через 5-10 минут
-const KEEPALIVE_INTERVAL_MS = 30000; // Проверка каждые 30 секунд
-const STALE_CONNECTION_THRESHOLD_MS = 60000; // Если idle > 1 минуты - делаем ping
+// Keepalive настройки - агрессивные для облачных БД (TWC закрывает idle за 5 минут)
+// ВАЖНО: Делаем ping ВСЕГДА при каждом интервале, чтобы поддерживать ВСЕ соединения в пуле
+const KEEPALIVE_INTERVAL_MS = 15000; // Ping каждые 15 секунд (было 30)
+const KEEPALIVE_PING_COUNT = 3; // Делаем несколько ping'ов чтобы задействовать разные соединения пула
 
 // Reconnect настройки
-const MAX_RECONNECT_ATTEMPTS = 3;
-const RECONNECT_BASE_DELAY_MS = 1000;
+const MAX_RECONNECT_ATTEMPTS = 5; // Увеличено с 3
+const RECONNECT_BASE_DELAY_MS = 500; // Уменьшено с 1000
 
 // Health check настройки
 const HEALTH_CHECK_TIMEOUT_MS = 5000;
-const HEALTH_CHECK_RETRIES = 2;
+const HEALTH_CHECK_RETRIES = 3; // Увеличено с 2
+
+// Диагностика - логирование статистики
+const DIAGNOSTIC_LOG_INTERVAL_MS = 30000; // Логировать статистику каждые 30 сек
 
 @Injectable()
 export class PrismaService
@@ -34,10 +37,23 @@ export class PrismaService
   // Keepalive state
   private keepaliveInterval: NodeJS.Timeout | null = null;
   private lastActivityTimestamp: number = Date.now();
+  private isShuttingDown = false;
 
   // Reconnect state
   private isReconnecting = false;
   private reconnectPromise: Promise<void> | null = null;
+
+  // Метрики для мониторинга
+  private keepalivePingCount = 0;
+  private keepaliveFailCount = 0;
+  private lastSuccessfulPing: Date | null = null;
+  private connectionErrorCount = 0;
+
+  // Диагностика
+  private diagnosticInterval: NodeJS.Timeout | null = null;
+  private activeQueryCount = 0;
+  private peakQueryCount = 0;
+  private totalQueryCount = 0;
 
   constructor() {
     super({
@@ -60,20 +76,64 @@ export class PrismaService
   }
 
   /**
-   * Настройка логирования медленных запросов
+   * Настройка логирования медленных запросов и мониторинга активных запросов
    */
   private setupQueryLogging() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this.$on as any)('query', (e: Prisma.QueryEvent) => {
+      this.totalQueryCount++;
+
       if (e.duration > SLOW_QUERY_THRESHOLD_MS) {
         this.logger.warn(
-          `SLOW QUERY (${e.duration}ms): ${e.query.substring(0, 200)}${e.query.length > 200 ? '...' : ''}`,
+          `[PRISMA] SLOW QUERY (${e.duration}ms): ${e.query.substring(0, 200)}${e.query.length > 200 ? '...' : ''}`,
         );
       } else if (process.env.NODE_ENV === 'development' && e.duration > 100) {
         // В development логируем запросы > 100ms для отладки
         this.logger.debug(`Query (${e.duration}ms): ${e.query.substring(0, 100)}...`);
       }
     });
+  }
+
+  /**
+   * Запуск периодического логирования статистики соединений для диагностики
+   */
+  private startDiagnosticLogging() {
+    if (this.diagnosticInterval) return;
+
+    this.diagnosticInterval = setInterval(() => {
+      if (this.isShuttingDown) return;
+
+      const stats = this.getConnectionStats();
+      const memUsage = process.memoryUsage();
+      const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+      const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+
+      this.logger.log(
+        `[PRISMA] Stats: queries=${this.totalQueryCount}, ` +
+        `pings=${stats.keepalivePingCount}, fails=${stats.keepaliveFailCount}, ` +
+        `errors=${stats.connectionErrorCount}, idle=${Math.round(stats.idleTimeMs / 1000)}s, ` +
+        `heap=${heapUsedMB}/${heapTotalMB}MB`,
+      );
+
+      // Предупреждение если много ошибок
+      if (stats.connectionErrorCount > 10) {
+        this.logger.warn(
+          `[PRISMA] High connection error count: ${stats.connectionErrorCount}`,
+        );
+      }
+    }, DIAGNOSTIC_LOG_INTERVAL_MS);
+
+    this.logger.log(`[PRISMA] Diagnostic logging started (interval: ${DIAGNOSTIC_LOG_INTERVAL_MS}ms)`);
+  }
+
+  /**
+   * Остановка диагностического логирования
+   */
+  private stopDiagnosticLogging() {
+    if (this.diagnosticInterval) {
+      clearInterval(this.diagnosticInterval);
+      this.diagnosticInterval = null;
+    }
   }
 
   /**
@@ -90,6 +150,8 @@ export class PrismaService
         );
         // Запускаем keepalive после успешного подключения
         this.startKeepalive();
+        // Запускаем диагностическое логирование
+        this.startDiagnosticLogging();
         this.lastActivityTimestamp = Date.now();
         return;
       } catch (error) {
@@ -114,54 +176,106 @@ export class PrismaService
   }
 
   async onModuleDestroy() {
-    // Останавливаем keepalive
-    this.stopKeepalive();
-    await this.$disconnect();
-    this.logger.log('Database disconnected');
+    this.logger.log('PrismaService: Starting graceful shutdown...');
+    this.isShuttingDown = true;
+
+    // Останавливаем keepalive и диагностику
+    this.stopKeepalive('module_destroy');
+    this.stopDiagnosticLogging();
+
+    try {
+      await this.$disconnect();
+      this.logger.log('Database disconnected successfully');
+    } catch (error) {
+      this.logger.error(`Error disconnecting from database: ${(error as Error).message}`);
+    }
+
+    this.logger.log(
+      `PrismaService shutdown complete. Stats: pings=${this.keepalivePingCount}, fails=${this.keepaliveFailCount}, errors=${this.connectionErrorCount}`,
+    );
   }
 
   /**
-   * Запуск keepalive механизма для поддержания соединений живыми
+   * Запуск keepalive механизма для поддержания соединений живыми.
+   * ВАЖНО: Делаем ping ВСЕГДА при каждом интервале, чтобы поддерживать ВСЕ соединения в пуле.
+   * Облачные БД (TWC) закрывают idle соединения через 5 минут.
    */
   private startKeepalive() {
     if (this.keepaliveInterval) {
-      return; // Уже запущен
+      this.logger.warn('Keepalive already running, skipping restart');
+      return;
+    }
+
+    if (this.isShuttingDown) {
+      this.logger.warn('Cannot start keepalive during shutdown');
+      return;
     }
 
     this.keepaliveInterval = setInterval(async () => {
-      const idleTime = Date.now() - this.lastActivityTimestamp;
+      // Защита от работы во время shutdown
+      if (this.isShuttingDown) {
+        return;
+      }
 
-      // Если соединение долго не использовалось - делаем ping
-      if (idleTime > STALE_CONNECTION_THRESHOLD_MS) {
+      // Делаем несколько ping'ов чтобы задействовать разные соединения из пула
+      let successCount = 0;
+      let failCount = 0;
+
+      for (let i = 0; i < KEEPALIVE_PING_COUNT; i++) {
         try {
           await this.$queryRaw`SELECT 1`;
-          this.logger.debug(
-            `Keepalive ping successful (idle time: ${Math.round(idleTime / 1000)}s)`,
-          );
-          this.lastActivityTimestamp = Date.now();
+          successCount++;
+          this.keepalivePingCount++;
+          this.lastSuccessfulPing = new Date();
         } catch (error) {
-          this.logger.warn(
-            `Keepalive ping failed, triggering reconnect: ${(error as Error).message}`,
-          );
-          // Запускаем reconnect в фоне
-          this.handleDeadConnection().catch((err) => {
-            this.logger.error(`Reconnect after keepalive failure failed: ${err.message}`);
-          });
+          failCount++;
+          this.keepaliveFailCount++;
+          const errorMessage = (error as Error).message;
+
+          // Логируем только первую ошибку в серии
+          if (failCount === 1) {
+            this.logger.warn(`Keepalive ping ${i + 1}/${KEEPALIVE_PING_COUNT} failed: ${errorMessage}`);
+          }
+
+          // Если это connection error - пробуем reconnect
+          if (this.isConnectionError(errorMessage)) {
+            this.connectionErrorCount++;
+            this.handleDeadConnection().catch((err) => {
+              this.logger.error(`Reconnect after keepalive failure failed: ${err.message}`);
+            });
+            break; // Прерываем цикл, reconnect сам восстановит
+          }
         }
+      }
+
+      this.lastActivityTimestamp = Date.now();
+
+      // Логируем только если все успешно или были ошибки
+      if (failCount === 0) {
+        this.logger.debug(
+          `Keepalive: ${successCount}/${KEEPALIVE_PING_COUNT} pings OK (total: ${this.keepalivePingCount})`,
+        );
+      } else if (successCount > 0) {
+        this.logger.warn(
+          `Keepalive: ${successCount}/${KEEPALIVE_PING_COUNT} pings OK, ${failCount} failed`,
+        );
       }
     }, KEEPALIVE_INTERVAL_MS);
 
-    this.logger.log('Database keepalive started');
+    this.logger.log(`Database keepalive started (interval: ${KEEPALIVE_INTERVAL_MS}ms, pings: ${KEEPALIVE_PING_COUNT})`);
   }
 
   /**
-   * Остановка keepalive механизма
+   * Остановка keepalive механизма.
+   * Должна вызываться ТОЛЬКО при shutdown.
    */
-  private stopKeepalive() {
+  private stopKeepalive(reason: string = 'unknown') {
     if (this.keepaliveInterval) {
       clearInterval(this.keepaliveInterval);
       this.keepaliveInterval = null;
-      this.logger.log('Database keepalive stopped');
+      this.logger.log(
+        `Database keepalive stopped (reason: ${reason}, total pings: ${this.keepalivePingCount}, fails: ${this.keepaliveFailCount})`,
+      );
     }
   }
 
@@ -170,6 +284,12 @@ export class PrismaService
    * Защищён от множественных одновременных вызовов.
    */
   async handleDeadConnection(): Promise<void> {
+    // Не делаем reconnect во время shutdown
+    if (this.isShuttingDown) {
+      this.logger.debug('Reconnect skipped: shutdown in progress');
+      return;
+    }
+
     // Предотвращаем множественные одновременные reconnect
     if (this.isReconnecting && this.reconnectPromise) {
       this.logger.debug('Reconnect already in progress, waiting...');
@@ -305,5 +425,23 @@ export class PrismaService
    */
   get withRetry() {
     return this.$extends(retryExtension);
+  }
+
+  /**
+   * Получение статистики соединения для мониторинга.
+   * Используется в health check endpoint.
+   */
+  getConnectionStats() {
+    return {
+      isShuttingDown: this.isShuttingDown,
+      isReconnecting: this.isReconnecting,
+      keepaliveRunning: this.keepaliveInterval !== null,
+      keepalivePingCount: this.keepalivePingCount,
+      keepaliveFailCount: this.keepaliveFailCount,
+      connectionErrorCount: this.connectionErrorCount,
+      lastSuccessfulPing: this.lastSuccessfulPing,
+      lastActivityTimestamp: new Date(this.lastActivityTimestamp),
+      idleTimeMs: Date.now() - this.lastActivityTimestamp,
+    };
   }
 }

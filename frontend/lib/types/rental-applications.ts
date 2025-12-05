@@ -132,6 +132,7 @@ export interface CreateRentalApplicationDto {
   eventType?: string;
   notes?: string;
   ignoreConflicts?: boolean;
+  hourlySlots?: HourlySlotDto[]; // Массив почасовых слотов для HOURLY
 }
 
 export interface UpdateRentalApplicationDto extends Partial<CreateRentalApplicationDto> {
@@ -230,11 +231,18 @@ export const PERIOD_TYPE_LABELS: Record<RentalPeriodType, string> = {
   SLIDING_MONTH: 'Скользящий месяц',
 };
 
-// Интерфейс для почасовых временных слотов
+// Интерфейс для почасовых временных слотов (используется в форме)
 export interface HourlyTimeSlot {
   date: Date;
   startHour: number; // 9-21
   endHour: number;   // 10-22
+}
+
+// Интерфейс для API почасовых слотов
+export interface HourlySlotDto {
+  date: string;      // ISO date "2025-01-15"
+  startTime: string; // "09:00"
+  endTime: string;   // "10:00"
 }
 
 // Статус возможности редактирования заявки

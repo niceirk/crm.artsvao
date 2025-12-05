@@ -41,8 +41,8 @@ import type { NomenclatureItem } from '@/lib/types/nomenclature';
 const formSchema = z.object({
   name: z.string().min(1, 'Введите название'),
   description: z.string().optional(),
-  price: z.coerce.number().min(0, 'Цена не может быть отрицательной'),
-  vatRate: z.coerce.number().min(0).max(100).optional(),
+  price: z.number().min(0, 'Цена не может быть отрицательной'),
+  vatRate: z.number().min(0).max(100).optional(),
   categoryId: z.string().optional(),
   isActive: z.boolean(),
 });

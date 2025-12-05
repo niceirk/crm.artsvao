@@ -27,11 +27,7 @@ export const useCreateRental = () => {
       toast.success('Аренда создана');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка создания аренды',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка создания аренды');
     },
   });
 };
@@ -65,11 +61,7 @@ export const useUpdateRental = () => {
           queryClient.setQueryData(queryKey, data);
         });
       }
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка обновления аренды',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка обновления аренды');
     },
     onSettled: () => {
       // Always refetch after error or success
@@ -88,11 +80,7 @@ export const useDeleteRental = () => {
       toast.success('Аренда удалена');
     },
     onError: (error: any) => {
-      toast({
-        title: 'Ошибка',
-        description: error.response?.data?.message || 'Ошибка удаления аренды',
-        variant: 'destructive',
-      });
+      toast.error(error.response?.data?.message || 'Ошибка удаления аренды');
     },
   });
 };

@@ -112,6 +112,7 @@ export function DatePicker({
 
   return (
     <div className={cn('relative', className)}>
+      {/* @ts-expect-error - react-input-mask types incompatible with React 19 */}
       <InputMask
         mask="99.99.9999"
         value={inputValue}

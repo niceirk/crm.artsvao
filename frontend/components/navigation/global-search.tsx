@@ -68,7 +68,7 @@ export function GlobalSearch() {
                   <CommandItem
                     key={item.href}
                     value={item.title}
-                    onSelect={() => handleSelect(item.href)}
+                    onSelect={() => item.href && handleSelect(item.href)}
                   >
                     <Icon className="mr-2 h-4 w-4" />
                     <span>{item.title}</span>
