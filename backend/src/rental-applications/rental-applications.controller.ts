@@ -24,7 +24,7 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { RentalApplicationStatus, RentalType } from '@prisma/client';
-import { AvailabilityResult, PriceCalculation } from './types';
+import { AvailabilityResult, PriceCalculation, HourlyOccupancyResponse } from './types';
 
 @Controller('rental-applications')
 @UseGuards(JwtAuthGuard)
@@ -37,7 +37,7 @@ export class RentalApplicationsController {
   }
 
   @Post('hourly-occupancy')
-  getHourlyOccupancy(@Body() dto: GetHourlyOccupancyDto): Promise<Record<string, boolean>> {
+  getHourlyOccupancy(@Body() dto: GetHourlyOccupancyDto): Promise<HourlyOccupancyResponse> {
     return this.rentalApplicationsService.getHourlyOccupancy(dto);
   }
 

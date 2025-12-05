@@ -202,25 +202,32 @@ function mapApplicationToFormData(app: RentalApplication): FormData {
       app.rentals.forEach((rental: any) => {
         const rentalDate = new Date(rental.date);
 
-        // Извлечь часы из startTime/endTime
-        let rentalStartHour = 9, rentalEndHour = 10;
+        // Извлечь часы и минуты из startTime/endTime
+        let rentalStartHour = 9, rentalStartMinute = 0;
+        let rentalEndHour = 10, rentalEndMinute = 0;
         if (rental.startTime) {
           const timeStr = rental.startTime.includes('T')
             ? rental.startTime.slice(11, 16)
-            : rental.startTime;
-          rentalStartHour = parseInt(timeStr.split(':')[0]);
+            : rental.startTime.slice(0, 5);
+          const [hourStr, minStr] = timeStr.split(':');
+          rentalStartHour = parseInt(hourStr);
+          rentalStartMinute = parseInt(minStr) || 0;
         }
         if (rental.endTime) {
           const timeStr = rental.endTime.includes('T')
             ? rental.endTime.slice(11, 16)
-            : rental.endTime;
-          rentalEndHour = parseInt(timeStr.split(':')[0]);
+            : rental.endTime.slice(0, 5);
+          const [hourStr, minStr] = timeStr.split(':');
+          rentalEndHour = parseInt(hourStr);
+          rentalEndMinute = parseInt(minStr) || 0;
         }
 
         selectedHourlySlots.push({
           date: rentalDate,
           startHour: rentalStartHour,
-          endHour: rentalEndHour
+          startMinute: rentalStartMinute,
+          endHour: rentalEndHour,
+          endMinute: rentalEndMinute,
         });
       });
 
@@ -233,18 +240,23 @@ function mapApplicationToFormData(app: RentalApplication): FormData {
       console.log('HOURLY slots restored from rentals:', selectedHourlySlots.length);
     } else {
       // Fallback: создать слоты из startTime/endTime (для старых заявок без rentals)
-      const startHour = parseInt(startTime.split(':')[0]);
-      const endHour = parseInt(endTime.split(':')[0]);
+      const [startHourStr, startMinStr] = startTime.split(':');
+      const [endHourStr, endMinStr] = endTime.split(':');
+      const startHour = parseInt(startHourStr);
+      const startMinute = parseInt(startMinStr) || 0;
+      const endHour = parseInt(endHourStr);
+      const endMinute = parseInt(endMinStr) || 0;
       const datesForSlots = selectedDays.length > 0 ? selectedDays : [startDate];
 
+      // Для старых заявок создаем один слот на весь диапазон
       datesForSlots.forEach(date => {
-        for (let hour = startHour; hour < endHour; hour++) {
-          selectedHourlySlots.push({
-            date,
-            startHour: hour,
-            endHour: hour + 1,
-          });
-        }
+        selectedHourlySlots.push({
+          date,
+          startHour,
+          startMinute,
+          endHour,
+          endMinute,
+        });
       });
 
       console.log('HOURLY slots created from startTime/endTime:', selectedHourlySlots);
@@ -542,13 +554,22 @@ export default function EditRentalPage() {
 
     if (!rentalType || !periodType || !formData.startDate || !formData.clientId) return;
 
-    // Для HOURLY - преобразуем selectedHourlySlots в формат API
+    // Для HOURLY - преобразуем selectedHourlySlots в формат API (с минутами)
     const hourlySlots = formData.category === 'hourly' && formData.selectedHourlySlots.length > 0
       ? formData.selectedHourlySlots.map(slot => ({
           date: format(slot.date, 'yyyy-MM-dd'),
-          startTime: `${slot.startHour.toString().padStart(2, '0')}:00`,
-          endTime: `${slot.endHour.toString().padStart(2, '0')}:00`,
+          startTime: `${slot.startHour.toString().padStart(2, '0')}:${(slot.startMinute || 0).toString().padStart(2, '0')}`,
+          endTime: `${slot.endHour.toString().padStart(2, '0')}:${(slot.endMinute || 0).toString().padStart(2, '0')}`,
         }))
+      : undefined;
+
+    // Считаем общее количество часов для HOURLY (может быть дробным)
+    const hourlyQuantity = formData.category === 'hourly' && formData.selectedHourlySlots.length > 0
+      ? formData.selectedHourlySlots.reduce((sum, slot) => {
+          const startMin = slot.startHour * 60 + (slot.startMinute || 0);
+          const endMin = slot.endHour * 60 + (slot.endMinute || 0);
+          return sum + (endMin - startMin);
+        }, 0) / 60
       : undefined;
 
     const dto = {
@@ -567,7 +588,7 @@ export default function EditRentalPage() {
       adjustedPrice: formData.adjustedPrice || undefined,
       adjustmentReason: formData.adjustmentReason || undefined,
       priceUnit: priceCalculation?.priceUnit || 'DAY',
-      quantity: formData.category === 'hourly' ? formData.selectedHourlySlots.length : (priceCalculation?.quantity || 1),
+      quantity: formData.category === 'hourly' ? (hourlyQuantity || 1) : (priceCalculation?.quantity || 1),
       paymentType: formData.paymentType,
       eventType: formData.eventType || undefined,
       notes: formData.notes || undefined,

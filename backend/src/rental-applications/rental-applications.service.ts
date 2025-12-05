@@ -293,11 +293,27 @@ export class RentalApplicationsService {
    * Получение занятых почасовых слотов для помещения
    * Оптимизированный батчевый запрос для загрузки всех слотов за один раз
    * Проверяет все источники: Rental, Event, Schedule, Reservation
-   * @returns Map: "yyyy-MM-dd_HH" -> boolean (занят)
+   * @returns { [key: "yyyy-MM-dd_HH"]: boolean, detailed: { [date]: intervals[] } }
    */
-  async getHourlyOccupancy(dto: GetHourlyOccupancyDto): Promise<Record<string, boolean>> {
+  async getHourlyOccupancy(dto: GetHourlyOccupancyDto): Promise<{
+    slots: Record<string, boolean>;
+    detailed: Record<string, Array<{
+      startHour: number;
+      startMinute: number;
+      endHour: number;
+      endMinute: number;
+      source: 'rental' | 'schedule' | 'event' | 'reservation';
+    }>>;
+  }> {
     const { roomId, dates } = dto;
     const occupiedSlots: Record<string, boolean> = {};
+    const detailed: Record<string, Array<{
+      startHour: number;
+      startMinute: number;
+      endHour: number;
+      endMinute: number;
+      source: 'rental' | 'schedule' | 'event' | 'reservation';
+    }>> = {};
     const parsedDates = dates.map(d => new Date(d));
 
     // Параллельно загружаем все источники занятости
@@ -359,30 +375,52 @@ export class RentalApplicationsService {
       }),
     ]);
 
-    // Объединяем все занятые слоты из всех источников
-    const allBookings = [...rentals, ...events, ...schedules, ...reservations];
+    // Обрабатываем каждый источник с указанием типа
+    const processBookings = (
+      bookings: Array<{ date: Date; startTime: Date; endTime: Date }>,
+      source: 'rental' | 'schedule' | 'event' | 'reservation',
+    ) => {
+      for (const booking of bookings) {
+        // Форматируем дату в локальном часовом поясе (sv-SE даёт формат YYYY-MM-DD)
+        const dateStr = booking.date.toLocaleDateString('sv-SE');
 
-    // Для каждого бронирования определяем какие часовые слоты заняты
-    for (const booking of allBookings) {
-      // Форматируем дату в локальном часовом поясе (sv-SE даёт формат YYYY-MM-DD)
-      const dateStr = booking.date.toLocaleDateString('sv-SE');
+        // Получаем часы и минуты в UTC (Prisma возвращает TIME как Date в UTC)
+        const startHour = booking.startTime.getUTCHours();
+        const startMinute = booking.startTime.getUTCMinutes();
+        const endHour = booking.endTime.getUTCHours();
+        const endMinute = booking.endTime.getUTCMinutes();
 
-      // Получаем часы начала и конца в UTC (Prisma возвращает TIME как Date в UTC)
-      const startHour = booking.startTime.getUTCHours();
-      const endHour = booking.endTime.getUTCHours();
+        // Добавляем в detailed
+        if (!detailed[dateStr]) {
+          detailed[dateStr] = [];
+        }
+        detailed[dateStr].push({ startHour, startMinute, endHour, endMinute, source });
 
-      // Помечаем все часовые слоты в диапазоне как занятые
-      // Слот считается занятым если бронирование пересекается с ним
-      for (let hour = 9; hour <= 21; hour++) {
-        // Проверяем пересечение: слот [hour, hour+1] и бронирование [startHour, endHour]
-        if (hour < endHour && hour + 1 > startHour) {
-          const slotKey = `${dateStr}_${hour}`;
-          occupiedSlots[slotKey] = true;
+        // Для обратной совместимости: помечаем часовые слоты как занятые
+        // Слот считается занятым если бронирование пересекается с ним
+        const bookingStartMinutes = startHour * 60 + startMinute;
+        const bookingEndMinutes = endHour * 60 + endMinute;
+
+        for (let hour = 9; hour <= 21; hour++) {
+          const slotStartMinutes = hour * 60;
+          const slotEndMinutes = (hour + 1) * 60;
+
+          // Проверяем пересечение: слот [hour:00, hour+1:00] и бронирование [start, end]
+          if (slotStartMinutes < bookingEndMinutes && slotEndMinutes > bookingStartMinutes) {
+            const slotKey = `${dateStr}_${hour}`;
+            occupiedSlots[slotKey] = true;
+          }
         }
       }
-    }
+    };
 
-    return occupiedSlots;
+    // Обрабатываем все источники
+    processBookings(rentals, 'rental');
+    processBookings(events, 'event');
+    processBookings(schedules, 'schedule');
+    processBookings(reservations, 'reservation');
+
+    return { slots: occupiedSlots, detailed };
   }
 
   /**

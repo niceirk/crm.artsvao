@@ -293,11 +293,20 @@ export default function NewRentalPage() {
       const room = rooms?.find(r => r.id === formData.roomId);
       if (!room) return;
 
+      // Считаем общее количество минут
+      const totalMinutes = formData.selectedHourlySlots.reduce((sum, slot) => {
+        const startMin = slot.startHour * 60 + (slot.startMinute || 0);
+        const endMin = slot.endHour * 60 + (slot.endMinute || 0);
+        return sum + (endMin - startMin);
+      }, 0);
+      // Количество часов (может быть дробным, например 1.5)
+      const quantityHours = totalMinutes / 60;
+
       setPriceCalculation({
         basePrice: Number(room.hourlyRate),
-        quantity: formData.selectedHourlySlots.length,
+        quantity: quantityHours,
         priceUnit: 'HOUR',
-        totalPrice: Number(room.hourlyRate) * formData.selectedHourlySlots.length,
+        totalPrice: Number(room.hourlyRate) * quantityHours,
       });
 
       setFormData(prev => ({ ...prev, basePrice: Number(room.hourlyRate) }));
@@ -410,12 +419,20 @@ export default function NewRentalPage() {
       const room = rooms?.find(r => r.id === formData.roomId);
       if (!room) return;
 
-      // Преобразуем слоты в формат API
+      // Преобразуем слоты в формат API (с минутами)
       const hourlySlots = formData.selectedHourlySlots.map(slot => ({
         date: format(slot.date, 'yyyy-MM-dd'),
-        startTime: `${slot.startHour.toString().padStart(2, '0')}:00`,
-        endTime: `${slot.endHour.toString().padStart(2, '0')}:00`,
+        startTime: `${slot.startHour.toString().padStart(2, '0')}:${(slot.startMinute || 0).toString().padStart(2, '0')}`,
+        endTime: `${slot.endHour.toString().padStart(2, '0')}:${(slot.endMinute || 0).toString().padStart(2, '0')}`,
       }));
+
+      // Считаем общее количество минут для quantity
+      const totalMinutes = formData.selectedHourlySlots.reduce((sum, slot) => {
+        const startMin = slot.startHour * 60 + (slot.startMinute || 0);
+        const endMin = slot.endHour * 60 + (slot.endMinute || 0);
+        return sum + (endMin - startMin);
+      }, 0);
+      const quantityHours = totalMinutes / 60;
 
       // Определяем диапазон дат
       const sortedDates = [...formData.selectedHourlySlots]
@@ -439,13 +456,16 @@ export default function NewRentalPage() {
           adjustedPrice: formData.adjustedPrice || undefined,
           adjustmentReason: formData.adjustmentReason || undefined,
           priceUnit: 'HOUR',
-          quantity: hourlySlots.length,
+          quantity: quantityHours,
           paymentType: formData.paymentType,
           eventType: formData.eventType || undefined,
           notes: formData.notes || undefined,
           ignoreConflicts,
         });
-        toast.success(`Создана заявка на ${hourlySlots.length} ч. почасовой аренды`);
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        const timeStr = hours > 0 ? `${hours}ч${mins > 0 ? ` ${mins}м` : ''}` : `${mins}м`;
+        toast.success(`Создана заявка на ${timeStr} почасовой аренды`);
         router.push('/rentals');
       } catch (error: any) {
         // Обработка конфликтов
@@ -981,14 +1001,19 @@ export default function NewRentalPage() {
                                 selectedSlots={formData.selectedHourlySlots}
                                 onSlotToggle={(slot) => {
                                   setFormData(prev => {
+                                    // Сравниваем по дате, часу начала и минутам начала
                                     const exists = prev.selectedHourlySlots.some(
-                                      s => isSameDay(s.date, slot.date) && s.startHour === slot.startHour
+                                      s => isSameDay(s.date, slot.date) &&
+                                           s.startHour === slot.startHour &&
+                                           (s.startMinute || 0) === (slot.startMinute || 0)
                                     );
                                     return {
                                       ...prev,
                                       selectedHourlySlots: exists
                                         ? prev.selectedHourlySlots.filter(
-                                            s => !(isSameDay(s.date, slot.date) && s.startHour === slot.startHour)
+                                            s => !(isSameDay(s.date, slot.date) &&
+                                                   s.startHour === slot.startHour &&
+                                                   (s.startMinute || 0) === (slot.startMinute || 0))
                                           )
                                         : [...prev.selectedHourlySlots, slot],
                                     };

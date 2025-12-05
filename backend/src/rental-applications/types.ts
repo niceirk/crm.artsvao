@@ -23,3 +23,16 @@ export interface PriceCalculation {
     price: number;
   }[];
 }
+
+export interface OccupiedInterval {
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+  source: 'rental' | 'schedule' | 'event' | 'reservation';
+}
+
+export interface HourlyOccupancyResponse {
+  slots: Record<string, boolean>;
+  detailed: Record<string, OccupiedInterval[]>;
+}

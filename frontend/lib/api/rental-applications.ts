@@ -11,7 +11,14 @@ import {
   AvailabilityResult,
   PriceCalculation,
   EditStatusResult,
+  OccupiedInterval,
 } from '../types/rental-applications';
+
+// Тип ответа API для занятости слотов
+export interface HourlyOccupancyResponse {
+  slots: Record<string, boolean>;
+  detailed: Record<string, OccupiedInterval[]>;
+}
 
 export const rentalApplicationsApi = {
   // Получить все заявки
@@ -89,7 +96,7 @@ export const rentalApplicationsApi = {
   },
 
   // Получить занятые почасовые слоты (батчевый запрос)
-  getHourlyOccupancy: async (roomId: string, dates: string[]): Promise<Record<string, boolean>> => {
+  getHourlyOccupancy: async (roomId: string, dates: string[]): Promise<HourlyOccupancyResponse> => {
     const response = await apiClient.post('/rental-applications/hourly-occupancy', {
       roomId,
       dates,

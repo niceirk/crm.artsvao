@@ -234,8 +234,19 @@ export const PERIOD_TYPE_LABELS: Record<RentalPeriodType, string> = {
 // Интерфейс для почасовых временных слотов (используется в форме)
 export interface HourlyTimeSlot {
   date: Date;
-  startHour: number; // 9-21
-  endHour: number;   // 10-22
+  startHour: number;   // 9-21
+  startMinute: number; // 0, 15, 30, 45
+  endHour: number;     // 9-22
+  endMinute: number;   // 0, 15, 30, 45
+}
+
+// Интерфейс для занятых интервалов (от backend)
+export interface OccupiedInterval {
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+  source?: 'rental' | 'schedule' | 'event' | 'reservation';
 }
 
 // Интерфейс для API почасовых слотов
