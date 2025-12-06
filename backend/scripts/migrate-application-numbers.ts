@@ -22,19 +22,28 @@ async function main() {
 
   console.log(`Найдено ${applications.length} заявок для миграции`);
 
-  for (const app of applications) {
-    // Извлекаем последнюю часть номера (например, "000183" из "АР-25-000183")
+  // Подготовка данных для батчевого обновления
+  const updates = applications.map(app => {
     const parts = app.applicationNumber.split('-');
     const numericPart = parts[parts.length - 1];
     const number = parseInt(numericPart);
     const newNumber = number.toString().padStart(7, '0');
+    return { id: app.id, oldNumber: app.applicationNumber, newNumber };
+  });
 
-    console.log(`${app.applicationNumber} -> ${newNumber}`);
+  // Обрабатываем батчами по 100 записей
+  const BATCH_SIZE = 100;
+  for (let i = 0; i < updates.length; i += BATCH_SIZE) {
+    const batch = updates.slice(i, i + BATCH_SIZE);
 
-    await prisma.rentalApplication.update({
-      where: { id: app.id },
-      data: { applicationNumber: newNumber },
-    });
+    await prisma.$transaction(
+      batch.map(u => prisma.rentalApplication.update({
+        where: { id: u.id },
+        data: { applicationNumber: u.newNumber },
+      }))
+    );
+
+    console.log(`Обработано ${Math.min(i + BATCH_SIZE, updates.length)}/${updates.length} заявок`);
   }
 
   console.log('Миграция завершена!');

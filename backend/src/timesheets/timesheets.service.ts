@@ -49,7 +49,7 @@ export class TimesheetsService {
     }
 
     // 2. Получить все занятия группы за месяц (включая компенсированные отмены)
-    const schedules = await this.prisma.schedule.findMany({
+    const schedules = await this.prisma.safe.schedule.findMany({
       where: {
         groupId,
         date: {
@@ -78,7 +78,7 @@ export class TimesheetsService {
     ).length;
 
     // 3. Получить участников группы (текущих и тех, кто был активен в этом месяце)
-    const members = await this.prisma.groupMember.findMany({
+    const members = await this.prisma.safe.groupMember.findMany({
       where: {
         groupId,
         OR: [
@@ -119,7 +119,7 @@ export class TimesheetsService {
     const clientIds = members.map(m => m.clientId);
     const scheduleIds = schedules.map(s => s.id);
 
-    const attendances = await this.prisma.attendance.findMany({
+    const attendances = await this.prisma.safe.attendance.findMany({
       where: {
         scheduleId: { in: scheduleIds },
         clientId: { in: clientIds },
@@ -150,7 +150,7 @@ export class TimesheetsService {
     });
 
     // 5. Получить абонементы клиентов для этого месяца
-    const subscriptions = await this.prisma.subscription.findMany({
+    const subscriptions = await this.prisma.safe.subscription.findMany({
       where: {
         clientId: { in: clientIds },
         groupId,
@@ -174,8 +174,26 @@ export class TimesheetsService {
       },
     });
 
+    // 5.1. Получить активный тип абонемента UNLIMITED для группы (fallback для клиентов без абонемента)
+    const defaultSubscriptionType = await this.prisma.subscriptionType.findFirst({
+      where: {
+        groupId,
+        type: 'UNLIMITED',
+        isActive: true,
+      },
+      select: {
+        price: true,
+        pricePerLesson: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    const fallbackPrice = defaultSubscriptionType ? Number(defaultSubscriptionType.price) : 0;
+    const fallbackPricePerLesson = defaultSubscriptionType?.pricePerLesson
+      ? Number(defaultSubscriptionType.pricePerLesson)
+      : (schedules.length > 0 ? Math.round(fallbackPrice / schedules.length) : 0);
+
     // 6. Получить существующие компенсации
-    const existingCompensations = await this.prisma.compensation.findMany({
+    const existingCompensations = await this.prisma.safe.compensation.findMany({
       where: {
         clientId: { in: clientIds },
         groupId,
@@ -185,7 +203,7 @@ export class TimesheetsService {
 
     // 6.1. Получить компенсации из медицинских справок, применённые к этому месяцу
     // (для случаев, когда справка подана позже и компенсация перенесена на другой месяц)
-    const medCertCompensations = await this.prisma.medicalCertificateSchedule.findMany({
+    const medCertCompensations = await this.prisma.safe.medicalCertificateSchedule.findMany({
       where: {
         compensationMonth: currentMonth,
         medicalCertificate: {
@@ -219,7 +237,7 @@ export class TimesheetsService {
     }
 
     // 6.2. Получить справки, которые были применены к занятиям этого табеля
-    const medCertSchedules = await this.prisma.medicalCertificateSchedule.findMany({
+    const medCertSchedules = await this.prisma.safe.medicalCertificateSchedule.findMany({
       where: {
         scheduleId: { in: scheduleIds },
         medicalCertificate: {
@@ -335,7 +353,7 @@ export class TimesheetsService {
       ).length;
 
       // Рассчитать компенсацию
-      // Приоритет: subscriptionType.pricePerLesson → subscription.pricePerLesson → fallback
+      // Приоритет: subscriptionType.pricePerLesson → subscription.pricePerLesson → fallback из группы
       let pricePerLesson = 0;
       if (clientSubscription?.subscriptionType?.pricePerLesson) {
         pricePerLesson = Number(clientSubscription.subscriptionType.pricePerLesson);
@@ -344,6 +362,9 @@ export class TimesheetsService {
       } else if (clientSubscription && schedules.length > 0) {
         const paidPrice = Number(clientSubscription.paidPrice);
         pricePerLesson = Math.round(paidPrice / schedules.length);
+      } else {
+        // Fallback: использовать цену из активного UNLIMITED типа абонемента группы
+        pricePerLesson = fallbackPricePerLesson;
       }
 
       // Применяем скидку клиента к цене за занятие для расчета компенсации
@@ -374,9 +395,10 @@ export class TimesheetsService {
       }
 
       // Расчет счета на следующий месяц
+      // Если у клиента нет абонемента, используем цену из активного UNLIMITED типа группы
       const subscriptionTypePrice = clientSubscription
         ? Number(clientSubscription.subscriptionType.price)
-        : 0;
+        : fallbackPrice;
       const priceWithDiscount = subscriptionTypePrice * (1 - discountPercent / 100);
 
       // Перерасчёт = Компенсации - Задолженность (с учётом сохранённых настроек)
@@ -467,32 +489,36 @@ export class TimesheetsService {
       };
     });
 
-    // 10. Batch upsert компенсаций (один запрос вместо N!)
+    // 10. Batch upsert компенсаций (батчами по 100 для снижения нагрузки)
     if (compensationsToUpsert.length > 0) {
-      await this.prisma.$transaction(
-        compensationsToUpsert.map((c) =>
-          this.prisma.compensation.upsert({
-            where: {
-              clientId_groupId_month: {
+      const BATCH_SIZE = 100;
+      for (let i = 0; i < compensationsToUpsert.length; i += BATCH_SIZE) {
+        const batch = compensationsToUpsert.slice(i, i + BATCH_SIZE);
+        await this.prisma.$transaction(
+          batch.map((c) =>
+            this.prisma.compensation.upsert({
+              where: {
+                clientId_groupId_month: {
+                  clientId: c.clientId,
+                  groupId,
+                  month: currentMonth,
+                },
+              },
+              update: {
+                excusedCount: c.excusedCount,
+                calculatedAmount: c.calculatedAmount,
+              },
+              create: {
                 clientId: c.clientId,
                 groupId,
                 month: currentMonth,
+                excusedCount: c.excusedCount,
+                calculatedAmount: c.calculatedAmount,
               },
-            },
-            update: {
-              excusedCount: c.excusedCount,
-              calculatedAmount: c.calculatedAmount,
-            },
-            create: {
-              clientId: c.clientId,
-              groupId,
-              month: currentMonth,
-              excusedCount: c.excusedCount,
-              calculatedAmount: c.calculatedAmount,
-            },
-          })
-        )
-      );
+            })
+          )
+        );
+      }
     }
 
     const clients = clientsData;
@@ -618,7 +644,7 @@ export class TimesheetsService {
    * Получить неоплаченные счета клиентов по группе для расчёта задолженности
    */
   async getUnpaidInvoices(clientIds: string[], groupId: string) {
-    return this.prisma.invoice.findMany({
+    return this.prisma.safe.invoice.findMany({
       where: {
         clientId: { in: clientIds },
         status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
@@ -761,7 +787,7 @@ export class TimesheetsService {
     // === ОПТИМИЗАЦИЯ: Загружаем все данные одним запросом ===
 
     // 1. Получаем участников группы
-    const groupMembers = await this.prisma.groupMember.findMany({
+    const groupMembers = await this.prisma.safe.groupMember.findMany({
       where: {
         groupId,
         status: { in: [GroupMemberStatus.ACTIVE, GroupMemberStatus.EXPELLED] },
@@ -787,11 +813,20 @@ export class TimesheetsService {
       }
     }
 
-    // 3. Загружаем все расписания для этих дат одним запросом
-    const schedules = await this.prisma.schedule.findMany({
+    // 3. Загружаем расписания только для дат из файла (оптимизация)
+    const minDate = [...uniqueDates].sort()[0];
+    const maxDate = [...uniqueDates].sort().pop();
+    const schedules = await this.prisma.safe.schedule.findMany({
       where: {
         groupId,
         status: { not: CalendarEventStatus.CANCELLED },
+        // Фильтруем по диапазону дат из файла
+        ...(minDate && maxDate ? {
+          date: {
+            gte: new Date(minDate),
+            lte: new Date(maxDate + 'T23:59:59.999Z'),
+          },
+        } : {}),
       },
       select: { id: true, date: true },
     });
@@ -807,7 +842,7 @@ export class TimesheetsService {
     const scheduleIds = schedules.map(s => s.id);
     const clientIds = groupMembers.map(m => m.clientId);
 
-    const existingAttendances = await this.prisma.attendance.findMany({
+    const existingAttendances = await this.prisma.safe.attendance.findMany({
       where: {
         scheduleId: { in: scheduleIds },
         clientId: { in: clientIds },
@@ -963,21 +998,30 @@ export class TimesheetsService {
       summary.imported++;
     }
 
-    // === Batch операции ===
-    if (toCreate.length > 0 || toUpdate.length > 0) {
-      await this.prisma.$transaction([
-        // Batch создание новых записей
-        ...(toCreate.length > 0
-          ? [this.prisma.attendance.createMany({ data: toCreate })]
-          : []),
-        // Batch обновление существующих записей
-        ...toUpdate.map((u) =>
-          this.prisma.attendance.update({
-            where: { id: u.id },
-            data: { status: u.status, markedAt: now },
-          }),
-        ),
-      ]);
+    // === Batch операции (батчами по 100 для снижения нагрузки) ===
+    const BATCH_SIZE = 100;
+
+    // Batch создание новых записей
+    if (toCreate.length > 0) {
+      for (let i = 0; i < toCreate.length; i += BATCH_SIZE) {
+        const batch = toCreate.slice(i, i + BATCH_SIZE);
+        await this.prisma.attendance.createMany({ data: batch });
+      }
+    }
+
+    // Batch обновление существующих записей
+    if (toUpdate.length > 0) {
+      for (let i = 0; i < toUpdate.length; i += BATCH_SIZE) {
+        const batch = toUpdate.slice(i, i + BATCH_SIZE);
+        await this.prisma.$transaction(
+          batch.map((u) =>
+            this.prisma.attendance.update({
+              where: { id: u.id },
+              data: { status: u.status, markedAt: now },
+            }),
+          ),
+        );
+      }
     }
 
     return {
@@ -1155,7 +1199,7 @@ export class TimesheetsService {
     const currentMonth = `${currentMonthDate.getFullYear()}-${String(currentMonthDate.getMonth() + 1).padStart(2, '0')}`;
 
     // Получить абонементы клиентов для текущего месяца
-    const subscriptions = await this.prisma.subscription.findMany({
+    const subscriptions = await this.prisma.safe.subscription.findMany({
       where: {
         clientId: { in: clientIds },
         groupId,
@@ -1183,7 +1227,7 @@ export class TimesheetsService {
     });
 
     // Получить компенсации за текущий месяц
-    const compensations = await this.prisma.compensation.findMany({
+    const compensations = await this.prisma.safe.compensation.findMany({
       where: {
         clientId: { in: clientIds },
         groupId,

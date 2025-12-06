@@ -217,7 +217,15 @@ async function main() {
   console.log('ОБРАБОТКА КЛИЕНТОВ');
   console.log('='.repeat(60));
 
-  for (const row of rows) {
+  const BATCH_SIZE = 50;
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+    const row = rows[rowIndex];
+
+    // Пауза между батчами для снижения нагрузки на БД
+    if (rowIndex > 0 && rowIndex % BATCH_SIZE === 0) {
+      console.log(`\n⏳ Обработано ${rowIndex}/${rows.length} строк. Пауза 100мс для разгрузки БД...`);
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
     const fio = row['ФИО'];
     const rowGroupName = row['Группа'];
     const rowSubTypeName = row['Абонемент'];

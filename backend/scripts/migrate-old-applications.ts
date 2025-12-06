@@ -8,21 +8,39 @@ import { getCliPrismaClient, disconnectCliPrisma } from './lib/prisma-cli';
 const prisma = getCliPrismaClient();
 
 async function migrateOldApplications() {
-  // 1. Найти все заявки со старым форматом АР-...
-  const oldApplications = await prisma.rentalApplication.findMany({
-    where: {
-      applicationNumber: { contains: '-' }
-    },
-    include: {
-      rentals: true,
-      workspaces: true,
-      selectedDays: true,
-      client: { select: { lastName: true, firstName: true } },
-      room: { select: { name: true } }
-    },
-    orderBy: { createdAt: 'asc' }
-  });
+  const BATCH_SIZE = 500;
+  let skip = 0;
+  let allApplications: any[] = [];
 
+  // 1. Загружаем заявки порциями для экономии памяти
+  console.log('Загрузка заявок со старым форматом...');
+  while (true) {
+    const batch = await prisma.rentalApplication.findMany({
+      where: {
+        applicationNumber: { contains: '-' }
+      },
+      include: {
+        rentals: true,
+        workspaces: true,
+        selectedDays: true,
+        client: { select: { lastName: true, firstName: true } },
+        room: { select: { name: true } }
+      },
+      orderBy: { createdAt: 'asc' },
+      take: BATCH_SIZE,
+      skip,
+    });
+
+    if (batch.length === 0) break;
+
+    allApplications.push(...batch);
+    skip += BATCH_SIZE;
+    console.log(`  Загружено ${allApplications.length} заявок...`);
+
+    if (batch.length < BATCH_SIZE) break;
+  }
+
+  const oldApplications = allApplications;
   console.log(`Найдено ${oldApplications.length} заявок со старым форматом`);
 
   if (oldApplications.length === 0) {

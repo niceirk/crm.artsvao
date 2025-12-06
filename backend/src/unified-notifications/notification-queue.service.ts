@@ -51,7 +51,7 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
     private readonly rendererService: NotificationRendererService,
     private readonly configService: ConfigService,
   ) {
-    this.batchSize = this.configService.get<number>('NOTIFICATION_BATCH_SIZE', 50);
+    this.batchSize = this.configService.get<number>('NOTIFICATION_BATCH_SIZE', 20);
     this.maxRetries = this.configService.get<number>('NOTIFICATION_MAX_RETRIES', 5);
     this.telegramRateLimit = this.configService.get<number>('TELEGRAM_RATE_LIMIT', 30);
     this.emailHourlyLimit = this.configService.get<number>('EMAIL_HOURLY_LIMIT', 20);
@@ -59,7 +59,11 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleInit() {
-    this.startWorker();
+    if (process.env.NOTIFICATION_WORKER_ENABLED === 'true') {
+      this.startWorker();
+    } else {
+      this.logger.log('Notification worker disabled (NOTIFICATION_WORKER_ENABLED !== true)');
+    }
   }
 
   onModuleDestroy() {
@@ -110,7 +114,7 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
       this.resetRateLimitCounters();
 
       const now = new Date();
-      const notifications = await this.prisma.notification.findMany({
+      const notifications = await this.prisma.safe.notification.findMany({
         where: {
           status: NotificationStatus.PENDING,
           OR: [
@@ -181,7 +185,7 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
   ): Promise<void> {
     try {
       // Помечаем как обрабатываемое
-      await this.prisma.notification.update({
+      await this.prisma.safe.notification.update({
         where: { id: notification.id },
         data: {
           status: NotificationStatus.PROCESSING,
@@ -234,7 +238,7 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
    * Пометить как отправленное
    */
   private async markAsSent(id: string, externalId?: string): Promise<void> {
-    await this.prisma.notification.update({
+    await this.prisma.safe.notification.update({
       where: { id },
       data: {
         status: NotificationStatus.SENT,
@@ -249,7 +253,7 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
    * Пометить как неудачное
    */
   private async markAsFailed(id: string, error?: string): Promise<void> {
-    await this.prisma.notification.update({
+    await this.prisma.safe.notification.update({
       where: { id },
       data: {
         status: NotificationStatus.FAILED,
@@ -265,7 +269,7 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
     const delay = this.calculateRetryDelay(notification.attempts);
     const nextRetryAt = new Date(Date.now() + delay);
 
-    await this.prisma.notification.update({
+    await this.prisma.safe.notification.update({
       where: { id: notification.id },
       data: {
         status: NotificationStatus.PENDING,
@@ -371,16 +375,16 @@ export class NotificationQueueService implements OnModuleInit, OnModuleDestroy {
     };
   }> {
     const [pending, processing, sent, failed] = await Promise.all([
-      this.prisma.notification.count({
+      this.prisma.safe.notification.count({
         where: { status: NotificationStatus.PENDING },
       }),
-      this.prisma.notification.count({
+      this.prisma.safe.notification.count({
         where: { status: NotificationStatus.PROCESSING },
       }),
-      this.prisma.notification.count({
+      this.prisma.safe.notification.count({
         where: { status: NotificationStatus.SENT },
       }),
-      this.prisma.notification.count({
+      this.prisma.safe.notification.count({
         where: { status: NotificationStatus.FAILED },
       }),
     ]);

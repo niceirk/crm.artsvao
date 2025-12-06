@@ -127,7 +127,7 @@ export class MessagesService {
     }
 
     const [conversations, total] = await Promise.all([
-      this.prisma.conversation.findMany({
+      this.prisma.safe.conversation.findMany({
         where,
         skip,
         take: limit,
@@ -180,7 +180,7 @@ export class MessagesService {
           },
         },
       }),
-      this.prisma.conversation.count({ where }),
+      this.prisma.safe.conversation.count({ where }),
     ]);
 
     const result = {
@@ -206,7 +206,7 @@ export class MessagesService {
    * Получить диалог по ID с историей сообщений
    */
   async getConversationById(id: string) {
-    const conversation = await this.prisma.conversation.findUnique({
+    const conversation = await this.prisma.safe.conversation.findUnique({
       where: { id },
       include: {
         telegramAccount: {
@@ -265,7 +265,7 @@ export class MessagesService {
    * Получить новые сообщения после указанной даты
    */
   async getNewMessages(conversationId: string, after?: string) {
-    const conversation = await this.prisma.conversation.findUnique({
+    const conversation = await this.prisma.safe.conversation.findUnique({
       where: { id: conversationId },
       select: {
         id: true,
@@ -289,7 +289,7 @@ export class MessagesService {
       };
     }
 
-    const messages = await this.prisma.message.findMany({
+    const messages = await this.prisma.safe.message.findMany({
       where: whereCondition,
       orderBy: { createdAt: 'asc' },
       include: {
@@ -318,7 +318,7 @@ export class MessagesService {
    * Отправить сообщение в диалог
    */
   async sendMessage(conversationId: string, senderId: string, dto: SendMessageDto) {
-    const conversation = await this.prisma.conversation.findUnique({
+    const conversation = await this.prisma.safe.conversation.findUnique({
       where: { id: conversationId },
       include: { telegramAccount: true },
     });
@@ -340,7 +340,7 @@ export class MessagesService {
     }
 
     // Сохраняем сообщение в БД
-    const message = await this.prisma.message.create({
+    const message = await this.prisma.safe.message.create({
       data: {
         conversationId,
         direction: 'OUTBOUND',
@@ -364,7 +364,7 @@ export class MessagesService {
     });
 
     // Обновляем время последнего сообщения
-    await this.prisma.conversation.update({
+    await this.prisma.safe.conversation.update({
       where: { id: conversationId },
       data: { lastMessageAt: new Date() },
     });
@@ -383,7 +383,7 @@ export class MessagesService {
     file: Express.Multer.File,
     caption?: string,
   ) {
-    const conversation = await this.prisma.conversation.findUnique({
+    const conversation = await this.prisma.safe.conversation.findUnique({
       where: { id: conversationId },
       include: { telegramAccount: true },
     });
@@ -409,7 +409,7 @@ export class MessagesService {
     }
 
     // Сохраняем сообщение в БД с метаданными изображения
-    const message = await this.prisma.message.create({
+    const message = await this.prisma.safe.message.create({
       data: {
         conversationId,
         direction: 'OUTBOUND',
@@ -441,7 +441,7 @@ export class MessagesService {
     });
 
     // Обновляем время последнего сообщения
-    await this.prisma.conversation.update({
+    await this.prisma.safe.conversation.update({
       where: { id: conversationId },
       data: { lastMessageAt: new Date() },
     });
@@ -462,7 +462,7 @@ export class MessagesService {
     files: Express.Multer.File[],
     caption?: string,
   ) {
-    const conversation = await this.prisma.conversation.findUnique({
+    const conversation = await this.prisma.safe.conversation.findUnique({
       where: { id: conversationId },
       include: { telegramAccount: true },
     });
@@ -497,7 +497,7 @@ export class MessagesService {
     }
 
     // Сохраняем сообщение в БД с массивом изображений
-    const message = await this.prisma.message.create({
+    const message = await this.prisma.safe.message.create({
       data: {
         conversationId,
         direction: 'OUTBOUND',
@@ -531,7 +531,7 @@ export class MessagesService {
     });
 
     // Обновляем время последнего сообщения
-    await this.prisma.conversation.update({
+    await this.prisma.safe.conversation.update({
       where: { id: conversationId },
       data: { lastMessageAt: new Date() },
     });
@@ -547,7 +547,7 @@ export class MessagesService {
    * Обновить статус диалога
    */
   async updateConversationStatus(id: string, dto: UpdateConversationStatusDto) {
-    const conversation = await this.prisma.conversation.findUnique({
+    const conversation = await this.prisma.safe.conversation.findUnique({
       where: { id },
     });
 
@@ -555,7 +555,7 @@ export class MessagesService {
       throw new NotFoundException(`Conversation with ID ${id} not found`);
     }
 
-    const updated = await this.prisma.conversation.update({
+    const updated = await this.prisma.safe.conversation.update({
       where: { id },
       data: { status: dto.status },
     });
@@ -569,7 +569,7 @@ export class MessagesService {
    * Привязать диалог к клиенту вручную
    */
   async linkConversationToClient(conversationId: string, dto: LinkConversationDto) {
-    const conversation = await this.prisma.conversation.findUnique({
+    const conversation = await this.prisma.safe.conversation.findUnique({
       where: { id: conversationId },
     });
 
@@ -578,7 +578,7 @@ export class MessagesService {
     }
 
     // Проверяем, существует ли клиент
-    const client = await this.prisma.client.findUnique({
+    const client = await this.prisma.safe.client.findUnique({
       where: { id: dto.clientId },
     });
 
@@ -587,7 +587,7 @@ export class MessagesService {
     }
 
     // Обновляем TelegramAccount (привязываем к клиенту)
-    await this.prisma.telegramAccount.update({
+    await this.prisma.safe.telegramAccount.update({
       where: { id: conversation.channelAccountId },
       data: {
         clientId: dto.clientId,
@@ -596,7 +596,7 @@ export class MessagesService {
     });
 
     // Получаем обновленный диалог с полной информацией
-    const updated = await this.prisma.conversation.findUnique({
+    const updated = await this.prisma.safe.conversation.findUnique({
       where: { id: conversationId },
       include: {
         telegramAccount: {
@@ -637,7 +637,7 @@ export class MessagesService {
    * Отметить сообщения как прочитанные менеджером
    */
   async markMessagesAsRead(conversationId: string) {
-    const conversation = await this.prisma.conversation.findUnique({
+    const conversation = await this.prisma.safe.conversation.findUnique({
       where: { id: conversationId },
     });
 
@@ -645,7 +645,7 @@ export class MessagesService {
       throw new NotFoundException(`Conversation with ID ${conversationId} not found`);
     }
 
-    await this.prisma.message.updateMany({
+    await this.prisma.safe.message.updateMany({
       where: {
         conversationId,
         isReadByManager: false,
@@ -666,7 +666,7 @@ export class MessagesService {
    * Подсчитывает общее количество непрочитанных входящих сообщений менеджерами.
    */
   async getUnreadCount(): Promise<number> {
-    const count = await this.prisma.message.count({
+    const count = await this.prisma.safe.message.count({
       where: {
         direction: 'INBOUND',
         isReadByManager: false,

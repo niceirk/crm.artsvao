@@ -62,6 +62,17 @@ export default function MessagesPage() {
   // Ref для хранения последней даты проверки
   const lastCheckTimeRef = useRef<string | null>(null);
 
+  // Отслеживание видимости вкладки для отключения polling
+  const [isPageVisible, setIsPageVisible] = useState(true);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      setIsPageVisible(!document.hidden);
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
   // Загрузка состояния сворачивания из localStorage
   useEffect(() => {
     const saved = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
@@ -165,13 +176,20 @@ export default function MessagesPage() {
           return prev;
         });
 
-        // Обновляем список диалогов
-        loadConversations(search, hasUnreadFilter);
+        // Обновляем только текущий диалог в списке локально (без перезагрузки всего списка)
+        const lastNewMessage = response.messages[response.messages.length - 1];
+        setConversations((prev) =>
+          prev.map((conv) =>
+            conv.id === selectedChatId
+              ? { ...conv, lastMessage: lastNewMessage, lastMessageAt: lastNewMessage.createdAt }
+              : conv
+          )
+        );
       }
     } catch (error) {
       console.error('Failed to fetch new messages:', error);
     }
-  }, [selectedChatId, search, hasUnreadFilter, loadConversations]);
+  }, [selectedChatId]);
 
   // Эффект для загрузки выбранного диалога
   useEffect(() => {
@@ -184,13 +202,13 @@ export default function MessagesPage() {
     }
   }, [selectedChatId, loadConversation]);
 
-  // Polling для новых сообщений в активном чате
+  // Polling для новых сообщений в активном чате (только когда вкладка видима)
   useEffect(() => {
-    if (!selectedChatId) return;
+    if (!selectedChatId || !isPageVisible) return;
 
-    const interval = setInterval(checkForNewMessages, 5000);
+    const interval = setInterval(checkForNewMessages, 15000);
     return () => clearInterval(interval);
-  }, [selectedChatId, checkForNewMessages]);
+  }, [selectedChatId, checkForNewMessages, isPageVisible]);
 
   // Тихое обновление списка диалогов (без спиннера)
   const silentRefreshConversations = useCallback(async () => {
@@ -206,11 +224,13 @@ export default function MessagesPage() {
     }
   }, [search, hasUnreadFilter]);
 
-  // Polling для обновления списка диалогов (каждые 10 секунд)
+  // Polling для обновления списка диалогов (только когда вкладка видима)
   useEffect(() => {
-    const interval = setInterval(silentRefreshConversations, 10000);
+    if (!isPageVisible) return;
+
+    const interval = setInterval(silentRefreshConversations, 30000);
     return () => clearInterval(interval);
-  }, [silentRefreshConversations]);
+  }, [silentRefreshConversations, isPageVisible]);
 
   // Обработчики
   const handleClearSearch = () => {

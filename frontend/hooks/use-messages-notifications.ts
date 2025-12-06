@@ -109,7 +109,8 @@ export function useMessagesNotifications() {
     };
 
     const connect = () => {
-      if (closed) return;
+      // Не подключаемся когда вкладка скрыта или уже закрыто
+      if (closed || document.hidden) return;
       eventSource = new EventSource(buildUrl());
       detachListeners = attachEventListeners(eventSource);
 
@@ -121,12 +122,27 @@ export function useMessagesNotifications() {
       eventSource.onerror = () => {
         detachListeners?.();
         eventSource?.close();
+        eventSource = null;
         startPollingFallback();
         if (closed) return;
         setTimeout(connect, reconnectDelay);
         reconnectDelay = Math.min(reconnectDelay * 2, 30000);
       };
     };
+
+    // Обработка видимости вкладки - отключаем SSE когда скрыта
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        detachListeners?.();
+        eventSource?.close();
+        eventSource = null;
+        stopPollingFallback();
+      } else {
+        // При возвращении на вкладку переподключаемся
+        connect();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Первичный REST для актуального счётчика
     getUnreadMessagesCount()
@@ -142,6 +158,7 @@ export function useMessagesNotifications() {
       detachListeners?.();
       eventSource?.close();
       stopPollingFallback();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [accessToken, setUnreadCount, setLastIncoming, soundEnabled]);
 }

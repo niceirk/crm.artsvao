@@ -63,18 +63,44 @@ interface MigrationLog {
 async function createBackup() {
   console.log('\n📦 Создание бэкапа данных...');
 
-  // Получаем все HOURLY заявки
-  const applications = await prisma.rentalApplication.findMany({
-    where: { rentalType: 'HOURLY' },
-    include: { rentals: true },
-  });
+  const BATCH_SIZE = 500;
 
-  // Получаем все Rental записи связанные с HOURLY заявками
-  const rentals = await prisma.rental.findMany({
-    where: {
-      rentalApplicationId: { in: applications.map((a) => a.id) },
-    },
-  });
+  // Получаем все HOURLY заявки порциями
+  let allApplications: any[] = [];
+  let skip = 0;
+  while (true) {
+    const batch = await prisma.rentalApplication.findMany({
+      where: { rentalType: 'HOURLY' },
+      include: { rentals: true },
+      take: BATCH_SIZE,
+      skip,
+    });
+    if (batch.length === 0) break;
+    allApplications.push(...batch);
+    skip += BATCH_SIZE;
+    console.log(`   Загружено ${allApplications.length} заявок для бэкапа...`);
+    if (batch.length < BATCH_SIZE) break;
+  }
+  const applications = allApplications;
+
+  // Получаем все Rental записи порциями
+  const appIds = applications.map((a) => a.id);
+  let allRentals: any[] = [];
+  skip = 0;
+  while (true) {
+    const batch = await prisma.rental.findMany({
+      where: {
+        rentalApplicationId: { in: appIds },
+      },
+      take: BATCH_SIZE,
+      skip,
+    });
+    if (batch.length === 0) break;
+    allRentals.push(...batch);
+    skip += BATCH_SIZE;
+    if (batch.length < BATCH_SIZE) break;
+  }
+  const rentals = allRentals;
 
   const backup = {
     timestamp: new Date().toISOString(),
@@ -95,19 +121,33 @@ async function createBackup() {
 async function findGroups(): Promise<MigrationGroup[]> {
   console.log('\n🔍 Поиск групп для объединения...');
 
-  // Получаем все HOURLY DRAFT заявки
-  const applications = await prisma.rentalApplication.findMany({
-    where: {
-      rentalType: 'HOURLY',
-      status: 'DRAFT',
-    },
-    include: {
-      client: { select: { firstName: true, lastName: true } },
-      room: { select: { name: true } },
-      rentals: { select: { id: true } },
-    },
-    orderBy: [{ clientId: 'asc' }, { roomId: 'asc' }, { startDate: 'asc' }, { startTime: 'asc' }],
-  });
+  const BATCH_SIZE = 500;
+
+  // Получаем все HOURLY DRAFT заявки порциями
+  let allApplications: any[] = [];
+  let skip = 0;
+  while (true) {
+    const batch = await prisma.rentalApplication.findMany({
+      where: {
+        rentalType: 'HOURLY',
+        status: 'DRAFT',
+      },
+      include: {
+        client: { select: { firstName: true, lastName: true } },
+        room: { select: { name: true } },
+        rentals: { select: { id: true } },
+      },
+      orderBy: [{ clientId: 'asc' }, { roomId: 'asc' }, { startDate: 'asc' }, { startTime: 'asc' }],
+      take: BATCH_SIZE,
+      skip,
+    });
+    if (batch.length === 0) break;
+    allApplications.push(...batch);
+    skip += BATCH_SIZE;
+    console.log(`   Загружено ${allApplications.length} заявок...`);
+    if (batch.length < BATCH_SIZE) break;
+  }
+  const applications = allApplications;
 
   // Группируем по clientId + roomId + date
   const groupsMap = new Map<string, MigrationGroup>();

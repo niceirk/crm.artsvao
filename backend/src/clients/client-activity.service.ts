@@ -12,6 +12,7 @@ export class ClientActivityService {
   /**
    * Автодеактивация клиентов, неактивных более 6 месяцев
    * Запускается каждую ночь в 3:00
+   * Обрабатывает клиентов батчами по 100 для снижения нагрузки на БД
    */
   @Cron(CronExpression.EVERY_DAY_AT_3AM, {
     name: 'deactivate-inactive-clients',
@@ -22,33 +23,52 @@ export class ClientActivityService {
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
+    const BATCH_SIZE = 100;
+    let totalDeactivated = 0;
+
     try {
-      const result = await this.prisma.client.updateMany({
-        where: {
-          status: 'ACTIVE',
-          OR: [
-            {
-              // Клиенты с lastActivityAt старше 6 месяцев
-              lastActivityAt: {
-                lt: sixMonthsAgo,
+      // Обрабатываем батчами для снижения нагрузки на БД
+      while (true) {
+        // Находим клиентов для деактивации (батчами)
+        const clients = await this.prisma.safe.client.findMany({
+          where: {
+            status: 'ACTIVE',
+            OR: [
+              {
+                // Клиенты с lastActivityAt старше 6 месяцев
+                lastActivityAt: {
+                  lt: sixMonthsAgo,
+                },
               },
-            },
-            {
-              // Клиенты без lastActivityAt, но созданные более 6 месяцев назад
-              lastActivityAt: null,
-              createdAt: {
-                lt: sixMonthsAgo,
+              {
+                // Клиенты без lastActivityAt, но созданные более 6 месяцев назад
+                lastActivityAt: null,
+                createdAt: {
+                  lt: sixMonthsAgo,
+                },
               },
-            },
-          ],
-        },
-        data: {
-          status: 'INACTIVE',
-        },
-      });
+            ],
+          },
+          select: { id: true },
+          take: BATCH_SIZE,
+        });
+
+        if (clients.length === 0) break;
+
+        // Обновляем найденных клиентов
+        await this.prisma.safe.client.updateMany({
+          where: { id: { in: clients.map(c => c.id) } },
+          data: { status: 'INACTIVE' },
+        });
+
+        totalDeactivated += clients.length;
+
+        // Если получили меньше BATCH_SIZE - это последний батч
+        if (clients.length < BATCH_SIZE) break;
+      }
 
       this.logger.log(
-        `Auto-deactivation completed. Deactivated ${result.count} clients.`,
+        `Auto-deactivation completed. Deactivated ${totalDeactivated} clients.`,
       );
     } catch (error) {
       this.logger.error('Error during auto-deactivation:', error);
@@ -60,7 +80,7 @@ export class ClientActivityService {
    */
   async updateClientActivity(clientId: string) {
     try {
-      await this.prisma.client.update({
+      await this.prisma.safe.client.update({
         where: { id: clientId },
         data: { lastActivityAt: new Date() },
       });
@@ -77,13 +97,13 @@ export class ClientActivityService {
    */
   async reactivateClientIfNeeded(clientId: string) {
     try {
-      const client = await this.prisma.client.findUnique({
+      const client = await this.prisma.safe.client.findUnique({
         where: { id: clientId },
         select: { status: true },
       });
 
       if (client && client.status === 'INACTIVE') {
-        await this.prisma.client.update({
+        await this.prisma.safe.client.update({
           where: { id: clientId },
           data: {
             status: 'ACTIVE',
