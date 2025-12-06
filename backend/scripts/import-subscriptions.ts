@@ -49,11 +49,18 @@ interface ImportResult {
 }
 
 /**
+ * Нормализация строки: замена ё на е, trim
+ */
+function normalizeString(str: string): string {
+  return str.trim().replace(/ё/g, 'е').replace(/Ё/g, 'Е');
+}
+
+/**
  * Парсинг ФИО из строки
  * Форматы: "Фамилия Имя Отчество" или "Фамилия Имя"
  */
 function parseFIO(fio: string): { lastName: string; firstName: string; middleName?: string } {
-  const parts = fio.trim().split(/\s+/);
+  const parts = normalizeString(fio).split(/\s+/);
 
   if (parts.length >= 3) {
     return {
@@ -125,6 +132,55 @@ function getMonthName(month: number): string {
   return names[month];
 }
 
+// Кэши для групп и типов абонементов
+const groupCache = new Map<string, { id: string; name: string }>();
+const subTypeCache = new Map<string, { id: string; name: string; groupId: string }>();
+
+async function getGroup(groupName: string) {
+  const normalized = normalizeString(groupName);
+  if (groupCache.has(normalized)) {
+    return groupCache.get(normalized)!;
+  }
+
+  const group = await prisma.group.findFirst({
+    where: { name: { contains: normalized, mode: 'insensitive' } },
+    select: { id: true, name: true },
+  });
+
+  if (group) {
+    groupCache.set(normalized, group);
+  }
+  return group;
+}
+
+async function getSubscriptionType(subTypeName: string, groupId: string) {
+  const cacheKey = `${normalizeString(subTypeName)}:${groupId}`;
+  if (subTypeCache.has(cacheKey)) {
+    return subTypeCache.get(cacheKey)!;
+  }
+
+  let subType = await prisma.subscriptionType.findFirst({
+    where: {
+      name: { contains: normalizeString(subTypeName), mode: 'insensitive' },
+      groupId,
+    },
+    select: { id: true, name: true, groupId: true },
+  });
+
+  // Если не найден, берем любой активный для группы
+  if (!subType) {
+    subType = await prisma.subscriptionType.findFirst({
+      where: { groupId, isActive: true },
+      select: { id: true, name: true, groupId: true },
+    });
+  }
+
+  if (subType) {
+    subTypeCache.set(cacheKey, subType);
+  }
+  return subType;
+}
+
 async function main() {
   console.log('='.repeat(60));
   console.log('ИМПОРТ АБОНЕМЕНТОВ ИЗ EXCEL');
@@ -141,54 +197,14 @@ async function main() {
   const rows: ExcelRow[] = XLSX.utils.sheet_to_json(sheet);
   console.log(`   Найдено строк: ${rows.length}`);
 
-  // 2. Находим группу
-  const groupName = rows[0]?.['Группа'];
-  console.log(`\n🔍 Поиск группы "${groupName}"...`);
-  const group = await prisma.group.findFirst({
-    where: { name: { contains: groupName, mode: 'insensitive' } },
-  });
-
-  if (!group) {
-    console.error(`❌ Группа "${groupName}" не найдена!`);
-    process.exit(1);
-  }
-  console.log(`   ✅ Группа найдена: ${group.id}`);
-
-  // 3. Находим тип абонемента
-  const subTypeName = rows[0]?.['Абонемент'];
-  console.log(`\n🔍 Поиск типа абонемента "${subTypeName}"...`);
-  const subscriptionType = await prisma.subscriptionType.findFirst({
-    where: {
-      name: { contains: subTypeName, mode: 'insensitive' },
-      groupId: group.id,
-    },
-  });
-
-  if (!subscriptionType) {
-    // Попробуем найти любой тип абонемента для этой группы
-    const anyType = await prisma.subscriptionType.findFirst({
-      where: { groupId: group.id, isActive: true },
-    });
-    if (anyType) {
-      console.log(`   ⚠️ Точное совпадение не найдено, используем: ${anyType.name} (${anyType.id})`);
-    } else {
-      console.error(`❌ Тип абонемента для группы не найден!`);
-      process.exit(1);
-    }
-  } else {
-    console.log(`   ✅ Тип найден: ${subscriptionType.id}`);
+  // 2. Собираем уникальные группы для предзагрузки
+  const uniqueGroups = [...new Set(rows.map(r => r['Группа']).filter(Boolean))];
+  console.log(`\n📋 Уникальных групп: ${uniqueGroups.length}`);
+  for (const gn of uniqueGroups) {
+    console.log(`   - ${gn}`);
   }
 
-  const finalSubType = subscriptionType || await prisma.subscriptionType.findFirst({
-    where: { groupId: group.id, isActive: true },
-  });
-
-  if (!finalSubType) {
-    console.error(`❌ Не удалось найти тип абонемента!`);
-    process.exit(1);
-  }
-
-  // 4. Обрабатываем каждую строку
+  // 3. Обрабатываем каждую строку
   const result: ImportResult = {
     success: 0,
     errors: [],
@@ -201,9 +217,29 @@ async function main() {
 
   for (const row of rows) {
     const fio = row['ФИО'];
-    const { lastName, firstName, middleName } = parseFIO(fio);
+    const rowGroupName = row['Группа'];
+    const rowSubTypeName = row['Абонемент'];
+    const { lastName, firstName } = parseFIO(fio);
 
-    console.log(`\n👤 ${fio}`);
+    console.log(`\n👤 ${fio} [${rowGroupName}]`);
+
+    // Находим группу для этой строки
+    const group = await getGroup(rowGroupName);
+    if (!group) {
+      const error = `   ❌ Группа не найдена: ${rowGroupName}`;
+      console.log(error);
+      result.errors.push(error);
+      continue;
+    }
+
+    // Находим тип абонемента для этой строки
+    const subType = await getSubscriptionType(rowSubTypeName, group.id);
+    if (!subType) {
+      const error = `   ❌ Тип абонемента не найден: ${rowSubTypeName} для группы ${rowGroupName}`;
+      console.log(error);
+      result.errors.push(error);
+      continue;
+    }
 
     // Поиск клиента
     const client = await prisma.client.findFirst({
@@ -241,9 +277,9 @@ async function main() {
           status: 'ACTIVE',
         },
       });
-      console.log(`   ➕ Добавлен в группу`);
+      console.log(`   ➕ Добавлен в группу ${group.name}`);
     } else if (!existingMember) {
-      console.log(`   ➕ [DRY-RUN] Будет добавлен в группу`);
+      console.log(`   ➕ [DRY-RUN] Будет добавлен в группу ${group.name}`);
     }
 
     // Обрабатываем каждый месяц
@@ -275,7 +311,7 @@ async function main() {
               const subscription = await tx.subscription.create({
                 data: {
                   clientId: client.id,
-                  subscriptionTypeId: finalSubType.id,
+                  subscriptionTypeId: subType.id,
                   groupId: group.id,
                   validMonth,
                   purchaseDate: startDate,
@@ -306,7 +342,7 @@ async function main() {
                   items: {
                     create: {
                       serviceType: ServiceType.SUBSCRIPTION,
-                      serviceName: `${finalSubType.name} - ${monthName} ${monthInfo.year}`,
+                      serviceName: `${subType.name} - ${monthName} ${monthInfo.year}`,
                       groupId: group.id,
                       quantity: 1,
                       unitPrice: price,
