@@ -7,11 +7,13 @@
  *   npx ts-node scripts/migrate-hourly-applications.ts            # Выполнить миграцию
  */
 
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getCliPrismaClient, disconnectCliPrisma } from './lib/prisma-cli';
 
-const prisma = new PrismaClient();
+// Используем shared client с маленьким пулом соединений
+const prisma = getCliPrismaClient();
 
 // Проверка флага dry-run
 const isDryRun = process.argv.includes('--dry-run');
@@ -310,7 +312,7 @@ async function main() {
     console.error('\n❌ Ошибка миграции:', error);
     throw error;
   } finally {
-    await prisma.$disconnect();
+    await disconnectCliPrisma();
   }
 }
 

@@ -9,11 +9,12 @@
  *   npx ts-node scripts/rollback-hourly-migration.ts scripts/backups/migration_backup_2025-12-04.json
  */
 
-import { PrismaClient } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
+import { getCliPrismaClient, disconnectCliPrisma } from './lib/prisma-cli';
 
-const prisma = new PrismaClient();
+// Используем shared client с маленьким пулом соединений
+const prisma = getCliPrismaClient();
 
 interface BackupData {
   timestamp: string;
@@ -132,7 +133,7 @@ async function main() {
     console.error('\n❌ Ошибка отката:', error);
     throw error;
   } finally {
-    await prisma.$disconnect();
+    await disconnectCliPrisma();
   }
 }
 

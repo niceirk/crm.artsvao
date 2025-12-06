@@ -1,9 +1,11 @@
 // backend/scripts/migrate-old-applications.ts
 // Скрипт миграции заявок со старого формата АР-25-XXXXXX на новый 0000XXX
 
-import { PrismaClient, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { getCliPrismaClient, disconnectCliPrisma } from './lib/prisma-cli';
 
-const prisma = new PrismaClient();
+// Используем shared client с маленьким пулом соединений
+const prisma = getCliPrismaClient();
 
 async function migrateOldApplications() {
   // 1. Найти все заявки со старым форматом АР-...
@@ -142,4 +144,4 @@ async function migrateOldApplications() {
 
 migrateOldApplications()
   .catch(console.error)
-  .finally(() => prisma.$disconnect());
+  .finally(() => disconnectCliPrisma());

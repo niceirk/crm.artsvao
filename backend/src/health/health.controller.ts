@@ -66,4 +66,50 @@ export class HealthController {
 
     return res.status(statusCode).json(response);
   }
+
+  /**
+   * Детальная диагностика соединения с БД
+   * Возвращает статистику keepalive, ошибок и метрики соединения
+   */
+  @Public()
+  @Get('detailed')
+  async detailed(@Res() res: Response) {
+    const dbHealthy = await this.prisma.healthCheck();
+    const stats = this.prisma.getConnectionStats();
+
+    const response = {
+      status: dbHealthy ? 'ok' : 'error',
+      timestamp: new Date().toISOString(),
+      version: process.env.npm_package_version || 'unknown',
+      nodeEnv: process.env.NODE_ENV || 'unknown',
+      uptime: Math.round(process.uptime()),
+      database: {
+        status: dbHealthy ? 'up' : 'down',
+        keepalive: {
+          running: stats.keepaliveRunning,
+          pings: stats.keepalivePingCount,
+          fails: stats.keepaliveFailCount,
+          lastSuccessfulPing: stats.lastSuccessfulPing,
+        },
+        connection: {
+          isReconnecting: stats.isReconnecting,
+          isShuttingDown: stats.isShuttingDown,
+          errorCount: stats.connectionErrorCount,
+          idleTimeMs: stats.idleTimeMs,
+          lastActivity: stats.lastActivityTimestamp,
+        },
+      },
+      memory: {
+        heapUsedMB: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+        heapTotalMB: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+        rssMB: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      },
+    };
+
+    const statusCode = dbHealthy
+      ? HttpStatus.OK
+      : HttpStatus.SERVICE_UNAVAILABLE;
+
+    return res.status(statusCode).json(response);
+  }
 }

@@ -11,10 +11,11 @@ const SLOW_QUERY_THRESHOLD_MS = 1000;
 const MAX_CONNECT_RETRIES = 5;
 const CONNECT_RETRY_BASE_DELAY_MS = 2000;
 
-// Keepalive настройки - агрессивные для облачных БД (TWC закрывает idle за 5 минут)
-// ВАЖНО: Делаем ping ВСЕГДА при каждом интервале, чтобы поддерживать ВСЕ соединения в пуле
-const KEEPALIVE_INTERVAL_MS = 15000; // Ping каждые 15 секунд (было 30)
-const KEEPALIVE_PING_COUNT = 3; // Делаем несколько ping'ов чтобы задействовать разные соединения пула
+// Keepalive настройки - оптимизированные для облачных БД (TWC закрывает idle за 5 минут)
+// Снижаем нагрузку на БД: ping только когда нет реальной активности
+const KEEPALIVE_INTERVAL_MS = 30000; // Ping каждые 30 секунд (было 15)
+const KEEPALIVE_PING_COUNT = 1; // Один ping достаточно (было 3)
+const KEEPALIVE_SKIP_IF_ACTIVE_MS = 10000; // Пропускать keepalive если была активность < 10 сек назад
 
 // Reconnect настройки
 const MAX_RECONNECT_ATTEMPTS = 5; // Увеличено с 3
@@ -55,6 +56,10 @@ export class PrismaService
   private peakQueryCount = 0;
   private totalQueryCount = 0;
 
+  // Safe client с retry логикой (lazy initialization)
+  // Используем тип PrismaClient для совместимости с моделями
+  private _safeClient: PrismaClient | null = null;
+
   constructor() {
     super({
       datasources: {
@@ -82,6 +87,9 @@ export class PrismaService
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (this.$on as any)('query', (e: Prisma.QueryEvent) => {
       this.totalQueryCount++;
+      // Автоматически обновляем timestamp активности при каждом запросе
+      // Это позволяет keepalive пропускать ping'и когда БД активно используется
+      this.lastActivityTimestamp = Date.now();
 
       if (e.duration > SLOW_QUERY_THRESHOLD_MS) {
         this.logger.warn(
@@ -217,7 +225,16 @@ export class PrismaService
         return;
       }
 
-      // Делаем несколько ping'ов чтобы задействовать разные соединения из пула
+      // Пропускаем keepalive если недавно была реальная активность
+      const timeSinceActivity = Date.now() - this.lastActivityTimestamp;
+      if (timeSinceActivity < KEEPALIVE_SKIP_IF_ACTIVE_MS) {
+        this.logger.debug(
+          `Keepalive skipped: recent activity ${Math.round(timeSinceActivity / 1000)}s ago`,
+        );
+        return;
+      }
+
+      // Делаем ping для поддержания соединения
       let successCount = 0;
       let failCount = 0;
 
@@ -422,9 +439,28 @@ export class PrismaService
   /**
    * Получение расширенного клиента с retry логикой.
    * Используйте для критичных операций где важна устойчивость к временным сбоям.
+   * @deprecated Используйте getter `safe` вместо этого метода
    */
   get withRetry() {
     return this.$extends(retryExtension);
+  }
+
+  /**
+   * Безопасный клиент с автоматическим retry при ошибках соединения.
+   * Используйте this.prisma.safe вместо this.prisma для критических запросов.
+   *
+   * Ретраит: P1001, P1002, P1008, P1017, P2024, 57P01-57P05, 08003, 08006
+   * НЕ ретраит бизнес-ошибки: P2002 (unique), P2003 (FK) и т.д.
+   *
+   * @example
+   * const user = await this.prisma.safe.user.findUnique({ where: { id } });
+   */
+  get safe(): PrismaClient {
+    if (!this._safeClient) {
+      // Приводим к PrismaClient для совместимости типов с моделями
+      this._safeClient = this.$extends(retryExtension) as unknown as PrismaClient;
+    }
+    return this._safeClient;
   }
 
   /**

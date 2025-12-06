@@ -6,11 +6,13 @@
  *   npx ts-node scripts/import-subscriptions.ts            # Выполнить импорт
  */
 
-import { PrismaClient, ServiceType, WriteOffTiming } from '@prisma/client';
+import { ServiceType, WriteOffTiming } from '@prisma/client';
 import * as XLSX from 'xlsx';
 import * as path from 'path';
+import { getCliPrismaClient, disconnectCliPrisma } from './lib/prisma-cli';
 
-const prisma = new PrismaClient();
+// Используем shared client с маленьким пулом соединений
+const prisma = getCliPrismaClient();
 
 // Проверка флага dry-run
 const isDryRun = process.argv.includes('--dry-run');
@@ -399,11 +401,11 @@ async function main() {
     });
   }
 
-  await prisma.$disconnect();
+  await disconnectCliPrisma();
 }
 
 main().catch(async (e) => {
   console.error(e);
-  await prisma.$disconnect();
+  await disconnectCliPrisma();
   process.exit(1);
 });

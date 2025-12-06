@@ -2,9 +2,10 @@
  * Скрипт миграции номеров заявок из формата "АР-25-000183" в "0000183"
  * Запуск: npx ts-node scripts/migrate-application-numbers.ts
  */
-import { PrismaClient } from '@prisma/client';
+import { getCliPrismaClient, disconnectCliPrisma } from './lib/prisma-cli';
 
-const prisma = new PrismaClient();
+// Используем shared client с маленьким пулом соединений
+const prisma = getCliPrismaClient();
 
 async function main() {
   console.log('Начинаем миграцию номеров заявок...');
@@ -45,5 +46,5 @@ main()
     process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect();
+    await disconnectCliPrisma();
   });

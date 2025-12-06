@@ -16,6 +16,7 @@ import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { EmailService } from '../email/email.service';
 import { Logger } from '@nestjs/common';
+import { safeTransaction } from '../prisma/prisma-transaction.helper';
 
 @Injectable()
 export class AuthService {
@@ -29,7 +30,8 @@ export class AuthService {
   ) {}
 
   async validateUser(email: string, password: string) {
-    const user = await this.prisma.user.findUnique({
+    // Используем safe клиент с автоматическим retry при ошибках соединения
+    const user = await this.prisma.safe.user.findUnique({
       where: { email },
     });
 
@@ -74,21 +76,26 @@ export class AuthService {
     refreshTokenExpiresAt.setDate(refreshTokenExpiresAt.getDate() + 30);
 
     // Сохраняем refresh token в БД и обновляем lastLoginAt в транзакции
-    await this.prisma.$transaction([
-      this.prisma.user.update({
-        where: { id: user.id },
-        data: { lastLoginAt: new Date() },
-      }),
-      this.prisma.refreshToken.create({
-        data: {
-          userId: user.id,
-          token: refreshToken,
-          expiresAt: refreshTokenExpiresAt,
-          userAgent,
-          ipAddress,
-        },
-      }),
-    ]);
+    // Используем safeTransaction с retry при ошибках соединения
+    await safeTransaction(
+      this.prisma,
+      async (tx) => {
+        await tx.user.update({
+          where: { id: user.id },
+          data: { lastLoginAt: new Date() },
+        });
+        await tx.refreshToken.create({
+          data: {
+            userId: user.id,
+            token: refreshToken,
+            expiresAt: refreshTokenExpiresAt,
+            userAgent,
+            ipAddress,
+          },
+        });
+      },
+      { maxWaitMs: 5000, timeoutMs: 10000 },
+    );
 
     return {
       accessToken,
@@ -113,7 +120,8 @@ export class AuthService {
       });
 
       // Проверяем что токен существует в БД и не отозван
-      const storedToken = await this.prisma.refreshToken.findUnique({
+      // Используем safe клиент с retry при ошибках соединения
+      const storedToken = await this.prisma.safe.refreshToken.findUnique({
         where: { token: refreshToken },
       });
 
@@ -124,7 +132,7 @@ export class AuthService {
       if (storedToken.revokedAt) {
         // Токен был отозван - возможна попытка использования украденного токена
         // Отзываем все токены пользователя для безопасности
-        await this.prisma.refreshToken.updateMany({
+        await this.prisma.safe.refreshToken.updateMany({
           where: { userId: storedToken.userId, revokedAt: null },
           data: { revokedAt: new Date() },
         });
@@ -136,7 +144,7 @@ export class AuthService {
         throw new UnauthorizedException('Refresh token has expired');
       }
 
-      const user = await this.prisma.user.findUnique({
+      const user = await this.prisma.safe.user.findUnique({
         where: { id: payload.sub },
       });
 
@@ -165,21 +173,26 @@ export class AuthService {
       newRefreshTokenExpiresAt.setDate(newRefreshTokenExpiresAt.getDate() + 30);
 
       // Ротация токенов: отзываем старый, создаём новый
-      await this.prisma.$transaction([
-        this.prisma.refreshToken.update({
-          where: { id: storedToken.id },
-          data: { revokedAt: new Date() },
-        }),
-        this.prisma.refreshToken.create({
-          data: {
-            userId: user.id,
-            token: newRefreshToken,
-            expiresAt: newRefreshTokenExpiresAt,
-            userAgent,
-            ipAddress,
-          },
-        }),
-      ]);
+      // Используем safeTransaction с retry при ошибках соединения
+      await safeTransaction(
+        this.prisma,
+        async (tx) => {
+          await tx.refreshToken.update({
+            where: { id: storedToken.id },
+            data: { revokedAt: new Date() },
+          });
+          await tx.refreshToken.create({
+            data: {
+              userId: user.id,
+              token: newRefreshToken,
+              expiresAt: newRefreshTokenExpiresAt,
+              userAgent,
+              ipAddress,
+            },
+          });
+        },
+        { maxWaitMs: 5000, timeoutMs: 10000 },
+      );
 
       return {
         accessToken: newAccessToken,
@@ -203,7 +216,7 @@ export class AuthService {
   }
 
   async getMe(userId: string) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.safe.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
@@ -227,7 +240,7 @@ export class AuthService {
 
   async logout(userId: string) {
     // Отзываем все активные refresh токены пользователя
-    await this.prisma.refreshToken.updateMany({
+    await this.prisma.safe.refreshToken.updateMany({
       where: { userId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
