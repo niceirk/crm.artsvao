@@ -85,12 +85,13 @@ export class S3StorageService {
       }
 
       // Параметры загрузки в S3
+      // Примечание: ACL не используется, т.к. Timeweb S3 не поддерживает ACL
+      // Публичность настраивается на уровне bucket в панели управления
       const uploadParams: PutObjectCommandInput = {
         Bucket: this.bucketName,
         Key: fileName,
         Body: imageBuffer,
         ContentType: file.mimetype,
-        ACL: 'public-read', // Публичный доступ к файлу
         CacheControl: 'max-age=31536000', // Кеширование на 1 год
       };
 
@@ -100,9 +101,15 @@ export class S3StorageService {
 
       // Формирование публичного URL
       const endpoint = this.configService.get<string>('AWS_S3_ENDPOINT');
-      const imageUrl = endpoint
-        ? `${endpoint}/${this.bucketName}/${fileName}`
-        : `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${fileName}`;
+      let imageUrl: string;
+      if (endpoint?.includes('twcstorage.ru') || endpoint?.includes('timeweb')) {
+        // Timeweb S3: Virtual-hosted style URL
+        imageUrl = `https://${this.bucketName}.s3.twcstorage.ru/${fileName}`;
+      } else if (endpoint) {
+        imageUrl = `${endpoint}/${this.bucketName}/${fileName}`;
+      } else {
+        imageUrl = `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${fileName}`;
+      }
 
       this.logger.log(`Image uploaded successfully: ${imageUrl}`);
 
@@ -145,8 +152,12 @@ export class S3StorageService {
    */
   getPublicUrl(fileName: string): string {
     const endpoint = this.configService.get<string>('AWS_S3_ENDPOINT');
-    return endpoint
-      ? `${endpoint}/${this.bucketName}/${fileName}`
-      : `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${fileName}`;
+    if (endpoint?.includes('twcstorage.ru') || endpoint?.includes('timeweb')) {
+      // Timeweb S3: Virtual-hosted style URL
+      return `https://${this.bucketName}.s3.twcstorage.ru/${fileName}`;
+    } else if (endpoint) {
+      return `${endpoint}/${this.bucketName}/${fileName}`;
+    }
+    return `https://${this.bucketName}.s3.${this.region}.amazonaws.com/${fileName}`;
   }
 }

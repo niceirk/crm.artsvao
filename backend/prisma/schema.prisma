@@ -566,6 +566,7 @@ model SubscriptionType {
 
 model Subscription {
   id                 String             @id @default(uuid())
+  subscriptionNumber Int?               @unique @map("subscription_number")
   version            Int                @default(1)
   clientId           String             @map("client_id")
   subscriptionTypeId String             @map("subscription_type_id")

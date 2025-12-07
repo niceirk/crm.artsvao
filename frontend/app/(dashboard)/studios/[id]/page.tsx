@@ -24,6 +24,7 @@ import {
   MapPin,
   Users2,
   Calendar,
+  Pencil,
 } from 'lucide-react';
 import Link from 'next/link';
 import { formatWeeklySchedule } from '@/lib/types/weekly-schedule';
@@ -60,6 +61,8 @@ export default function StudioDetailPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false);
   const [isSubscriptionDialogOpen, setIsSubscriptionDialogOpen] = useState(false);
+  const [editingSubscriptionType, setEditingSubscriptionType] = useState<any>(null);
+  const [selectedGroupIdForSubscription, setSelectedGroupIdForSubscription] = useState<string | null>(null);
 
   const form = useForm<z.infer<typeof studioSchema>>({
     resolver: zodResolver(studioSchema),
@@ -435,13 +438,13 @@ export default function StudioDetailPage() {
         </Card>
       </div>
 
-      {/* Группы студии */}
+      {/* Группы и абонементы студии */}
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <CardTitle>Группы</CardTitle>
+            <CardTitle>Группы и абонементы</CardTitle>
             <CardDescription>
-              Список всех групп студии. Кликните на группу для просмотра деталей.
+              Кликните на группу для просмотра деталей
             </CardDescription>
           </div>
           <Button size="sm" onClick={() => setIsGroupDialogOpen(true)}>
@@ -455,121 +458,137 @@ export default function StudioDetailPage() {
               В студии пока нет групп
             </p>
           ) : (
-            <div className="grid gap-2 md:grid-cols-2">
-              {groups.map((group) => (
-                <Link
-                  key={group.id}
-                  href={`/groups/${group.id}`}
-                  className="block p-3 border rounded-lg hover:bg-accent transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-semibold">{group.name}</h3>
-                        <Badge
-                          className={
-                            group.status === 'ACTIVE'
-                              ? 'bg-emerald-500 text-emerald-50 hover:bg-emerald-600'
-                              : 'bg-secondary text-secondary-foreground'
-                          }
-                        >
-                          {group.status === 'ACTIVE' ? 'Активна' : 'Неактивна'}
-                        </Badge>
-                      </div>
-                      <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                        <div className="flex items-center gap-1 truncate">
-                          <User className="h-3.5 w-3.5" />
-                          <span className="truncate">
-                            {group.teacher
-                              ? `${group.teacher.firstName} ${group.teacher.lastName}`
-                              : '—'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 truncate">
-                          <MapPin className="h-3.5 w-3.5" />
-                          <span className="truncate">
-                            {group.room?.name || '—'}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 truncate">
-                          <Users2 className="h-3.5 w-3.5" />
-                          <span className="truncate">
-                            {group._count?.subscriptions || 0} / {group.maxParticipants}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1 truncate">
-                          <Layers className="h-3.5 w-3.5" />
-                          <span className="truncate">
-                            {group._count?.schedules || 0}
-                          </span>
-                        </div>
-                        {group.weeklySchedule && group.duration && (
-                          <div className="col-span-2 flex items-center gap-1 truncate">
-                            <Calendar className="h-3.5 w-3.5" />
-                            <span className="truncate">
-                              {formatWeeklySchedule(group.weeklySchedule, group.duration)}
+            <div className="space-y-4">
+              {[...groups]
+                .sort((a, b) => (a.ageMin ?? 999) - (b.ageMin ?? 999))
+                .map((group) => {
+                  const groupSubscriptions = subscriptionTypes.filter(
+                    (st) => st.groupId === group.id
+                  );
+                  return (
+                    <div key={group.id} className="border rounded-lg overflow-hidden">
+                      {/* Заголовок группы */}
+                      <Link
+                        href={`/groups/${group.id}`}
+                        className="grid grid-cols-[minmax(280px,1fr)_70px_200px_auto] gap-x-4 items-center p-3 bg-muted/30 hover:bg-muted/50 transition-colors"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold">{group.name}</h3>
+                          {(group.ageMin || group.ageMax) && (
+                            <span className="text-sm text-muted-foreground whitespace-nowrap">
+                              {group.ageMin && group.ageMax
+                                ? `${group.ageMin}-${group.ageMax} лет`
+                                : group.ageMin
+                                ? `от ${group.ageMin} лет`
+                                : `до ${group.ageMax} лет`}
                             </span>
+                          )}
+                          <Badge
+                            className={
+                              group.status === 'ACTIVE'
+                                ? 'bg-emerald-500 text-emerald-50 hover:bg-emerald-600'
+                                : 'bg-secondary text-secondary-foreground'
+                            }
+                          >
+                            {group.status === 'ACTIVE' ? 'Активна' : 'Неактивна'}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-1 text-sm whitespace-nowrap">
+                          <Users2 className="h-4 w-4 text-muted-foreground" />
+                          <span>{group._count?.members || 0}/{group.maxParticipants}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-sm whitespace-nowrap">
+                          {group.weeklySchedule && group.duration ? (
+                            <>
+                              <Calendar className="h-4 w-4 text-muted-foreground" />
+                              <span>{formatWeeklySchedule(group.weeklySchedule, group.duration)}</span>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground whitespace-nowrap">
+                          {group.teacher && (
+                            <div className="flex items-center gap-1">
+                              <User className="h-4 w-4" />
+                              <span>{group.teacher.firstName} {group.teacher.lastName}</span>
+                            </div>
+                          )}
+                          {group.room?.name && (
+                            <div className="flex items-center gap-1">
+                              <MapPin className="h-4 w-4" />
+                              <span>{group.room.name}</span>
+                            </div>
+                          )}
+                        </div>
+                      </Link>
+
+                      {/* Абонементы группы */}
+                      <div className="px-3 py-2 space-y-1">
+                        {groupSubscriptions.length === 0 ? (
+                          <div className="flex items-center justify-between py-1">
+                            <span className="text-sm text-muted-foreground">Нет абонементов</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={() => {
+                                setSelectedGroupIdForSubscription(group.id);
+                                setEditingSubscriptionType(null);
+                                setIsSubscriptionDialogOpen(true);
+                              }}
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Добавить
+                            </Button>
                           </div>
+                        ) : (
+                          <>
+                            {groupSubscriptions.map((type) => (
+                              <div
+                                key={type.id}
+                                className="flex items-center gap-3 py-1 text-sm"
+                              >
+                                <CreditCard className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                <span className="flex-1 truncate">{type.name}</span>
+                                <div className="flex items-center gap-1 text-muted-foreground">
+                                  <Users className="h-3.5 w-3.5" />
+                                  <span>{type._count?.subscriptions || 0}</span>
+                                </div>
+                                <span className="font-medium">{type.price} ₽</span>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-6 w-6"
+                                  onClick={() => {
+                                    setEditingSubscriptionType(type);
+                                    setSelectedGroupIdForSubscription(group.id);
+                                    setIsSubscriptionDialogOpen(true);
+                                  }}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                </Button>
+                              </div>
+                            ))}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs w-full justify-start text-muted-foreground hover:text-foreground"
+                              onClick={() => {
+                                setSelectedGroupIdForSubscription(group.id);
+                                setEditingSubscriptionType(null);
+                                setIsSubscriptionDialogOpen(true);
+                              }}
+                            >
+                              <Plus className="h-3 w-3 mr-1" />
+                              Добавить абонемент
+                            </Button>
+                          </>
                         )}
                       </div>
                     </div>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Типы абонементов */}
-      <Card>
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <CardTitle>Типы абонементов</CardTitle>
-            <CardDescription>
-              Доступные тарифы для групп студии
-            </CardDescription>
-          </div>
-          <Button
-            size="sm"
-            onClick={() => setIsSubscriptionDialogOpen(true)}
-            disabled={groups.length === 0}
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            Новый тип
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {subscriptionTypes.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">
-              Нет доступных абонементов
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {subscriptionTypes.map((type) => (
-                <div
-                  key={type.id}
-                  className="flex items-center justify-between p-4 border rounded-lg"
-                >
-                  <div>
-                    <h4 className="font-medium">{type.name}</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Группа: {type.group?.name}
-                    </p>
-                    {type.description && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {type.description}
-                      </p>
-                    )}
-                  </div>
-                  <div className="text-right">
-                    <div className="font-semibold">{type.price} ₽</div>
-                    <Badge variant="outline">
-                      {type.type === 'UNLIMITED' ? 'Безлимит' : 'По занятиям'}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
+                  );
+                })}
             </div>
           )}
         </CardContent>
@@ -587,8 +606,15 @@ export default function StudioDetailPage() {
 
       <SubscriptionTypeDialog
         open={isSubscriptionDialogOpen}
-        onOpenChange={setIsSubscriptionDialogOpen}
-        defaultGroupId={groups[0]?.id}
+        onOpenChange={(open) => {
+          setIsSubscriptionDialogOpen(open);
+          if (!open) {
+            setEditingSubscriptionType(null);
+            setSelectedGroupIdForSubscription(null);
+          }
+        }}
+        subscriptionType={editingSubscriptionType}
+        defaultGroupId={editingSubscriptionType?.groupId || selectedGroupIdForSubscription || groups[0]?.id}
         studioId={studio.id}
         groupsList={groups}
         onSuccess={async () => {

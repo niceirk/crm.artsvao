@@ -1,7 +1,6 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { X } from 'lucide-react';
@@ -25,7 +24,6 @@ export function GroupFilters({ filters, onFiltersChange }: GroupFiltersProps) {
   };
 
   const hasActiveFilters =
-    filters.search ||
     filters.studioId ||
     filters.teacherId ||
     filters.roomId ||
@@ -42,16 +40,6 @@ export function GroupFilters({ filters, onFiltersChange }: GroupFiltersProps) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-4 gap-4">
-        {/* Поиск */}
-        <div>
-          <Label className="text-xs text-muted-foreground">Поиск</Label>
-          <Input
-            placeholder="Название группы..."
-            value={filters.search || ''}
-            onChange={(e) => onFiltersChange({ ...filters, search: e.target.value || undefined })}
-          />
-        </div>
-
         {/* Студия */}
         <div>
           <Label className="text-xs text-muted-foreground">Студия</Label>

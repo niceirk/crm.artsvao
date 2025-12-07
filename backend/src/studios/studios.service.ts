@@ -105,12 +105,17 @@ export class StudiosService {
         },
         _count: {
           select: {
-            subscriptions: true,
+            members: {
+              where: { status: 'ACTIVE' },
+            },
             schedules: true,
           },
         },
       },
-      orderBy: { name: 'asc' },
+      orderBy: [
+        { ageMin: { sort: 'asc', nulls: 'last' } },
+        { name: 'asc' },
+      ],
     });
   }
 
@@ -130,8 +135,18 @@ export class StudiosService {
             name: true,
           },
         },
+        _count: {
+          select: {
+            subscriptions: {
+              where: { status: 'ACTIVE' },
+            },
+          },
+        },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [
+        { group: { name: 'asc' } },
+        { name: 'asc' },
+      ],
     });
   }
 
@@ -159,8 +174,8 @@ export class StudiosService {
       },
     });
 
-    // Подсчитываем уникальных участников
-    const participants = await this.prisma.subscription.findMany({
+    // Подсчитываем уникальных участников (из GroupMember)
+    const participants = await this.prisma.groupMember.findMany({
       where: {
         groupId: { in: groupIds },
         status: 'ACTIVE',

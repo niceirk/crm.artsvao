@@ -14,7 +14,7 @@ const CONNECT_RETRY_BASE_DELAY_MS = 2000;
 // Keepalive настройки - оптимизированные для облачных БД (TWC закрывает idle за 5 минут)
 // Снижаем нагрузку на БД: ping только когда нет реальной активности
 const KEEPALIVE_INTERVAL_MS = 30000; // Ping каждые 30 секунд (было 15)
-const KEEPALIVE_PING_COUNT = 1; // Один ping достаточно (было 3)
+const KEEPALIVE_PING_COUNT = 5; // Несколько ping'ов чтобы прогреть все соединения в пуле
 const KEEPALIVE_SKIP_IF_ACTIVE_MS = 10000; // Пропускать keepalive если была активность < 10 сек назад
 
 // Reconnect настройки
@@ -225,14 +225,11 @@ export class PrismaService
         return;
       }
 
-      // Пропускаем keepalive если недавно была реальная активность
+      // Проверяем была ли недавняя активность (для логирования)
+      // ВАЖНО: Пинги делаем ВСЕГДА, чтобы прогреть все соединения в пуле!
+      // SSE использует 1-2 соединения, остальные могут простаивать и закрываться БД (57P05)
       const timeSinceActivity = Date.now() - this.lastActivityTimestamp;
-      if (timeSinceActivity < KEEPALIVE_SKIP_IF_ACTIVE_MS) {
-        this.logger.debug(
-          `Keepalive skipped: recent activity ${Math.round(timeSinceActivity / 1000)}s ago`,
-        );
-        return;
-      }
+      const hasRecentActivity = timeSinceActivity < KEEPALIVE_SKIP_IF_ACTIVE_MS;
 
       // Делаем ping для поддержания соединения
       let successCount = 0;
@@ -267,11 +264,14 @@ export class PrismaService
 
       this.lastActivityTimestamp = Date.now();
 
-      // Логируем только если все успешно или были ошибки
+      // Логируем результат keepalive
       if (failCount === 0) {
-        this.logger.debug(
-          `Keepalive: ${successCount}/${KEEPALIVE_PING_COUNT} pings OK (total: ${this.keepalivePingCount})`,
-        );
+        // Логируем debug только если не было недавней активности (чтобы не засорять логи)
+        if (!hasRecentActivity) {
+          this.logger.debug(
+            `Keepalive: ${successCount}/${KEEPALIVE_PING_COUNT} pings OK (total: ${this.keepalivePingCount})`,
+          );
+        }
       } else if (successCount > 0) {
         this.logger.warn(
           `Keepalive: ${successCount}/${KEEPALIVE_PING_COUNT} pings OK, ${failCount} failed`,

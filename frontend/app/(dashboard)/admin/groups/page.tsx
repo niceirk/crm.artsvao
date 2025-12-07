@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Plus, Filter, ChevronDown, CalendarDays, CalendarX } from 'lucide-react';
+import { Plus, Filter, ChevronDown, CalendarDays, CalendarX, Search } from 'lucide-react';
 import Link from 'next/link';
 import { addMonths, format } from 'date-fns';
 import { ru } from 'date-fns/locale';
@@ -18,6 +18,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { Input } from '@/components/ui/input';
 import { useGroups } from '@/hooks/use-groups';
 import { GroupsTable } from './groups-table';
 import { GroupDialog } from './group-dialog';
@@ -59,7 +60,6 @@ export default function GroupsPage() {
   }, [allGroups, noScheduleMonth]);
 
   const hasActiveFilters =
-    filters.search ||
     filters.studioId ||
     filters.teacherId ||
     filters.roomId ||
@@ -98,7 +98,7 @@ export default function GroupsPage() {
               Фильтры
               {hasActiveFilters && (
                 <span className="ml-2 h-5 w-5 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center">
-                  {[filters.search, filters.studioId, filters.teacherId, filters.roomId, filters.status, filters.isPaid !== undefined ? 'paid' : null, filters.ageRange].filter(Boolean).length}
+                  {[filters.studioId, filters.teacherId, filters.roomId, filters.status, filters.isPaid !== undefined ? 'paid' : null, filters.ageRange].filter(Boolean).length}
                 </span>
               )}
               <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${isFiltersOpen ? 'rotate-180' : ''}`} />
@@ -142,10 +142,23 @@ export default function GroupsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Список групп</CardTitle>
-          <CardDescription>
-            Всего групп: {groups.length}{noScheduleMonth && ` (без расписания на ${availableMonths.find(m => m.value === noScheduleMonth)?.label})`}
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Список групп</CardTitle>
+              <CardDescription>
+                Всего групп: {groups.length}{noScheduleMonth && ` (без расписания на ${availableMonths.find(m => m.value === noScheduleMonth)?.label})`}
+              </CardDescription>
+            </div>
+            <div className="relative w-72">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Поиск группы..."
+                value={filters.search || ''}
+                onChange={(e) => setFilters({ ...filters, search: e.target.value || undefined })}
+                className="pl-9"
+              />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <GroupsTable groups={groups} isLoading={isLoading} />
