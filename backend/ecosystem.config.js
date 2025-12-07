@@ -8,9 +8,10 @@ module.exports = {
       name: 'artsvao-backend',
       script: 'dist/src/main.js',
 
-      // Cluster mode: 2 instances (оптимально для 1.5 CPU limit)
-      instances: 2,
-      exec_mode: 'cluster',
+      // Single instance mode - Prisma работает стабильнее без cluster mode
+      // Cluster mode вызывал проблемы "Engine is not yet connected"
+      instances: 1,
+      exec_mode: 'fork',
 
       // Автоматический перезапуск при превышении памяти
       max_memory_restart: '700M',

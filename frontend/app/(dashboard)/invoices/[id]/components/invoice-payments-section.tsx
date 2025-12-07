@@ -21,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { PaymentStatusBadge } from '@/components/ui/status-badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -39,7 +40,6 @@ import {
 } from '@/components/ui/dialog';
 import { useInvoicePayments, useCreatePayment } from '@/hooks/use-payments';
 import {
-  PAYMENT_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,
   PaymentMethod,
   PaymentType,
@@ -150,9 +150,7 @@ export function InvoicePaymentsSection({ invoice }: InvoicePaymentsSectionProps)
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={payment.status === 'COMPLETED' ? 'default' : 'secondary'}>
-                        {PAYMENT_STATUS_LABELS[payment.status]}
-                      </Badge>
+                      <PaymentStatusBadge status={payment.status} size="sm" />
                     </TableCell>
                   </TableRow>
                 ))}

@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge';
 import { FileText, Plus, Trash2, Calendar, Building, Edit } from 'lucide-react';
 import type { Client, ClientDocument, DocumentType } from '@/lib/types/clients';
 import { format } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import { ClientDocumentDialog } from './client-document-dialog';
 import { deleteClientDocument } from '@/lib/api/clients';
 import { toast } from 'sonner';
@@ -39,7 +38,7 @@ export function ClientDocumentsCard({ client, onRefresh, embedded = false }: Cli
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Не указана';
     try {
-      return format(new Date(dateString), 'd MMMM yyyy', { locale: ru });
+      return format(new Date(dateString), 'dd.MM.yyyy');
     } catch {
       return 'Некорректная дата';
     }

@@ -12,8 +12,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { InvoiceStatusBadge } from '@/components/ui/status-badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
   DropdownMenu,
@@ -34,8 +34,6 @@ import {
   RentalApplication,
   RentalType,
   RENTAL_TYPE_LABELS,
-  RENTAL_STATUS_LABELS,
-  RENTAL_STATUS_COLORS,
 } from '@/lib/types/rental-applications';
 import {
   useCancelRentalApplication,
@@ -55,25 +53,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-
-// Статусы и цвета для счетов
-const INVOICE_STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Черновик',
-  PENDING: 'Ожидает',
-  PAID: 'Оплачен',
-  PARTIALLY_PAID: 'Частично',
-  OVERDUE: 'Просрочен',
-  CANCELLED: 'Отменён',
-};
-
-const INVOICE_STATUS_COLORS: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-800 hover:bg-gray-200',
-  PENDING: 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200',
-  PAID: 'bg-green-100 text-green-800 hover:bg-green-200',
-  PARTIALLY_PAID: 'bg-blue-100 text-blue-800 hover:bg-blue-200',
-  OVERDUE: 'bg-red-100 text-red-800 hover:bg-red-200',
-  CANCELLED: 'bg-gray-100 text-gray-500 hover:bg-gray-200',
-};
 
 type SortField = 'createdAt' | 'client' | 'applicationNumber' | 'slots';
 type SortOrder = 'asc' | 'desc';
@@ -195,7 +174,8 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
   };
 
   const getActiveInvoice = (app: RentalApplication) => {
-    return app.invoices?.find(inv => inv.status !== 'CANCELLED');
+    // Возвращаем первый счет (CANCELLED больше не существует)
+    return app.invoices?.[0];
   };
 
   const handleRowClick = (id: string, e: React.MouseEvent) => {
@@ -372,13 +352,13 @@ export function RentalsTable({ applications, isLoading, onEdit }: RentalsTablePr
                 <TableCell onClick={(e) => e.stopPropagation()}>
                   {activeInvoice ? (
                     <div className="flex items-center gap-2">
-                      <Badge
-                        className={`cursor-pointer ${INVOICE_STATUS_COLORS[activeInvoice.status]}`}
+                      <InvoiceStatusBadge
+                        status={activeInvoice.status}
+                        size="sm"
+                        className="cursor-pointer"
                         onClick={() => window.open(`/invoices/${activeInvoice.id}`, '_blank')}
-                      >
-                        {INVOICE_STATUS_LABELS[activeInvoice.status]}
-                      </Badge>
-                      {activeInvoice.status !== 'PAID' && activeInvoice.status !== 'CANCELLED' && (
+                      />
+                      {activeInvoice.status !== 'PAID' && (
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>

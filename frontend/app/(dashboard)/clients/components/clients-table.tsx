@@ -26,6 +26,7 @@ import { ClientEditDialog } from './client-edit-dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { formatPhoneNumber } from '@/lib/utils/phone';
 import { CallButton } from '@/components/click-to-call/call-button';
+import { ClientStatusBadge } from '@/components/ui/status-badge';
 
 interface ClientsTableProps {
   clients: Client[];
@@ -113,15 +114,6 @@ export function ClientsTable({
     }
   };
 
-  const getStatusDotColor = (status: string) => {
-    const colors: Record<string, string> = {
-      ACTIVE: 'bg-green-500',
-      VIP: 'bg-amber-500',
-      INACTIVE: 'bg-gray-400',
-    };
-    return colors[status] || 'bg-gray-400';
-  };
-
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('ru-RU');
   };
@@ -171,8 +163,8 @@ export function ClientsTable({
                   >
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-3">
-                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${getStatusDotColor(client.status)}`} />
-                        {client.lastName} {client.firstName} {client.middleName}
+                        <ClientStatusBadge status={client.status} size="sm" />
+                        <span>{client.lastName} {client.firstName} {client.middleName}</span>
                       </div>
                     </TableCell>
                     <TableCell>

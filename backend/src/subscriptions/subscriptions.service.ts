@@ -29,6 +29,37 @@ export class SubscriptionsService {
   ) {}
 
   /**
+   * Генерация уникального номера абонемента
+   * Формат: простой 7-значный номер (0000001, 0000002, ...)
+   */
+  private async generateSubscriptionNumber(): Promise<number> {
+    const lastSubscription = await this.prisma.subscription.findFirst({
+      where: { subscriptionNumber: { not: null } },
+      orderBy: { subscriptionNumber: 'desc' },
+      select: { subscriptionNumber: true },
+    });
+    return (lastSubscription?.subscriptionNumber || 0) + 1;
+  }
+
+  /**
+   * Обновление статусов истекших абонементов на EXPIRED
+   * Вызывается перед получением списка абонементов
+   */
+  private async updateExpiredStatuses(): Promise<void> {
+    const now = new Date();
+    const result = await this.prisma.subscription.updateMany({
+      where: {
+        status: 'ACTIVE',
+        endDate: { lt: now },
+      },
+      data: { status: 'EXPIRED' },
+    });
+    if (result.count > 0) {
+      this.logger.log(`📋 Обновлено ${result.count} истекших абонементов на статус EXPIRED`);
+    }
+  }
+
+  /**
    * Продажа абонемента с автоматическим созданием Invoice
    * Использует транзакцию для обеспечения целостности данных
    */
@@ -108,11 +139,15 @@ export class SubscriptionsService {
       this.validateMinimumThreshold(lessonStats.remainingPlanned);
     }
 
-    // 5. Выполнить все критические операции в транзакции
+    // 5. Сгенерировать номер абонемента перед транзакцией
+    const subscriptionNumber = await this.generateSubscriptionNumber();
+
+    // 6. Выполнить все критические операции в транзакции
     const subscription = await this.prisma.$transaction(async (tx) => {
-      // 5.1. Создать абонемент с НДС
+      // 6.1. Создать абонемент с НДС и номером
       const newSubscription = await tx.subscription.create({
         data: {
+          subscriptionNumber,
           clientId: sellDto.clientId,
           subscriptionTypeId: sellDto.subscriptionTypeId,
           groupId: sellDto.groupId,
@@ -191,7 +226,7 @@ export class SubscriptionsService {
           subtotal: originalPrice,
           discountAmount,
           totalAmount: finalPrice,
-          status: 'PENDING',
+          status: 'UNPAID',
           notes: sellDto.notes,
           issuedAt: new Date(),
           createdBy: managerId,
@@ -519,6 +554,9 @@ export class SubscriptionsService {
    * Получить список абонементов с фильтрацией
    */
   async findAll(filter: SubscriptionFilterDto = {}) {
+    // Обновляем статусы истекших абонементов перед получением списка
+    await this.updateExpiredStatuses();
+
     const {
       clientId,
       groupId,
@@ -701,6 +739,16 @@ export class SubscriptionsService {
       throw new NotFoundException(`Subscription with ID ${id} not found`);
     }
 
+    // Обновить статус на EXPIRED если абонемент истёк
+    if (subscription.status === 'ACTIVE' && new Date() > subscription.endDate) {
+      await this.prisma.subscription.update({
+        where: { id },
+        data: { status: 'EXPIRED' },
+      });
+      subscription.status = 'EXPIRED';
+      this.logger.log(`📋 Абонемент ${id} обновлён на статус EXPIRED`);
+    }
+
     return subscription;
   }
 
@@ -859,9 +907,12 @@ export class SubscriptionsService {
 
     this.logger.log(`💰 НДС разовое (${quantity} шт): ставка ${vatData.effectiveVatRate}%, сумма ${vatData.vatAmount} ₽${vatData.isChildDiscount ? ' (детская скидка)' : ''}`);
 
-    // 6. Выполнить все критические операции в транзакции
+    // 6. Сгенерировать номер абонемента перед транзакцией
+    const subscriptionNumber = await this.generateSubscriptionNumber();
+
+    // 7. Выполнить все критические операции в транзакции
     const subscription = await this.prisma.$transaction(async (tx) => {
-      // 6.1. Найти или создать тип подписки VISIT_PACK для группы
+      // 7.1. Найти или создать тип подписки VISIT_PACK для группы
       let subscriptionType = await tx.subscriptionType.findFirst({
         where: {
           groupId: dto.groupId,
@@ -882,9 +933,10 @@ export class SubscriptionsService {
         });
       }
 
-      // 6.2. Создать подписку
+      // 7.2. Создать подписку с номером
       const newSubscription = await tx.subscription.create({
         data: {
+          subscriptionNumber,
           clientId: dto.clientId,
           subscriptionTypeId: subscriptionType.id,
           groupId: dto.groupId,
@@ -968,7 +1020,7 @@ export class SubscriptionsService {
           subtotal: totalPrice,
           discountAmount: this.toMoney(discountAmount),
           totalAmount: finalPrice,
-          status: 'PENDING',
+          status: 'UNPAID',
           notes: dto.notes || serviceName,
           issuedAt: new Date(),
           createdBy: managerId,
@@ -1099,7 +1151,7 @@ export class SubscriptionsService {
           subtotal: totalPrice,
           discountAmount: 0,
           totalAmount: totalPrice,
-          status: 'PENDING',
+          status: 'UNPAID',
           notes: dto.notes || `Услуга: ${service.name}`,
           issuedAt: new Date(),
           createdBy: managerId,
@@ -1248,10 +1300,10 @@ export class SubscriptionsService {
         where: { subscriptionId: id },
       });
 
-      // 2. Изменить статус счетов на CANCELLED
+      // 2. Изменить статус счетов на UNPAID (при удалении подписки)
       await tx.invoice.updateMany({
         where: { subscriptionId: id },
-        data: { status: 'CANCELLED' },
+        data: { status: 'UNPAID' },
       });
 
       // 3. Удалить связи с MedicalCertificateSchedule (обнулить subscriptionId)

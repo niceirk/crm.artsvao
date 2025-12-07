@@ -85,8 +85,7 @@ export class S3StorageService {
       }
 
       // Параметры загрузки в S3
-      // Примечание: ACL не используется, т.к. Timeweb S3 не поддерживает ACL
-      // Публичность настраивается на уровне bucket в панели управления
+      // Bucket настроен как публичный в панели Timeweb Cloud
       const uploadParams: PutObjectCommandInput = {
         Bucket: this.bucketName,
         Key: fileName,

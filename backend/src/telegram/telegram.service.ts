@@ -299,6 +299,40 @@ export class TelegramService {
   }
 
   /**
+   * Проверяет актуальность связи с клиентом.
+   * Если state=IDENTIFIED/BOUND_MANUALLY, но clientId=NULL - предлагает идентификацию.
+   * @returns true если связь потеряна и показана форма идентификации
+   */
+  private async checkClientConnection(
+    telegramAccount: { id: string; clientId: string | null; state: string },
+    chatId: number,
+    telegramUserId: number,
+  ): Promise<boolean> {
+    const isIdentifiedState =
+      telegramAccount.state === 'IDENTIFIED' ||
+      telegramAccount.state === 'BOUND_MANUALLY';
+    const hasNoClient = !telegramAccount.clientId;
+
+    if (isIdentifiedState && hasNoClient) {
+      // Предлагаем идентификацию (используем существующий метод)
+      await this.offerIdentification(chatId, telegramUserId);
+
+      // Обновляем состояние на WAITING_FOR_PHONE
+      await this.prisma.telegramAccount.update({
+        where: { id: telegramAccount.id },
+        data: { state: 'WAITING_FOR_PHONE' },
+      });
+
+      this.logger.log(
+        `Lost client connection for TelegramAccount ${telegramAccount.id}, offered re-identification`,
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * Обработка команды /stop_notifications
    */
   private async handleStopNotifications(message: TelegramMessage): Promise<void> {
@@ -617,7 +651,7 @@ export class TelegramService {
         ],
         [
           {
-            text: '❌ Продолжить без идентификации',
+            text: '❌ Просто написать',
           },
         ],
       ],
@@ -647,10 +681,15 @@ export class TelegramService {
     // Получаем или создаем TelegramAccount
     const telegramAccount = await this.getOrCreateTelegramAccount(message.from, chatId);
 
-    // Обработка кнопки "Продолжить без идентификации"
+    // Проверяем актуальность связи с клиентом
+    if (await this.checkClientConnection(telegramAccount, chatId, telegramUserId)) {
+      return; // Показали форму идентификации, ждём ответа
+    }
+
+    // Обработка кнопки "Просто написать"
     if (
       telegramAccount.state === 'WAITING_FOR_PHONE' &&
-      message.text === '❌ Продолжить без идентификации'
+      message.text === '❌ Просто написать'
     ) {
       // Используем update с unique where (telegramUserId имеет unique индекс)
       await this.prisma.telegramAccount.update({
@@ -761,6 +800,11 @@ export class TelegramService {
 
     // Получаем или создаем TelegramAccount
     const telegramAccount = await this.getOrCreateTelegramAccount(message.from, chatId);
+
+    // Проверяем актуальность связи с клиентом
+    if (await this.checkClientConnection(telegramAccount, chatId, telegramUserId)) {
+      return; // Показали форму идентификации, ждём ответа
+    }
 
     // Получаем или создаем Conversation
     const conversation = await this.getOrCreateConversation(

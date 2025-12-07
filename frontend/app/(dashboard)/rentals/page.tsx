@@ -24,7 +24,7 @@ export default function RentalsPage() {
     return applications.filter(app => {
       // Фильтр по статусу счёта
       if (filters.invoiceStatus) {
-        const activeInvoice = app.invoices?.find(inv => inv.status !== 'CANCELLED');
+        const activeInvoice = app.invoices?.[0];
 
         if (filters.invoiceStatus === 'NONE' && activeInvoice) return false;
         if (filters.invoiceStatus === 'PENDING' && (!activeInvoice || activeInvoice.status === 'PAID')) return false;

@@ -3,10 +3,9 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FileText, Plus, Trash2, Edit, Calendar, Building, Copy, Hash, Globe, Clock } from 'lucide-react';
+import { FileText, Plus, Trash2, Edit, Calendar, Building, Copy, Globe, Clock } from 'lucide-react';
 import type { Client, ClientDocument, DocumentType } from '@/lib/types/clients';
 import { format } from 'date-fns';
-import { ru } from 'date-fns/locale';
 import { ClientDocumentDialog } from './client-document-dialog';
 import { deleteClientDocument } from '@/lib/api/clients';
 import { toast } from 'sonner';
@@ -36,7 +35,7 @@ export function ClientDocumentsSection({ client, onRefresh }: ClientDocumentsSec
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Не указана';
     try {
-      return format(new Date(dateString), 'd MMM yyyy', { locale: ru });
+      return format(new Date(dateString), 'dd.MM.yyyy');
     } catch {
       return 'Некорректная дата';
     }
@@ -195,7 +194,7 @@ export function ClientDocumentsSection({ client, onRefresh }: ClientDocumentsSec
                         <CopyableField
                           value={doc.departmentCode}
                           label="Код подразделения"
-                          icon={Hash}
+                          prefix="№ "
                         />
                       )}
                       {doc.expiresAt && doc.documentType !== 'PASSPORT' && (

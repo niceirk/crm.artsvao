@@ -13,6 +13,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Calendar } from '@/components/ui/calendar';
 import { Badge } from '@/components/ui/badge';
+import { RentalStatusBadge } from '@/components/ui/status-badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
   Popover,
@@ -65,8 +66,6 @@ import type {
   ConflictInfo,
   HourlyTimeSlot,
   RentalApplication,
-  RENTAL_STATUS_LABELS,
-  RENTAL_STATUS_COLORS,
 } from '@/lib/types/rental-applications';
 
 type RentalCategory = 'hourly' | 'workspace' | 'room';
@@ -111,25 +110,6 @@ const initialFormData: FormData = {
   clientId: null,
   notes: '',
   eventType: '',
-};
-
-// Статусы заявок
-const STATUS_LABELS: Record<string, string> = {
-  DRAFT: 'Черновик',
-  PENDING: 'Ожидает подтверждения',
-  CONFIRMED: 'Подтверждена',
-  ACTIVE: 'Активна',
-  COMPLETED: 'Завершена',
-  CANCELLED: 'Отменена',
-};
-
-const STATUS_COLORS: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-800',
-  PENDING: 'bg-yellow-100 text-yellow-800',
-  CONFIRMED: 'bg-blue-100 text-blue-800',
-  ACTIVE: 'bg-green-100 text-green-800',
-  COMPLETED: 'bg-purple-100 text-purple-800',
-  CANCELLED: 'bg-red-100 text-red-800',
 };
 
 // Функция маппинга данных заявки в FormData
@@ -333,7 +313,7 @@ export default function EditRentalPage() {
 
   // Получить активный счет
   const activeInvoice = useMemo(() => {
-    return application?.invoices?.find((inv: any) => inv.status !== 'CANCELLED');
+    return application?.invoices?.[0];
   }, [application]);
 
   // Инициализация формы данными заявки
@@ -653,9 +633,7 @@ export default function EditRentalPage() {
             <div>
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-bold">Заявка №{application.applicationNumber}</h1>
-                <Badge className={STATUS_COLORS[application.status]}>
-                  {STATUS_LABELS[application.status]}
-                </Badge>
+                <RentalStatusBadge status={application.status} />
                 {isViewMode && (
                   <Badge variant="secondary" className="flex items-center gap-1">
                     <Eye className="h-3 w-3" />

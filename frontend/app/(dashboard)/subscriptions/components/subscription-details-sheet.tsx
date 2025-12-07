@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Calendar, User, Users2, Receipt, DollarSign, Info, CheckCircle, XCircle, Check, X, AlertCircle, Trash2 } from 'lucide-react';
+import { Calendar, User, Users2, Receipt, DollarSign, Info, CheckCircle, XCircle, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   Sheet,
@@ -15,7 +15,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
-import type { AttendanceStatus } from '@/lib/types/attendance';
+import { SubscriptionStatusBadge, AttendanceStatusBadge } from '@/components/ui/status-badge';
+import { ATTENDANCE_STATUS_CONFIG } from '@/lib/constants/status';
 import { useSubscription } from '@/hooks/use-subscriptions';
 import type { Subscription } from '@/lib/types/subscriptions';
 import { DeleteSubscriptionDialog } from './delete-subscription-dialog';
@@ -25,38 +26,6 @@ interface SubscriptionDetailsSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
-
-const statusLabels: Record<string, string> = {
-  ACTIVE: 'Активен',
-  EXPIRED: 'Истёк',
-  FROZEN: 'Заморожен',
-  CANCELLED: 'Отменён',
-};
-
-const statusVariants: Record<string, 'success' | 'secondary' | 'destructive' | 'outline'> = {
-  ACTIVE: 'success',
-  EXPIRED: 'secondary',
-  FROZEN: 'outline',
-  CANCELLED: 'destructive',
-};
-
-const attendanceStatusLabels: Record<AttendanceStatus, string> = {
-  PRESENT: 'Присутствовал',
-  ABSENT: 'Пропустил',
-  EXCUSED: 'Уважительно',
-};
-
-const attendanceStatusVariants: Record<AttendanceStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  PRESENT: 'default',
-  ABSENT: 'destructive',
-  EXCUSED: 'secondary',
-};
-
-const attendanceStatusIcons: Record<AttendanceStatus, JSX.Element> = {
-  PRESENT: <Check className="h-4 w-4 text-emerald-500" />,
-  ABSENT: <X className="h-4 w-4 text-destructive" />,
-  EXCUSED: <AlertCircle className="h-4 w-4 text-yellow-600" />,
-};
 
 export function SubscriptionDetailsSheet({
   subscription: initialSubscription,
@@ -79,17 +48,29 @@ export function SubscriptionDetailsSheet({
       <SheetContent className="w-[500px] sm:max-w-[500px] overflow-y-auto">
         <SheetHeader>
           <div>
-            <SheetTitle>{subscription.subscriptionType.name}</SheetTitle>
+            <div className="flex items-center gap-3">
+              <SheetTitle>{subscription.subscriptionType.name}</SheetTitle>
+              {subscription.subscriptionNumber && (
+                <span className="text-sm text-muted-foreground">
+                  №{subscription.subscriptionNumber.toString().padStart(7, '0')}
+                </span>
+              )}
+            </div>
             <div className="flex flex-col gap-1">
-              <span className="text-sm text-muted-foreground">
-                {subscription.subscriptionType.type === 'UNLIMITED'
-                  ? 'Безлимитный'
-                  : 'Разовые посещения'}
-              </span>
               <div className="flex items-center gap-2">
-                <Badge variant={statusVariants[subscription.status]} className="text-sm w-auto">
-                  {statusLabels[subscription.status]}
-                </Badge>
+                <span className="text-sm text-muted-foreground">
+                  {subscription.subscriptionType.type === 'UNLIMITED'
+                    ? 'Безлимитный'
+                    : 'Разовые посещения'}
+                </span>
+                {subscription.subscriptionType.type === 'UNLIMITED' && (
+                  <span className="text-sm font-medium text-primary capitalize">
+                    {format(parseISO(subscription.startDate), 'LLLL yyyy', { locale: ru })}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <SubscriptionStatusBadge status={subscription.status} />
                 <span className="text-sm text-muted-foreground">
                   до {format(parseISO(subscription.endDate), 'dd MMM yyyy', { locale: ru })}
                 </span>
@@ -147,7 +128,7 @@ export function SubscriptionDetailsSheet({
                         <div className="space-y-1">
                           <div className="flex flex-col gap-1">
                             <div className="flex flex-wrap items-center gap-3">
-                              {attendanceStatusIcons[attendance.status]}
+                              <AttendanceStatusBadge status={attendance.status} size="sm" />
                               <span className="text-sm font-medium">
                                 {format(attendanceDate, 'dd MMM yyyy', { locale: ru })}
                               </span>

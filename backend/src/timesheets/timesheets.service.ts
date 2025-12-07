@@ -647,7 +647,7 @@ export class TimesheetsService {
     return this.prisma.safe.invoice.findMany({
       where: {
         clientId: { in: clientIds },
-        status: { in: ['PENDING', 'OVERDUE', 'PARTIALLY_PAID'] },
+        status: { in: ['UNPAID', 'PARTIALLY_PAID'] },
         items: {
           some: {
             groupId: groupId,

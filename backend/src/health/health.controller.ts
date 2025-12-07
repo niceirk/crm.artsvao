@@ -34,16 +34,26 @@ export class HealthController {
   }
 
   /**
-   * Liveness probe - проверяет только что приложение запущено
-   * Используется Kubernetes для определения нужен ли restart
+   * Liveness probe - проверяет только что приложение запущено и не в shutdown
+   * Используется Kubernetes/Docker для определения нужен ли restart
    */
   @Public()
   @Get('liveness')
-  liveness() {
-    return {
+  liveness(@Res() res: Response) {
+    const stats = this.prisma.getConnectionStats();
+
+    // Если приложение в процессе shutdown - возвращаем 503
+    if (stats.isShuttingDown) {
+      return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({
+        status: 'shutting_down',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    return res.status(HttpStatus.OK).json({
       status: 'ok',
       timestamp: new Date().toISOString(),
-    };
+    });
   }
 
   /**

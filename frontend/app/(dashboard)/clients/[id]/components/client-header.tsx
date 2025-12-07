@@ -4,8 +4,8 @@ import { ArrowLeft, Edit, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { useDeleteClient, useUploadClientPhoto, useDeleteClientPhoto } from '@/hooks/useClients';
+import { ClientStatusBadge } from '@/components/ui/status-badge';
 import { PhotoUpload } from '@/components/photo-upload';
 import {
   AlertDialog,
@@ -27,18 +27,6 @@ interface ClientHeaderProps {
   onCancelEdit: () => void;
   onSave: () => void;
 }
-
-const statusLabels: Record<Client['status'], string> = {
-  ACTIVE: 'Активен',
-  INACTIVE: 'Неактивен',
-  VIP: 'VIP',
-};
-
-const statusVariants: Record<Client['status'], 'default' | 'secondary' | 'destructive'> = {
-  ACTIVE: 'default',
-  INACTIVE: 'secondary',
-  VIP: 'default',
-};
 
 export function ClientHeader({ client, isEditing, onEdit, onCancelEdit, onSave }: ClientHeaderProps) {
   const router = useRouter();
@@ -108,9 +96,7 @@ export function ClientHeader({ client, isEditing, onEdit, onCancelEdit, onSave }
                 </span>
               )}
             </h1>
-            <Badge variant={statusVariants[client.status]}>
-              {statusLabels[client.status]}
-            </Badge>
+            <ClientStatusBadge status={client.status} />
           </div>
           <p className="text-sm text-muted-foreground mt-1">
             Клиент с {new Date(client.createdAt).toLocaleDateString('ru-RU')}

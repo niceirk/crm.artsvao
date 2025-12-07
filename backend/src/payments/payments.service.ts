@@ -59,7 +59,7 @@ export class PaymentsService {
     } else if (totalPaid > 0) {
       newStatus = InvoiceStatus.PARTIALLY_PAID;
     } else {
-      newStatus = InvoiceStatus.PENDING;
+      newStatus = InvoiceStatus.UNPAID;
     }
 
     // Обновляем статус счета только если он изменился
@@ -120,11 +120,6 @@ export class PaymentsService {
 
       if (!invoice) {
         throw new NotFoundException(`Invoice with ID ${dto.invoiceId} not found`);
-      }
-
-      // Проверяем, что счет не отменен
-      if (invoice.status === InvoiceStatus.CANCELLED) {
-        throw new BadRequestException('Cannot create payment for cancelled invoice');
       }
 
       // Рассчитываем уже оплаченную сумму
@@ -189,7 +184,7 @@ export class PaymentsService {
           } else if (totalPaid > 0) {
             newStatus = InvoiceStatus.PARTIALLY_PAID;
           } else {
-            newStatus = InvoiceStatus.PENDING;
+            newStatus = InvoiceStatus.UNPAID;
           }
 
           if (invoice.status !== newStatus) {

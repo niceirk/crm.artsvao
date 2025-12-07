@@ -33,7 +33,6 @@ import {
   TableRow,
   TableFooter,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
   Select,
@@ -43,30 +42,14 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
+import { InvoiceStatusBadge } from '@/components/ui/status-badge';
 import { useInvoice, useUpdateInvoice } from '@/hooks/use-invoices';
 import { useAuth } from '@/hooks/use-auth';
 import { useBreadcrumbs } from '@/lib/contexts/breadcrumbs-context';
 import type { InvoiceStatus } from '@/lib/types/invoices';
 import { InvoicePaymentsSection } from './components/invoice-payments-section';
 import { InvoiceQRSection } from './components/invoice-qr-section';
-
-const statusLabels: Record<InvoiceStatus, string> = {
-  DRAFT: 'Черновик',
-  PENDING: 'Ожидает оплаты',
-  PAID: 'Оплачен',
-  PARTIALLY_PAID: 'Частично оплачен',
-  OVERDUE: 'Просрочен',
-  CANCELLED: 'Отменен',
-};
-
-const statusVariants: Record<InvoiceStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  DRAFT: 'outline',
-  PENDING: 'secondary',
-  PAID: 'default',
-  PARTIALLY_PAID: 'secondary',
-  OVERDUE: 'destructive',
-  CANCELLED: 'outline',
-};
 
 export default function InvoiceDetailsPage() {
   const params = useParams();
@@ -169,9 +152,7 @@ export default function InvoiceDetailsPage() {
             <p className="text-muted-foreground">Детали счета</p>
           </div>
         </div>
-        <Badge variant={statusVariants[invoice.status]} className="text-base px-4 py-2">
-          {statusLabels[invoice.status]}
-        </Badge>
+        <InvoiceStatusBadge status={invoice.status} size="lg" />
       </div>
 
       <div className="grid gap-6 md:grid-cols-3">
@@ -460,12 +441,9 @@ export default function InvoiceDetailsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="DRAFT">Черновик</SelectItem>
-                    <SelectItem value="PENDING">Ожидает оплаты</SelectItem>
+                    <SelectItem value="UNPAID">Не оплачен</SelectItem>
                     <SelectItem value="PAID">Оплачен</SelectItem>
                     <SelectItem value="PARTIALLY_PAID">Частично оплачен</SelectItem>
-                    <SelectItem value="OVERDUE">Просрочен</SelectItem>
-                    <SelectItem value="CANCELLED">Отменен</SelectItem>
                   </SelectContent>
                 </Select>
               </CardContent>

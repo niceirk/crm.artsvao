@@ -1,12 +1,9 @@
 import type { ServiceType, WriteOffTiming } from './services';
 
 export type InvoiceStatus =
-  | 'DRAFT'
-  | 'PENDING'
+  | 'UNPAID'
   | 'PAID'
-  | 'PARTIALLY_PAID'
-  | 'OVERDUE'
-  | 'CANCELLED';
+  | 'PARTIALLY_PAID';
 
 export type WriteOffStatus =
   | 'PENDING'

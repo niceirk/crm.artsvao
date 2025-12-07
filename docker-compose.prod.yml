@@ -43,9 +43,9 @@ services:
     networks:
       - artsvao-network
     healthcheck:
-      # Используем liveness вместо health, т.к. health проверяет БД и может зависнуть
-      # при проблемах с соединением к облачной PostgreSQL
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health/liveness"]
+      # Liveness теперь проверяет shutdown состояние и возвращает 503 при shutdown
+      # wget -q -O /dev/null проверяет HTTP код ответа (exit 8 при 4xx/5xx)
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/api/health/liveness"]
       interval: 30s
       timeout: 10s
       retries: 3

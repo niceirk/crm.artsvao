@@ -1200,11 +1200,11 @@ export class RentalApplicationsService {
   async createInvoice(id: string, managerId: string) {
     const application = await this.findOne(id);
 
-    // Проверка: счет еще не создан
+    // Проверка: счет еще не создан (ищем неоплаченные счета)
     const existingInvoice = await this.prisma.invoice.findFirst({
       where: {
         rentalApplicationId: id,
-        status: { not: 'CANCELLED' },
+        status: { in: ['UNPAID', 'PARTIALLY_PAID'] },
       },
     });
 
@@ -1272,7 +1272,7 @@ export class RentalApplicationsService {
     for (const id of applicationIds) {
       try {
         const application = await this.findOne(id);
-        const invoice = application.invoices?.find(inv => inv.status !== 'CANCELLED');
+        const invoice = application.invoices?.find(inv => inv.status !== 'PAID');
 
         if (!invoice) {
           results.errors.push({ id, error: 'Счет не найден' });
@@ -1348,20 +1348,13 @@ export class RentalApplicationsService {
         data: { status: CalendarEventStatus.CANCELLED },
       });
 
-      // Отменяем неоплаченные счета
-      const invoices = await tx.invoice.findMany({
+      // Удаляем неоплаченные счета при отмене заявки
+      await tx.invoice.deleteMany({
         where: {
           rentalApplicationId: id,
-          status: { in: ['DRAFT', 'PENDING'] },
+          status: 'UNPAID',
         },
       });
-
-      for (const invoice of invoices) {
-        await tx.invoice.update({
-          where: { id: invoice.id },
-          data: { status: 'CANCELLED' },
-        });
-      }
 
       // Обновляем статус заявки
       return tx.rentalApplication.update({
@@ -1412,13 +1405,12 @@ export class RentalApplicationsService {
         );
       }
 
-      // 2. Отменяем неоплаченные счета
-      await tx.invoice.updateMany({
+      // 2. Удаляем неоплаченные счета
+      await tx.invoice.deleteMany({
         where: {
           rentalApplicationId: id,
-          status: { in: ['PENDING', 'OVERDUE', 'DRAFT'] },
+          status: 'UNPAID',
         },
-        data: { status: 'CANCELLED' },
       });
 
       // 3. Удаляем Rental записи (бронирования)
@@ -1524,7 +1516,6 @@ export class RentalApplicationsService {
     const invoice = await this.prisma.invoice.findFirst({
       where: {
         rentalApplicationId: applicationId,
-        status: { not: 'CANCELLED' },
       },
       orderBy: { createdAt: 'desc' },
     });

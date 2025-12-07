@@ -6,7 +6,7 @@ import { format, startOfMonth, endOfMonth, isSameMonth, parseISO } from 'date-fn
 import { ru } from 'date-fns/locale';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
+import { InvoiceStatusBadge, SubscriptionStatusBadge, AttendanceStatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { History, CreditCard, CalendarCheck, Receipt, AlertCircle, FileStack, ExternalLink, Plus } from 'lucide-react';
@@ -22,50 +22,6 @@ import type { Attendance, AttendanceStatus } from '@/lib/types/attendance';
 interface ClientHistoryCardProps {
   client: Client;
 }
-
-const statusLabels: Record<InvoiceStatus, string> = {
-  DRAFT: 'Черновик',
-  PENDING: 'Ожидает оплаты',
-  PAID: 'Оплачен',
-  PARTIALLY_PAID: 'Частично оплачен',
-  OVERDUE: 'Просрочен',
-  CANCELLED: 'Отменен',
-};
-
-const statusVariants: Record<InvoiceStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  DRAFT: 'outline',
-  PENDING: 'secondary',
-  PAID: 'default',
-  PARTIALLY_PAID: 'secondary',
-  OVERDUE: 'destructive',
-  CANCELLED: 'outline',
-};
-
-const subscriptionStatusLabels: Record<SubscriptionStatus, string> = {
-  ACTIVE: 'Активен',
-  EXPIRED: 'Истёк',
-  FROZEN: 'Заморожен',
-  CANCELLED: 'Отменён',
-};
-
-const subscriptionStatusVariants: Record<SubscriptionStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  ACTIVE: 'default',
-  EXPIRED: 'secondary',
-  FROZEN: 'outline',
-  CANCELLED: 'destructive',
-};
-
-const attendanceStatusLabels: Record<AttendanceStatus, string> = {
-  PRESENT: 'Присутствовал',
-  ABSENT: 'Пропустил',
-  EXCUSED: 'Уважительно',
-};
-
-const attendanceStatusVariants: Record<AttendanceStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  PRESENT: 'default',
-  ABSENT: 'destructive',
-  EXCUSED: 'secondary',
-};
 
 export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
   const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
@@ -201,9 +157,7 @@ export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
                           <p className="font-semibold text-lg">
                             {formatCurrency(invoice.totalAmount)}
                           </p>
-                          <Badge variant={statusVariants[invoice.status]} className="mt-1">
-                            {statusLabels[invoice.status]}
-                          </Badge>
+                          <InvoiceStatusBadge status={invoice.status} size="sm" />
                         </div>
                       </div>
                       {invoice.notes && (
@@ -211,13 +165,14 @@ export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
                           {invoice.notes}
                         </p>
                       )}
-                      <div className="flex items-center gap-2 pl-13 text-xs text-muted-foreground">
-                        <span>Позиций: {invoice.items.length}</span>
+                      <div className="flex flex-col gap-1 pl-13 text-xs text-muted-foreground">
+                        {invoice.items.length > 0 && (
+                          <span>
+                            {invoice.items.map(item => item.serviceName).join(', ')}
+                          </span>
+                        )}
                         {invoice.rental && (
-                          <>
-                            <span>•</span>
-                            <span>Аренда: {invoice.rental.eventType}</span>
-                          </>
+                          <span>Аренда: {invoice.rental.eventType}</span>
                         )}
                       </div>
                     </div>
@@ -270,9 +225,7 @@ export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
                           <p className="font-semibold text-lg">
                             {formatCurrency(subscription.paidPrice)}
                           </p>
-                          <Badge variant={subscriptionStatusVariants[subscription.status]} className="mt-1">
-                            {subscriptionStatusLabels[subscription.status]}
-                          </Badge>
+                          <SubscriptionStatusBadge status={subscription.status} size="sm" />
                         </div>
                       </div>
                       <div className="flex items-center gap-4 pl-13 text-sm text-muted-foreground">
@@ -395,9 +348,7 @@ export function ClientHistoryCard({ client }: ClientHistoryCardProps) {
                           )}
                         </div>
                         <div className="flex flex-col items-end">
-                          <Badge variant={attendanceStatusVariants[record.status]} className="uppercase">
-                            {attendanceStatusLabels[record.status]}
-                          </Badge>
+                          <AttendanceStatusBadge status={record.status} size="sm" />
                           {record.markedByUser && (
                             <span className="text-[11px] text-muted-foreground">
                               Отметил: {record.markedByUser.firstName} {record.markedByUser.lastName}

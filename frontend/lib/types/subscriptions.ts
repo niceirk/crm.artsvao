@@ -66,6 +66,7 @@ export interface SubscriptionType {
 
 export interface Subscription {
   id: string;
+  subscriptionNumber?: number; // Уникальный номер абонемента
   version: number; // Версия для оптимистичной блокировки
   clientId: string;
   subscriptionTypeId: string;

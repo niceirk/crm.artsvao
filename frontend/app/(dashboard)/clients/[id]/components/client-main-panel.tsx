@@ -7,7 +7,7 @@ import { format, startOfMonth, isSameMonth, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Badge } from '@/components/ui/badge';
+import { InvoiceStatusBadge, SubscriptionStatusBadge, AttendanceStatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -78,50 +78,6 @@ interface ClientMainPanelProps {
   activeTab?: string;
   onTabChange?: (tab: string) => void;
 }
-
-const statusLabels: Record<InvoiceStatus, string> = {
-  DRAFT: 'Черновик',
-  PENDING: 'Ожидает оплаты',
-  PAID: 'Оплачен',
-  PARTIALLY_PAID: 'Частично оплачен',
-  OVERDUE: 'Просрочен',
-  CANCELLED: 'Отменен',
-};
-
-const statusVariants: Record<InvoiceStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  DRAFT: 'outline',
-  PENDING: 'secondary',
-  PAID: 'default',
-  PARTIALLY_PAID: 'secondary',
-  OVERDUE: 'destructive',
-  CANCELLED: 'outline',
-};
-
-const subscriptionStatusLabels: Record<SubscriptionStatus, string> = {
-  ACTIVE: 'Активен',
-  EXPIRED: 'Истёк',
-  FROZEN: 'Заморожен',
-  CANCELLED: 'Отменён',
-};
-
-const subscriptionStatusVariants: Record<SubscriptionStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  ACTIVE: 'default',
-  EXPIRED: 'secondary',
-  FROZEN: 'outline',
-  CANCELLED: 'destructive',
-};
-
-const attendanceStatusLabels: Record<AttendanceStatus, string> = {
-  PRESENT: 'Присутствовал',
-  ABSENT: 'Пропустил',
-  EXCUSED: 'Уважительно',
-};
-
-const attendanceStatusVariants: Record<AttendanceStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  PRESENT: 'default',
-  ABSENT: 'destructive',
-  EXCUSED: 'secondary',
-};
 
 export function ClientMainPanel({
   client,
@@ -430,12 +386,9 @@ export function ClientMainPanel({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Все статусы</SelectItem>
-                  <SelectItem value="DRAFT">Черновик</SelectItem>
-                  <SelectItem value="PENDING">Ожидает оплаты</SelectItem>
+                  <SelectItem value="UNPAID">Не оплачен</SelectItem>
                   <SelectItem value="PAID">Оплачен</SelectItem>
                   <SelectItem value="PARTIALLY_PAID">Частично оплачен</SelectItem>
-                  <SelectItem value="OVERDUE">Просрочен</SelectItem>
-                  <SelectItem value="CANCELLED">Отменен</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -465,6 +418,7 @@ export function ClientMainPanel({
                         </Button>
                       </TableHead>
                       <TableHead>Номер</TableHead>
+                      <TableHead>Состав</TableHead>
                       <TableHead>
                         <Button
                           variant="ghost"
@@ -503,13 +457,14 @@ export function ClientMainPanel({
                         <TableCell className="font-medium text-sm">
                           {invoice.invoiceNumber}
                         </TableCell>
+                        <TableCell className="text-sm text-muted-foreground max-w-[200px] truncate">
+                          {invoice.items?.map(item => item.serviceName).join(', ') || '—'}
+                        </TableCell>
                         <TableCell className="font-medium">
                           {formatCurrency(invoice.totalAmount)}
                         </TableCell>
                         <TableCell>
-                          <Badge variant={statusVariants[invoice.status]} className="text-xs">
-                            {statusLabels[invoice.status]}
-                          </Badge>
+                          <InvoiceStatusBadge status={invoice.status} size="sm" />
                         </TableCell>
                         <TableCell>
                           <Link href={`/invoices/${invoice.id}`}>
@@ -569,6 +524,7 @@ export function ClientMainPanel({
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[80px]">№</TableHead>
                       <TableHead>Название</TableHead>
                       <TableHead>Группа</TableHead>
                       <TableHead>
@@ -615,6 +571,12 @@ export function ClientMainPanel({
                         className="hover:bg-muted/50"
                       >
                         <TableCell
+                          className="text-sm text-muted-foreground cursor-pointer"
+                          onClick={() => setSelectedSubscription(subscription as Subscription)}
+                        >
+                          {subscription.subscriptionNumber?.toString().padStart(7, '0') || '—'}
+                        </TableCell>
+                        <TableCell
                           className="font-medium text-sm cursor-pointer"
                           onClick={() => setSelectedSubscription(subscription as Subscription)}
                         >
@@ -630,7 +592,16 @@ export function ClientMainPanel({
                           className="text-sm cursor-pointer"
                           onClick={() => setSelectedSubscription(subscription as Subscription)}
                         >
-                          {format(parseISO(subscription.startDate), 'dd.MM', { locale: ru })} - {format(parseISO(subscription.endDate), 'dd.MM.yy', { locale: ru })}
+                          <div className="flex flex-col">
+                            {subscription.subscriptionType.type === 'UNLIMITED' && (
+                              <span className="font-medium text-primary text-xs capitalize">
+                                {format(parseISO(subscription.startDate), 'LLLL', { locale: ru })}
+                              </span>
+                            )}
+                            <span className="text-muted-foreground">
+                              {format(parseISO(subscription.startDate), 'dd.MM', { locale: ru })} - {format(parseISO(subscription.endDate), 'dd.MM.yy', { locale: ru })}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell
                           className="text-sm cursor-pointer"
@@ -650,9 +621,7 @@ export function ClientMainPanel({
                           className="cursor-pointer"
                           onClick={() => setSelectedSubscription(subscription as Subscription)}
                         >
-                          <Badge variant={subscriptionStatusVariants[subscription.status]} className="text-xs">
-                            {subscriptionStatusLabels[subscription.status]}
-                          </Badge>
+                          <SubscriptionStatusBadge status={subscription.status} size="sm" />
                         </TableCell>
                         <TableCell>
                           <Button
@@ -826,9 +795,7 @@ export function ClientMainPanel({
                             {basis}
                           </TableCell>
                           <TableCell>
-                            <Badge variant={attendanceStatusVariants[record.status]} className="text-xs">
-                              {attendanceStatusLabels[record.status]}
-                            </Badge>
+                            <AttendanceStatusBadge status={record.status} size="sm" />
                           </TableCell>
                         </TableRow>
                       );

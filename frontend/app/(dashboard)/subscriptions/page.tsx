@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Plus, Banknote, ShoppingCart, ChevronDown, CreditCard, MoreHorizontal, Trash2, Eye } from 'lucide-react';
+import { Plus, Banknote, ShoppingCart, ChevronDown, CreditCard, MoreHorizontal, Trash2, Eye, Search } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -21,6 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { SubscriptionStatusBadge } from '@/components/ui/status-badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,7 +39,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox';
-import { ClientSearch } from '@/components/clients/client-search';
 import { useSubscriptions } from '@/hooks/use-subscriptions';
 import { useGroups } from '@/hooks/use-groups';
 import { SellSubscriptionDialog } from './components/sell-subscription-dialog';
@@ -52,18 +53,12 @@ import type {
 } from '@/lib/types/subscriptions';
 import { cn } from '@/lib/utils';
 
-const statusDotClass: Record<SubscriptionStatus, string> = {
-  ACTIVE: 'bg-green-500',
-  EXPIRED: 'bg-secondary',
-  FROZEN: 'bg-muted-foreground',
-  CANCELLED: 'bg-destructive',
-};
-
 export default function SubscriptionsPage() {
   const [showExpired, setShowExpired] = useState(false);
   const [groupFilter, setGroupFilter] = useState('');
   const [groupSearch, setGroupSearch] = useState('');
-  const [selectedClientId, setSelectedClientId] = useState('');
+  const [clientSearch, setClientSearch] = useState('');
+  const [monthFilter, setMonthFilter] = useState('');
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [isSellDialogOpen, setIsSellDialogOpen] = useState(false);
   const [isPackDialogOpen, setIsPackDialogOpen] = useState(false);
@@ -90,32 +85,65 @@ export default function SubscriptionsPage() {
       }));
   }, [groups, groupSearch]);
 
+  // Генерация списка месяцев для фильтра (текущий месяц + 2 месяца назад + 1 вперёд)
+  const monthOptions = useMemo(() => {
+    const months: { value: string; label: string }[] = [];
+    const now = new Date();
+
+    for (let i = -3; i <= 1; i++) {
+      const date = new Date(now.getFullYear(), now.getMonth() + i, 1);
+      const value = format(date, 'yyyy-MM');
+      const label = format(date, 'LLLL yyyy', { locale: ru });
+      months.push({ value, label: label.charAt(0).toUpperCase() + label.slice(1) });
+    }
+
+    return months;
+  }, []);
+
   const filters = useMemo(() => {
     const applied: SubscriptionFilterDto = {
       sortBy: 'purchaseDate',
       sortOrder,
+      limit: 1000,
     };
 
     if (groupFilter) {
       applied.groupId = groupFilter;
     }
 
-    if (selectedClientId) {
-      applied.clientId = selectedClientId;
+    if (monthFilter) {
+      applied.validMonth = monthFilter;
     }
 
-    if (!showExpired) {
+    // Показывать только активные, если:
+    // - не включен showExpired
+    // - не выбран фильтр по месяцу
+    // - нет поиска по клиенту
+    if (!showExpired && !monthFilter && !clientSearch.trim()) {
       applied.statusCategory = 'ACTIVE';
     }
 
     return applied;
-  }, [groupFilter, selectedClientId, showExpired, sortOrder]);
+  }, [groupFilter, monthFilter, showExpired, sortOrder, clientSearch]);
 
   const { data: subscriptionsResponse, isLoading } =
     useSubscriptions(filters);
 
-  const subscriptions = subscriptionsResponse?.data;
+  const allSubscriptions = subscriptionsResponse?.data;
   const meta = subscriptionsResponse?.meta;
+
+  // Локальная фильтрация по клиенту
+  const subscriptions = useMemo(() => {
+    if (!allSubscriptions) return [];
+    if (!clientSearch.trim()) return allSubscriptions;
+
+    const search = clientSearch.trim().toLowerCase();
+    return allSubscriptions.filter((sub) => {
+      const fullName = `${sub.client.lastName} ${sub.client.firstName}`.toLowerCase();
+      const phone = sub.client.phone?.toLowerCase() || '';
+      return fullName.includes(search) || phone.includes(search);
+    });
+  }, [allSubscriptions, clientSearch]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('ru-RU', {
@@ -176,13 +204,15 @@ export default function SubscriptionsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-3 items-center mb-4">
-            <ClientSearch
-              value={selectedClientId || undefined}
-              onValueChange={(value) => setSelectedClientId(value ?? '')}
-              placeholder="Поиск клиента..."
-              showCreateButton={true}
-              className="min-w-[220px] max-w-[360px] flex-1"
-            />
+            <div className="relative min-w-[220px] max-w-[360px] flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Поиск по клиенту..."
+                value={clientSearch}
+                onChange={(e) => setClientSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
             <div className="flex items-center gap-2">
               <Switch
                 checked={showExpired}
@@ -207,6 +237,22 @@ export default function SubscriptionsPage() {
               className="min-w-[220px] max-w-[360px] flex-1"
             />
             <Select
+              value={monthFilter || 'all'}
+              onValueChange={(value) => setMonthFilter(value === 'all' ? '' : value)}
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Все месяцы" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все месяцы</SelectItem>
+                {monthOptions.map((month) => (
+                  <SelectItem key={month.value} value={month.value}>
+                    {month.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
               value={sortOrder}
               onValueChange={(value) => setSortOrder(value as 'desc' | 'asc')}
             >
@@ -225,10 +271,11 @@ export default function SubscriptionsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-[90px]">№</TableHead>
+                  <TableHead>Статус</TableHead>
                   <TableHead>Дата покупки</TableHead>
                   <TableHead>Клиент</TableHead>
                   <TableHead>Тип</TableHead>
-                  <TableHead>Группа</TableHead>
                   <TableHead>Период</TableHead>
                   <TableHead className="text-right">Цена</TableHead>
                   <TableHead className="text-right">Цена 1 занятия</TableHead>
@@ -243,16 +290,16 @@ export default function SubscriptionsPage() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => handleViewDetails(subscription)}
                   >
+                  <TableCell className="text-sm text-muted-foreground">
+                    {subscription.subscriptionNumber?.toString().padStart(7, '0') || '—'}
+                  </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <span
-                        className={cn(
-                          'inline-block h-2.5 w-2.5 rounded-full',
-                          statusDotClass[subscription.status],
-                        )}
-                      />
-                      <span className="text-sm">{format(parseISO(subscription.purchaseDate), 'dd.MM.yyyy')}</span>
+                      <SubscriptionStatusBadge status={subscription.status} size="sm" />
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <span className="text-sm">{format(parseISO(subscription.purchaseDate), 'dd.MM.yyyy')}</span>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col">
@@ -267,27 +314,19 @@ export default function SubscriptionsPage() {
                   <TableCell>
                     <span className="font-medium">{subscription.subscriptionType.name}</span>
                   </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-medium">{subscription.group.name}</span>
-                      <span className="text-sm text-muted-foreground">
-                        {subscription.group.studio.name}
-                      </span>
-                    </div>
-                  </TableCell>
                     <TableCell>
                       <div className="flex flex-col text-sm">
-                        <span>
-                          {format(parseISO(subscription.startDate), 'dd MMM', {
-                            locale: ru,
-                          })}{' '}
-                          -{' '}
-                          {format(parseISO(subscription.endDate), 'dd MMM yyyy', {
-                            locale: ru,
-                          })}
+                        {/* Название месяца для безлимитных абонементов */}
+                        {subscription.subscriptionType.type === 'UNLIMITED' && (
+                          <span className="font-medium text-primary capitalize">
+                            {format(parseISO(subscription.startDate), 'LLLL', { locale: ru })}
+                          </span>
+                        )}
+                        <span className="text-muted-foreground">
+                          {format(parseISO(subscription.startDate), 'dd.MM', { locale: ru })} - {format(parseISO(subscription.endDate), 'dd.MM.yy', { locale: ru })}
                         </span>
                         {subscription.purchasedMonths > 1 && (
-                          <span className="text-muted-foreground">
+                          <span className="text-xs text-muted-foreground">
                             {subscription.purchasedMonths} мес.
                           </span>
                         )}

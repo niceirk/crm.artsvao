@@ -1,0 +1,64 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc:*)",
+      "Bash(npx prisma:*)",
+      "Bash(npm:*)",
+      "Bash(git:*)",
+      "Bash(curl:*)",
+      "Bash(lsof:*)",
+      "Bash(pkill:*)",
+      "Bash(kill:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(cat:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(wc:*)",
+      "Bash(sort:*)",
+      "Bash(echo:*)",
+      "Bash(ping:*)",
+      "Bash(nc:*)",
+      "Bash(ssh:*)",
+      "Bash(python3:*)",
+      "Bash(node:*)",
+      "Bash(pm2:*)",
+      "Bash(docker-compose:*)",
+      "Bash(source:*)",
+      "Read(**)",
+      "Edit(backend/**)",
+      "Edit(frontend/**)",
+      "Edit(.claude/**)",
+      "WebSearch",
+      "WebFetch(domain:*)",
+      "mcp__browsermcp__*",
+      "mcp__context7__*",
+      "mcp__shadcn__*",
+      "mcp__filesystem__*",
+      "mcp__github__*"
+    ],
+    "deny": [
+      "Read(.env.production)",
+      "Bash(rm -rf:*)"
+    ]
+  },
+  "env": {
+    "DISABLE_PROMPT_CACHING": "0",
+    "BASH_DEFAULT_TIMEOUT_MS": "60000"
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/nikita/artsvao/.claude/hooks/validate-bash.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -347,7 +347,7 @@ async function main() {
                   subtotal: price,
                   discountAmount: 0,
                   totalAmount: price,
-                  status: 'PENDING',
+                  status: 'UNPAID',
                   issuedAt: new Date(),
                   items: {
                     create: {

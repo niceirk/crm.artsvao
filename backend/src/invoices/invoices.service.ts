@@ -19,31 +19,33 @@ export class InvoicesService {
 
   /**
    * Генерация уникального номера счета
-   * Формат: МР-ГГ-NNNNNN (МР-год-порядковый номер)
+   * Формат: 7-значный номер (0000001, 0000002, ...)
    */
   public async generateInvoiceNumber(): Promise<string> {
-    const year = new Date().getFullYear().toString().slice(-2); // "25"
-    const prefix = `МР-${year}`;
-
-    // Находим последний счёт за этот год
+    // Ищем последний счет в новом формате (без дефисов)
     const lastInvoice = await this.prisma.invoice.findFirst({
       where: {
-        invoiceNumber: {
-          startsWith: prefix,
-        },
+        invoiceNumber: { not: { contains: '-' } },
       },
-      orderBy: {
-        invoiceNumber: 'desc',
-      },
+      orderBy: { invoiceNumber: 'desc' },
     });
 
-    let sequence = 1;
+    let nextNumber = 1;
     if (lastInvoice) {
-      const lastSequence = parseInt(lastInvoice.invoiceNumber.split('-')[2]);
-      sequence = lastSequence + 1;
+      nextNumber = parseInt(lastInvoice.invoiceNumber) + 1;
+    } else {
+      // Fallback: если все номера в старом формате МР-ГГ-NNNNNN
+      const lastOldFormat = await this.prisma.invoice.findFirst({
+        where: { invoiceNumber: { contains: '-' } },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (lastOldFormat) {
+        const parts = lastOldFormat.invoiceNumber.split('-');
+        nextNumber = parseInt(parts[2] || '0') + 1;
+      }
     }
 
-    return `${prefix}-${sequence.toString().padStart(6, '0')}`;
+    return nextNumber.toString().padStart(7, '0');
   }
 
   /**
@@ -127,7 +129,7 @@ export class InvoicesService {
         dueDate: dto.dueDate,
         notes: dto.notes,
         createdBy: userId,
-        status: InvoiceStatus.PENDING,
+        status: InvoiceStatus.UNPAID,
         items: {
           create: processedItems.map((item) => ({
             // serviceId только если он существует в таблице Service
@@ -485,10 +487,6 @@ export class InvoicesService {
       throw new BadRequestException('Счет уже оплачен');
     }
 
-    if (invoice.status === InvoiceStatus.CANCELLED) {
-      throw new BadRequestException('Нельзя оплатить отмененный счет');
-    }
-
     return this.update(id, {
       status: InvoiceStatus.PAID,
       paidAt: new Date().toISOString(),
@@ -570,7 +568,7 @@ export class InvoicesService {
     // Формируем ФИО клиента для назначения платежа
     const clientFullName = `${invoice.client.lastName} ${invoice.client.firstName}${invoice.client.middleName ? ' ' + invoice.client.middleName : ''}`;
 
-    const purpose = `Оплата по счету №${invoice.invoiceNumber} от ${invoice.issuedAt.toLocaleDateString('ru-RU')}. ${serviceNames}. ФИО плательщика: ${clientFullName}`;
+    const purpose = `КЦ Марьина роща, ${invoice.invoiceNumber}, ${serviceNames}. ФИО Потребителя: ${clientFullName}`;
 
     // Формируем название получателя с ИНН и КПП, убираем ВСЕ кавычки
     const cleanOrgName = orgDetails.organizationName

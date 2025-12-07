@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { retryExtension } from './prisma-retry.extension';
+import { shutdownState } from '../main';
 
 const SLOW_QUERY_THRESHOLD_MS = 1000;
 const MAX_CONNECT_RETRIES = 5;
@@ -28,9 +29,10 @@ const HEALTH_CHECK_RETRIES = 3; // Увеличено с 2
 // Диагностика - логирование статистики
 const DIAGNOSTIC_LOG_INTERVAL_MS = 30000; // Логировать статистику каждые 30 сек
 
-// Pool reset - сброс пула соединений для предотвращения idle timeout на облачных БД
-// TWC закрывает idle соединения через ~5 минут, поэтому сбрасываем пул раньше
-const POOL_RESET_INTERVAL_MS = 240000; // Сброс пула каждые 4 минуты
+// Pool reset - ОТКЛЮЧЕН
+// TWC настроен с idle_session_timeout=0, поэтому pool reset не нужен
+// Pool reset вызывал проблемы "Engine is not yet connected" в PM2 cluster mode
+// const POOL_RESET_INTERVAL_MS = 240000;
 
 @Injectable()
 export class PrismaService
@@ -59,10 +61,6 @@ export class PrismaService
   private activeQueryCount = 0;
   private peakQueryCount = 0;
   private totalQueryCount = 0;
-
-  // Pool reset - периодический сброс пула соединений
-  private poolResetInterval: NodeJS.Timeout | null = null;
-  private poolResetCount = 0;
 
   // Safe client с retry логикой (lazy initialization)
   // Используем тип PrismaClient для совместимости с моделями
@@ -153,56 +151,6 @@ export class PrismaService
   }
 
   /**
-   * Запуск периодического сброса пула соединений.
-   * ВАЖНО: Облачные БД (TWC) закрывают idle соединения через ~5 минут.
-   * Keepalive пинги могут использовать одно и то же соединение, оставляя остальные idle.
-   * Периодический сброс пула гарантирует что все соединения будут обновлены.
-   */
-  private startPoolReset() {
-    if (this.poolResetInterval) return;
-
-    this.poolResetInterval = setInterval(async () => {
-      if (this.isShuttingDown || this.isReconnecting) return;
-
-      try {
-        this.logger.debug('[PRISMA] Starting pool reset...');
-
-        // Закрываем все соединения в пуле
-        await this.$disconnect();
-
-        // Переподключаемся (Prisma создаст новые соединения по мере необходимости)
-        await this.$connect();
-
-        // Проверяем что соединение работает
-        await this.$queryRaw`SELECT 1`;
-
-        this.poolResetCount++;
-        this.lastActivityTimestamp = Date.now();
-        this.logger.log(`[PRISMA] Pool reset completed successfully (total: ${this.poolResetCount})`);
-      } catch (error) {
-        this.logger.warn(`[PRISMA] Pool reset failed: ${(error as Error).message}`);
-        // Пробуем reconnect если сброс не удался
-        this.handleDeadConnection().catch((err) => {
-          this.logger.error(`[PRISMA] Reconnect after failed pool reset failed: ${err.message}`);
-        });
-      }
-    }, POOL_RESET_INTERVAL_MS);
-
-    this.logger.log(`[PRISMA] Pool reset scheduled (interval: ${POOL_RESET_INTERVAL_MS / 1000}s)`);
-  }
-
-  /**
-   * Остановка периодического сброса пула
-   */
-  private stopPoolReset() {
-    if (this.poolResetInterval) {
-      clearInterval(this.poolResetInterval);
-      this.poolResetInterval = null;
-      this.logger.log(`[PRISMA] Pool reset stopped (total resets: ${this.poolResetCount})`);
-    }
-  }
-
-  /**
    * Подключение к БД с retry логикой при старте
    */
   async onModuleInit() {
@@ -216,8 +164,7 @@ export class PrismaService
         );
         // Запускаем keepalive после успешного подключения
         this.startKeepalive();
-        // Запускаем периодический сброс пула (защита от idle timeout на облачных БД)
-        this.startPoolReset();
+        // Pool reset отключен - TWC настроен с idle_session_timeout=0
         // Запускаем диагностическое логирование
         this.startDiagnosticLogging();
         this.lastActivityTimestamp = Date.now();
@@ -244,11 +191,45 @@ export class PrismaService
   }
 
   async onModuleDestroy() {
-    this.logger.log('PrismaService: Starting graceful shutdown...');
+    const uptime = Math.round(process.uptime());
+    const stackTrace = new Error().stack;
+
+    // ============================================
+    // ДЕТАЛЬНОЕ ЛОГИРОВАНИЕ ДЛЯ ДИАГНОСТИКИ
+    // ============================================
+    this.logger.warn(
+      `[SHUTDOWN] onModuleDestroy called after ${uptime}s uptime. ` +
+      `Signal received: ${shutdownState.signalReceived}, ` +
+      `Signal name: ${shutdownState.signalName || 'none'}, ` +
+      `Signal time: ${shutdownState.signalTime?.toISOString() || 'none'}`
+    );
+
+    // Логируем stack trace для понимания кто вызвал
+    this.logger.warn(`[SHUTDOWN] Call stack:\n${stackTrace}`);
+
+    // ============================================
+    // ЗАЩИТА ОТ ЛОЖНОГО SHUTDOWN
+    // ============================================
+    if (!shutdownState.signalReceived) {
+      this.logger.error(
+        `[SHUTDOWN] ANOMALY DETECTED: onModuleDestroy called WITHOUT signal! ` +
+        `This is a bug - NestJS called shutdown without receiving SIGTERM/SIGINT. ` +
+        `NOT setting isShuttingDown to prevent zombie state.`
+      );
+
+      // НЕ устанавливаем isShuttingDown, НЕ останавливаем keepalive
+      // Приложение должно продолжить работу
+      this.logger.warn(
+        `[SHUTDOWN] Ignoring false shutdown. Keepalive and health checks will continue.`
+      );
+      return;
+    }
+
+    // Реальный shutdown - продолжаем
+    this.logger.log('PrismaService: Starting graceful shutdown (signal confirmed)...');
     this.isShuttingDown = true;
 
     // Останавливаем все периодические задачи
-    this.stopPoolReset();
     this.stopKeepalive('module_destroy');
     this.stopDiagnosticLogging();
 
@@ -262,6 +243,17 @@ export class PrismaService
     this.logger.log(
       `PrismaService shutdown complete. Stats: pings=${this.keepalivePingCount}, fails=${this.keepaliveFailCount}, errors=${this.connectionErrorCount}`,
     );
+
+    // Принудительный exit если NestJS не завершил процесс через 5 секунд
+    // Это предотвращает "зомби" состояние когда БД отключена но процесс жив
+    // ВАЖНО: НЕ используем unref() - таймер должен держать процесс до завершения
+    const forceExitTimer = setTimeout(() => {
+      this.logger.warn('[SHUTDOWN] Process did not exit after onModuleDestroy, forcing exit...');
+      process.exit(0);
+    }, 5000);
+
+    // Логируем что таймер установлен
+    this.logger.log(`[SHUTDOWN] Force exit timer set (5s). Timer ID: ${forceExitTimer}`);
   }
 
   /**
@@ -458,6 +450,12 @@ export class PrismaService
    * Проверка здоровья БД с таймаутом и автоматическим восстановлением
    */
   async healthCheck(): Promise<boolean> {
+    // Быстрый выход если в процессе shutdown - не пытаемся запрашивать отключённую БД
+    if (this.isShuttingDown) {
+      this.logger.debug('Health check skipped: shutdown in progress');
+      return false;
+    }
+
     for (let attempt = 1; attempt <= HEALTH_CHECK_RETRIES; attempt++) {
       try {
         const result = await Promise.race([

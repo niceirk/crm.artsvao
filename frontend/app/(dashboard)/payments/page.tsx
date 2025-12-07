@@ -21,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { PaymentStatusBadge } from '@/components/ui/status-badge';
 import {
   Select,
   SelectContent,
@@ -35,13 +36,6 @@ import {
   PAYMENT_TYPE_LABELS,
   type PaymentStatus,
 } from '@/lib/types/payments';
-
-const statusVariants: Record<PaymentStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  PENDING: 'secondary',
-  COMPLETED: 'default',
-  FAILED: 'destructive',
-  REFUNDED: 'outline',
-};
 
 export default function PaymentsPage() {
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | 'all'>('all');
@@ -172,9 +166,7 @@ export default function PaymentsPage() {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={statusVariants[payment.status]}>
-                        {PAYMENT_STATUS_LABELS[payment.status]}
-                      </Badge>
+                      <PaymentStatusBadge status={payment.status} size="sm" />
                     </TableCell>
                   </TableRow>
                 ))}

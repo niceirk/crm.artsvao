@@ -5,13 +5,25 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { join } from 'path';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 
-const SHUTDOWN_TIMEOUT_MS = 30000; // 30 секунд на graceful shutdown
 const MEMORY_LOG_INTERVAL_MS = 30000; // Логировать память каждые 30 сек
 const MEMORY_WARNING_THRESHOLD_MB = 1500; // Предупреждение при > 1.5GB
 
 // Fix for BigInt serialization in JSON
 (BigInt.prototype as any).toJSON = function () {
   return this.toString();
+};
+
+// ============================================
+// ГЛОБАЛЬНЫЕ ФЛАГИ SHUTDOWN ДЛЯ ДИАГНОСТИКИ
+// ============================================
+// Эти флаги помогают отследить РЕАЛЬНЫЙ сигнал shutdown
+// и отличить его от ложного вызова onModuleDestroy
+export const shutdownState = {
+  signalReceived: false,
+  signalName: null as string | null,
+  signalTime: null as Date | null,
+  nestShutdownCalled: false,
+  nestShutdownTime: null as Date | null,
 };
 
 async function bootstrap() {
@@ -55,6 +67,32 @@ async function bootstrap() {
   console.log(`📚 API Documentation: http://localhost:${port}/api`);
 
   const logger = new Logger('Bootstrap');
+  const startTime = new Date();
+
+  // ============================================
+  // ЛОГИРОВАНИЕ ВСЕХ СИГНАЛОВ ДЛЯ ДИАГНОСТИКИ
+  // ============================================
+  const signals: NodeJS.Signals[] = ['SIGTERM', 'SIGINT', 'SIGHUP', 'SIGUSR1', 'SIGUSR2'];
+
+  signals.forEach((signal) => {
+    process.on(signal, () => {
+      const uptime = Math.round((Date.now() - startTime.getTime()) / 1000);
+      shutdownState.signalReceived = true;
+      shutdownState.signalName = signal;
+      shutdownState.signalTime = new Date();
+
+      logger.warn(
+        `[SIGNAL] Received ${signal} after ${uptime}s uptime. ` +
+        `PID: ${process.pid}, PPID: ${process.ppid || 'unknown'}`
+      );
+
+      // Логируем stack trace для понимания откуда пришёл сигнал
+      logger.warn(`[SIGNAL] Stack trace:\n${new Error().stack}`);
+    });
+  });
+
+  // Логируем успешный старт
+  logger.log(`[STARTUP] Application started successfully. PID: ${process.pid}, PPID: ${process.ppid || 'unknown'}`);
 
   // Мониторинг памяти
   let memoryLogInterval: NodeJS.Timeout | null = null;
@@ -99,53 +137,20 @@ async function bootstrap() {
   // Запускаем мониторинг памяти
   startMemoryMonitoring();
 
-  // Graceful shutdown handlers with timeout
-  let isShuttingDown = false;
+  // Graceful shutdown управляется NestJS через enableShutdownHooks()
+  // Мы добавляем ДОПОЛНИТЕЛЬНЫЕ обработчики для ЛОГИРОВАНИЯ (не для shutdown)
+  // PrismaService.onModuleDestroy проверяет shutdownState для защиты от ложного shutdown
 
-  const gracefulShutdown = async (signal: string) => {
-    // Prevent multiple shutdown attempts
-    if (isShuttingDown) {
-      logger.warn(`Shutdown already in progress, ignoring ${signal}`);
-      return;
-    }
-    isShuttingDown = true;
-
-    logger.warn(`Received ${signal}, starting graceful shutdown...`);
-
-    // Останавливаем мониторинг памяти
-    stopMemoryMonitoring();
-
-    // Set a timeout to force exit if shutdown takes too long
-    const shutdownTimeout = setTimeout(() => {
-      logger.error(`Shutdown timeout after ${SHUTDOWN_TIMEOUT_MS}ms, forcing exit`);
-      process.exit(1);
-    }, SHUTDOWN_TIMEOUT_MS);
-
-    try {
-      await app.close();
-      clearTimeout(shutdownTimeout);
-      logger.log('Application closed gracefully');
-      process.exit(0);
-    } catch (error) {
-      clearTimeout(shutdownTimeout);
-      logger.error('Error during shutdown:', error);
-      process.exit(1);
-    }
-  };
-
-  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
-
-  // Handle uncaught exceptions
+  // Handle uncaught exceptions - критические ошибки
   process.on('uncaughtException', (error) => {
     logger.error('Uncaught exception:', error);
-    gracefulShutdown('uncaughtException');
+    stopMemoryMonitoring();
+    process.exit(1);
   });
 
-  // Handle unhandled promise rejections
+  // Handle unhandled promise rejections - логируем но не крашим
   process.on('unhandledRejection', (reason, promise) => {
     logger.error('Unhandled rejection at:', promise, 'reason:', reason);
-    // Don't exit on unhandled rejections, just log
   });
 }
 bootstrap();

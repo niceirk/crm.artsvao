@@ -32,6 +32,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { NotificationStatusBadge } from '@/components/ui/status-badge';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -79,21 +80,6 @@ export function HistoryTab() {
   const { data, isLoading, refetch } = useNotifications(filters);
   const cancelNotification = useCancelNotification();
   const retryNotification = useRetryNotification();
-
-  const getStatusBadge = (status: NotificationStatus) => {
-    const variants: Record<NotificationStatus, string> = {
-      [NotificationStatus.PENDING]: 'bg-yellow-100 text-yellow-800',
-      [NotificationStatus.PROCESSING]: 'bg-blue-100 text-blue-800',
-      [NotificationStatus.SENT]: 'bg-green-100 text-green-800',
-      [NotificationStatus.FAILED]: 'bg-red-100 text-red-800',
-      [NotificationStatus.CANCELED]: 'bg-gray-100 text-gray-800',
-    };
-    return (
-      <Badge className={variants[status]} variant="outline">
-        {STATUS_LABELS[status]}
-      </Badge>
-    );
-  };
 
   const getChannelBadge = (channel: NotificationChannel) => {
     return channel === NotificationChannel.TELEGRAM ? (
@@ -283,7 +269,7 @@ export function HistoryTab() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        {getStatusBadge(notification.status)}
+                        <NotificationStatusBadge status={notification.status} size="sm" />
                         {notification.attempts > 1 && (
                           <span className="ml-1 text-xs text-muted-foreground">
                             (попытка {notification.attempts})
@@ -371,7 +357,7 @@ export function HistoryTab() {
                 <div>
                   <label className="text-sm font-medium">Статус</label>
                   <div className="mt-1">
-                    {getStatusBadge(selectedNotification.status)}
+                    <NotificationStatusBadge status={selectedNotification.status} />
                   </div>
                 </div>
                 <div>

@@ -21,7 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import { InvoiceStatusBadge } from '@/components/ui/status-badge';
 import {
   Select,
   SelectContent,
@@ -43,24 +43,6 @@ import {
 } from '@/components/ui/alert-dialog';
 import { CreateInvoiceDialog } from './components/create-invoice-dialog';
 import type { InvoiceStatus } from '@/lib/types/invoices';
-
-const statusLabels: Record<InvoiceStatus, string> = {
-  DRAFT: 'Черновик',
-  PENDING: 'Ожидает оплаты',
-  PAID: 'Оплачен',
-  PARTIALLY_PAID: 'Частично оплачен',
-  OVERDUE: 'Просрочен',
-  CANCELLED: 'Отменен',
-};
-
-const statusVariants: Record<InvoiceStatus, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  DRAFT: 'outline',
-  PENDING: 'secondary',
-  PAID: 'default',
-  PARTIALLY_PAID: 'secondary',
-  OVERDUE: 'destructive',
-  CANCELLED: 'outline',
-};
 
 export default function InvoicesPage() {
   const router = useRouter();
@@ -126,11 +108,9 @@ export default function InvoicesPage() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Все статусы</SelectItem>
-                <SelectItem value="PENDING">Ожидает оплаты</SelectItem>
+                <SelectItem value="UNPAID">Не оплачен</SelectItem>
                 <SelectItem value="PAID">Оплачен</SelectItem>
                 <SelectItem value="PARTIALLY_PAID">Частично оплачен</SelectItem>
-                <SelectItem value="OVERDUE">Просрочен</SelectItem>
-                <SelectItem value="CANCELLED">Отменен</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -175,9 +155,7 @@ export default function InvoicesPage() {
                       {formatCurrency(invoice.totalAmount)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={statusVariants[invoice.status]}>
-                        {statusLabels[invoice.status]}
-                      </Badge>
+                      <InvoiceStatusBadge status={invoice.status} />
                     </TableCell>
                     <TableCell>
                       <div className="flex flex-col">
