@@ -28,6 +28,10 @@ const HEALTH_CHECK_RETRIES = 3; // Увеличено с 2
 // Диагностика - логирование статистики
 const DIAGNOSTIC_LOG_INTERVAL_MS = 30000; // Логировать статистику каждые 30 сек
 
+// Pool reset - сброс пула соединений для предотвращения idle timeout на облачных БД
+// TWC закрывает idle соединения через ~5 минут, поэтому сбрасываем пул раньше
+const POOL_RESET_INTERVAL_MS = 240000; // Сброс пула каждые 4 минуты
+
 @Injectable()
 export class PrismaService
   extends PrismaClient
@@ -55,6 +59,10 @@ export class PrismaService
   private activeQueryCount = 0;
   private peakQueryCount = 0;
   private totalQueryCount = 0;
+
+  // Pool reset - периодический сброс пула соединений
+  private poolResetInterval: NodeJS.Timeout | null = null;
+  private poolResetCount = 0;
 
   // Safe client с retry логикой (lazy initialization)
   // Используем тип PrismaClient для совместимости с моделями
@@ -145,6 +153,56 @@ export class PrismaService
   }
 
   /**
+   * Запуск периодического сброса пула соединений.
+   * ВАЖНО: Облачные БД (TWC) закрывают idle соединения через ~5 минут.
+   * Keepalive пинги могут использовать одно и то же соединение, оставляя остальные idle.
+   * Периодический сброс пула гарантирует что все соединения будут обновлены.
+   */
+  private startPoolReset() {
+    if (this.poolResetInterval) return;
+
+    this.poolResetInterval = setInterval(async () => {
+      if (this.isShuttingDown || this.isReconnecting) return;
+
+      try {
+        this.logger.debug('[PRISMA] Starting pool reset...');
+
+        // Закрываем все соединения в пуле
+        await this.$disconnect();
+
+        // Переподключаемся (Prisma создаст новые соединения по мере необходимости)
+        await this.$connect();
+
+        // Проверяем что соединение работает
+        await this.$queryRaw`SELECT 1`;
+
+        this.poolResetCount++;
+        this.lastActivityTimestamp = Date.now();
+        this.logger.log(`[PRISMA] Pool reset completed successfully (total: ${this.poolResetCount})`);
+      } catch (error) {
+        this.logger.warn(`[PRISMA] Pool reset failed: ${(error as Error).message}`);
+        // Пробуем reconnect если сброс не удался
+        this.handleDeadConnection().catch((err) => {
+          this.logger.error(`[PRISMA] Reconnect after failed pool reset failed: ${err.message}`);
+        });
+      }
+    }, POOL_RESET_INTERVAL_MS);
+
+    this.logger.log(`[PRISMA] Pool reset scheduled (interval: ${POOL_RESET_INTERVAL_MS / 1000}s)`);
+  }
+
+  /**
+   * Остановка периодического сброса пула
+   */
+  private stopPoolReset() {
+    if (this.poolResetInterval) {
+      clearInterval(this.poolResetInterval);
+      this.poolResetInterval = null;
+      this.logger.log(`[PRISMA] Pool reset stopped (total resets: ${this.poolResetCount})`);
+    }
+  }
+
+  /**
    * Подключение к БД с retry логикой при старте
    */
   async onModuleInit() {
@@ -158,6 +216,8 @@ export class PrismaService
         );
         // Запускаем keepalive после успешного подключения
         this.startKeepalive();
+        // Запускаем периодический сброс пула (защита от idle timeout на облачных БД)
+        this.startPoolReset();
         // Запускаем диагностическое логирование
         this.startDiagnosticLogging();
         this.lastActivityTimestamp = Date.now();
@@ -187,7 +247,8 @@ export class PrismaService
     this.logger.log('PrismaService: Starting graceful shutdown...');
     this.isShuttingDown = true;
 
-    // Останавливаем keepalive и диагностику
+    // Останавливаем все периодические задачи
+    this.stopPoolReset();
     this.stopKeepalive('module_destroy');
     this.stopDiagnosticLogging();
 
@@ -231,33 +292,41 @@ export class PrismaService
       const timeSinceActivity = Date.now() - this.lastActivityTimestamp;
       const hasRecentActivity = timeSinceActivity < KEEPALIVE_SKIP_IF_ACTIVE_MS;
 
-      // Делаем ping для поддержания соединения
-      let successCount = 0;
-      let failCount = 0;
-
-      for (let i = 0; i < KEEPALIVE_PING_COUNT; i++) {
+      // Делаем пинги ПАРАЛЛЕЛЬНО для увеличения шанса использования разных соединений из пула
+      // Prisma может переиспользовать одно соединение при последовательных запросах
+      const pingPromises = Array.from({ length: KEEPALIVE_PING_COUNT }, async (_, i) => {
         try {
           await this.$queryRaw`SELECT 1`;
-          successCount++;
-          this.keepalivePingCount++;
-          this.lastSuccessfulPing = new Date();
+          return { success: true, index: i, error: null };
         } catch (error) {
-          failCount++;
-          this.keepaliveFailCount++;
-          const errorMessage = (error as Error).message;
+          return { success: false, index: i, error: error as Error };
+        }
+      });
 
-          // Логируем только первую ошибку в серии
-          if (failCount === 1) {
-            this.logger.warn(`Keepalive ping ${i + 1}/${KEEPALIVE_PING_COUNT} failed: ${errorMessage}`);
-          }
+      const results = await Promise.all(pingPromises);
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.filter(r => !r.success).length;
+
+      // Обновляем метрики
+      this.keepalivePingCount += successCount;
+      this.keepaliveFailCount += failCount;
+      if (successCount > 0) {
+        this.lastSuccessfulPing = new Date();
+      }
+
+      // Обрабатываем ошибки
+      const failedResults = results.filter(r => !r.success);
+      if (failedResults.length > 0) {
+        const firstError = failedResults[0].error;
+        if (firstError) {
+          this.logger.warn(`Keepalive: ${failCount} pings failed. First error: ${firstError.message}`);
 
           // Если это connection error - пробуем reconnect
-          if (this.isConnectionError(errorMessage)) {
-            this.connectionErrorCount++;
+          if (this.isConnectionError(firstError.message)) {
+            this.connectionErrorCount += failCount;
             this.handleDeadConnection().catch((err) => {
               this.logger.error(`Reconnect after keepalive failure failed: ${err.message}`);
             });
-            break; // Прерываем цикл, reconnect сам восстановит
           }
         }
       }
