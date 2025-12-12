@@ -423,6 +423,12 @@ export class InvoicesService {
    * Создание подписок из оплаченного счёта
    */
   private async createSubscriptionsFromInvoice(invoice: any) {
+    // Проверка 1: Если invoice уже связан с существующим subscription - пропускаем
+    if (invoice.subscriptionId) {
+      this.logger.log(`⏭️  Invoice ${invoice.invoiceNumber} уже связан с абонементом ${invoice.subscriptionId}, пропускаем создание`);
+      return;
+    }
+
     const now = new Date();
     // Создаем UTC дату, чтобы избежать смещения часовых поясов
     const today = new Date(Date.UTC(
@@ -462,6 +468,21 @@ export class InvoicesService {
             isActive: true,
           },
         });
+      }
+
+      // Проверка 2: Проверяем, нет ли уже активного абонемента для этого клиента/группы/периода
+      const existingSubscription = await this.prisma.subscription.findFirst({
+        where: {
+          clientId: invoice.clientId,
+          groupId: item.groupId,
+          validMonth,
+          status: { in: ['ACTIVE', 'FROZEN'] },
+        },
+      });
+
+      if (existingSubscription) {
+        this.logger.log(`⏭️  Абонемент уже существует для клиента ${invoice.clientId}, группы ${item.groupId}, период ${validMonth} (ID: ${existingSubscription.id}), пропускаем создание из счёта ${invoice.invoiceNumber}`);
+        continue; // Пропускаем этот item
       }
 
       // Создаём подписку для каждой единицы quantity
