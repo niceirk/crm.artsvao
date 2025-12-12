@@ -1,10 +1,11 @@
-import { IsNumber, IsOptional, IsString, Min, IsBoolean, IsArray } from 'class-validator';
+import { IsNumber, IsOptional, IsString, Min, IsBoolean, IsArray, ValidateIf } from 'class-validator';
 
 export class UpdateCompensationDto {
   @IsOptional()
+  @ValidateIf((o) => o.adjustedAmount !== null)
   @IsNumber()
   @Min(0)
-  adjustedAmount?: number;
+  adjustedAmount?: number | null;
 
   @IsOptional()
   @IsString()

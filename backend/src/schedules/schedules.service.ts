@@ -513,6 +513,7 @@ export class SchedulesService {
 
   /**
    * Find clients with active subscriptions for a group on a specific date
+   * Returns unique clients (one subscription per client, prioritizing most recent)
    */
   private async findClientsWithActiveSubscriptions(
     groupId: string,
@@ -532,12 +533,22 @@ export class SchedulesService {
       select: {
         id: true,
         clientId: true,
+        createdAt: true,
       },
+      orderBy: { createdAt: 'desc' }, // Most recent first
     });
 
-    return subscriptions.map(s => ({
-      clientId: s.clientId,
-      subscriptionId: s.id,
-    }));
+    // Deduplicate by clientId - take only the most recent subscription per client
+    const clientMap = new Map<string, { clientId: string; subscriptionId: string }>();
+    for (const s of subscriptions) {
+      if (!clientMap.has(s.clientId)) {
+        clientMap.set(s.clientId, {
+          clientId: s.clientId,
+          subscriptionId: s.id,
+        });
+      }
+    }
+
+    return Array.from(clientMap.values());
   }
 }

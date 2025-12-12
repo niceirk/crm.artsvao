@@ -9,7 +9,7 @@ import { CreateBulkInvoicesDto } from './dto/create-bulk-invoices.dto';
 import { CalendarEventStatus, AttendanceStatus, GroupMemberStatus, ServiceType, WriteOffTiming } from '@prisma/client';
 import * as ExcelJS from 'exceljs';
 import * as XLSX from 'xlsx';
-import { ImportAttendanceResult, ImportAttendanceRowResult } from './dto/import-attendance.dto';
+import { ImportAttendanceResult, ImportAttendanceRowResult, ResolveImportConflictsDto } from './dto/import-attendance.dto';
 
 @Injectable()
 export class TimesheetsService {
@@ -73,9 +73,12 @@ export class TimesheetsService {
     });
 
     // 2.1. Подсчитать количество отменённых занятий с компенсацией
-    const compensatedCancelledCount = schedules.filter(
+    const cancelledCompensatedSchedules = schedules.filter(
       s => s.status === CalendarEventStatus.CANCELLED && s.isCompensated
-    ).length;
+    );
+    const compensatedCancelledCount = cancelledCompensatedSchedules.length;
+    // Set ID отменённых занятий для исключения из excusedWithoutMedCert (чтобы не считать дважды)
+    const cancelledScheduleIds = new Set(cancelledCompensatedSchedules.map(s => s.id));
 
     // 3. Получить участников группы (текущих и тех, кто был активен в этом месяце)
     const members = await this.prisma.safe.groupMember.findMany({
@@ -346,10 +349,12 @@ export class TimesheetsService {
       const absent = clientAttendances.filter(a => a.status === AttendanceStatus.ABSENT).length;
       // Общее количество excused (для отображения в UI)
       const excusedTotal = clientAttendances.filter(a => a.status === AttendanceStatus.EXCUSED).length;
-      // Только "обычные" excused без справок (для расчёта baseCalculatedAmount, чтобы избежать двойного учёта)
+      // Только "обычные" excused без справок и без отменённых занятий
+      // (для расчёта baseCalculatedAmount, чтобы избежать двойного учёта с cancelledLessonsCompensation)
       const excusedWithoutMedCert = clientAttendances.filter(a =>
         a.status === AttendanceStatus.EXCUSED &&
-        !medCertAttendanceIds.has(a.id)
+        !medCertAttendanceIds.has(a.id) &&
+        !cancelledScheduleIds.has(a.scheduleId)  // Исключаем EXCUSED от отменённых занятий
       ).length;
 
       // Рассчитать компенсацию
@@ -777,6 +782,7 @@ export class TimesheetsService {
           total: 0,
           imported: 0,
           skipped: 0,
+          conflicts: 0,
           clientNotFound: 0,
           scheduleNotFound: 0,
         },
@@ -873,6 +879,7 @@ export class TimesheetsService {
       total: dataRows.length,
       imported: 0,
       skipped: 0,
+      conflicts: 0,
       clientNotFound: 0,
       scheduleNotFound: 0,
     };
@@ -916,13 +923,42 @@ export class TimesheetsService {
       // Парсим ФИО и ищем клиента (в памяти)
       const parsedFIO = this.parseFIO(fioStr);
       const client = this.findClientByFIO(groupMembers, parsedFIO);
+
+      // Маппим статус заранее (нужен для possibleClients)
+      const newStatus = statusMap[statusStr];
+
       if (!client) {
+        // Ищем похожих клиентов для ручной привязки
+        const possibleClients = groupMembers
+          .filter((m) => {
+            const lnLower = m.client.lastName.toLowerCase();
+            const parsedLower = parsedFIO.lastName.toLowerCase();
+            return (
+              lnLower.includes(parsedLower.slice(0, 3)) ||
+              parsedLower.includes(lnLower.slice(0, 3))
+            );
+          })
+          .slice(0, 5)
+          .map((m) => ({
+            id: m.client.id,
+            firstName: m.client.firstName,
+            lastName: m.client.lastName,
+            middleName: m.client.middleName,
+          }));
+
+        // Ищем занятие по дате для возможности ручной привязки
+        const dateKey = parsedDateTime.date.toISOString().split('T')[0];
+        const scheduleIdForNotFound = scheduleByDate.get(dateKey);
+
         results.push({
           row: rowNum,
           fio: fioStr,
           dateTime: dateTimeStr,
           status: 'client_not_found',
           message: `Клиент "${fioStr}" не найден в группе`,
+          scheduleId: scheduleIdForNotFound,
+          newStatus: newStatus,
+          possibleClients: possibleClients.length > 0 ? possibleClients : undefined,
         });
         summary.clientNotFound++;
         continue;
@@ -943,8 +979,7 @@ export class TimesheetsService {
         continue;
       }
 
-      // Маппим статус
-      const newStatus = statusMap[statusStr];
+      // Проверяем, что статус валидный (уже смаппили выше)
       if (!newStatus) {
         results.push({
           row: rowNum,
@@ -962,16 +997,37 @@ export class TimesheetsService {
       const existingAttendance = attendanceMap.get(existingKey);
 
       if (existingAttendance && existingAttendance.status) {
-        results.push({
-          row: rowNum,
-          fio: fioStr,
-          dateTime: dateTimeStr,
-          status: 'skipped',
-          message: `Уже есть отметка: ${this.statusToRussian(existingAttendance.status)}`,
-          existingStatus: existingAttendance.status,
-          newStatus: newStatus,
-        });
-        summary.skipped++;
+        if (existingAttendance.status === newStatus) {
+          // Статусы совпадают - пропускаем
+          results.push({
+            row: rowNum,
+            fio: fioStr,
+            dateTime: dateTimeStr,
+            status: 'skipped',
+            message: `Статус совпадает: ${this.statusToRussian(existingAttendance.status)}`,
+            existingStatus: existingAttendance.status,
+            newStatus,
+            attendanceId: existingAttendance.id,
+            scheduleId,
+            clientId: client.id,
+          });
+          summary.skipped++;
+        } else {
+          // КОНФЛИКТ: статусы различаются
+          results.push({
+            row: rowNum,
+            fio: fioStr,
+            dateTime: dateTimeStr,
+            status: 'conflict',
+            message: `${this.statusToRussian(newStatus)}`,
+            existingStatus: existingAttendance.status,
+            newStatus,
+            attendanceId: existingAttendance.id,
+            scheduleId,
+            clientId: client.id,
+          });
+          summary.conflicts++;
+        }
         continue;
       }
 
@@ -1029,6 +1085,84 @@ export class TimesheetsService {
       summary,
       results,
     };
+  }
+
+  /**
+   * Разрешение конфликтов импорта посещаемости
+   * Применяет решения пользователя: обновление или создание записей
+   */
+  async resolveImportConflicts(dto: ResolveImportConflictsDto): Promise<{
+    updated: number;
+    created: number;
+    skipped: number;
+  }> {
+    const result = { updated: 0, created: 0, skipped: 0 };
+    const now = new Date();
+
+    const toCreate: Array<{
+      scheduleId: string;
+      clientId: string;
+      status: AttendanceStatus;
+      markedAt: Date;
+    }> = [];
+
+    const toUpdate: Array<{
+      id: string;
+      status: AttendanceStatus;
+    }> = [];
+
+    // Сортируем решения по типу операции
+    for (const item of dto.resolutions) {
+      if (item.resolution === 'skip' || item.resolution === 'keep_crm') {
+        result.skipped++;
+        continue;
+      }
+
+      // use_file - применяем статус из файла
+      if (item.attendanceId) {
+        // Обновление существующей записи
+        toUpdate.push({ id: item.attendanceId, status: item.status });
+        result.updated++;
+      } else if (item.scheduleId && item.clientId) {
+        // Создание новой записи (для ручной привязки клиента)
+        toCreate.push({
+          scheduleId: item.scheduleId,
+          clientId: item.clientId,
+          status: item.status,
+          markedAt: now,
+        });
+        result.created++;
+      }
+    }
+
+    // Batch операции для оптимизации
+    const BATCH_SIZE = 100;
+
+    // Batch создание новых записей
+    if (toCreate.length > 0) {
+      for (let i = 0; i < toCreate.length; i += BATCH_SIZE) {
+        await this.prisma.attendance.createMany({
+          data: toCreate.slice(i, i + BATCH_SIZE),
+        });
+      }
+    }
+
+    // Batch обновление существующих записей
+    if (toUpdate.length > 0) {
+      for (let i = 0; i < toUpdate.length; i += BATCH_SIZE) {
+        const batch = toUpdate.slice(i, i + BATCH_SIZE);
+        await this.prisma.$transaction(
+          batch.map(u =>
+            this.prisma.attendance.update({
+              where: { id: u.id },
+              data: { status: u.status, markedAt: now },
+            })
+          )
+        );
+      }
+    }
+
+    return result;
   }
 
   /**

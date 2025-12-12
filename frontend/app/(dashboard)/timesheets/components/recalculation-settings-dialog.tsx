@@ -103,7 +103,9 @@ export function RecalculationSettingsDialog({
       setSelectedInvoiceIds(new Set(selected));
 
       form.reset({
-        adjustedAmount: client.compensation.adjustedAmount ?? undefined,
+        // Используем явную проверку на null - если adjustedAmount === null, значит нужно использовать рассчитанную сумму
+        // Если adjustedAmount === 0, это валидное значение "ручная корректировка = 0"
+        adjustedAmount: client.compensation.adjustedAmount !== null ? client.compensation.adjustedAmount : undefined,
         notes: client.compensation.notes || '',
       });
     }
@@ -182,7 +184,9 @@ export function RecalculationSettingsDialog({
         clientId: client.id,
         groupId,
         month,
-        adjustedAmount: data.adjustedAmount ?? undefined,
+        // Если поле пустое (null), отправляем null чтобы сбросить ручную корректировку
+        // Если заполнено (включая 0), отправляем значение
+        adjustedAmount: data.adjustedAmount,
         notes: data.notes,
         includeExcused,
         includeMedCert,

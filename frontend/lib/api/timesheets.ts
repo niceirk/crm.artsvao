@@ -9,6 +9,8 @@ import type {
   Compensation,
   ImportAttendanceResult,
   RecalculationDetails,
+  ResolveImportConflictsDto,
+  ResolveImportConflictsResult,
 } from '../types/timesheets';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api';
@@ -171,6 +173,19 @@ export const timesheetsApi = {
     }
 
     return response.json();
+  },
+
+  /**
+   * Разрешение конфликтов импорта посещаемости
+   */
+  resolveImportConflicts: async (
+    dto: ResolveImportConflictsDto
+  ): Promise<ResolveImportConflictsResult> => {
+    const response = await apiClient.post<ResolveImportConflictsResult>(
+      '/timesheets/import-attendance/resolve',
+      dto
+    );
+    return response.data;
   },
 };
 

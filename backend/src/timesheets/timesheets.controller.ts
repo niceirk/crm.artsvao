@@ -22,7 +22,7 @@ import { TimesheetsService } from './timesheets.service';
 import { TimesheetFilterDto } from './dto/timesheet-filter.dto';
 import { UpdateCompensationDto } from './dto/update-compensation.dto';
 import { CreateBulkInvoicesDto } from './dto/create-bulk-invoices.dto';
-import { ImportAttendanceDto } from './dto/import-attendance.dto';
+import { ImportAttendanceDto, ResolveImportConflictsDto } from './dto/import-attendance.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('timesheets')
@@ -180,5 +180,13 @@ export class TimesheetsController {
     @Body() dto: ImportAttendanceDto,
   ) {
     return this.timesheetsService.importAttendance(file, dto.groupId);
+  }
+
+  /**
+   * Разрешение конфликтов импорта посещаемости
+   */
+  @Post('import-attendance/resolve')
+  async resolveImportConflicts(@Body() dto: ResolveImportConflictsDto) {
+    return this.timesheetsService.resolveImportConflicts(dto);
   }
 }

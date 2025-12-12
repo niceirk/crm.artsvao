@@ -5,7 +5,7 @@ export interface TimesheetFilterDto {
 }
 
 export interface UpdateCompensationDto {
-  adjustedAmount?: number;
+  adjustedAmount?: number | null;  // null = сбросить ручную корректировку
   notes?: string;
   // Флаги включения компонентов перерасчёта
   includeExcused?: boolean;
@@ -159,16 +159,28 @@ export interface ImportAttendanceRowResult {
   row: number;
   fio: string;
   dateTime: string;
-  status: 'imported' | 'skipped' | 'client_not_found' | 'schedule_not_found';
+  status: 'imported' | 'skipped' | 'conflict' | 'client_not_found' | 'schedule_not_found';
   message: string;
   existingStatus?: string;
   newStatus?: string;
+  // ID для разрешения конфликтов
+  attendanceId?: string;
+  scheduleId?: string;
+  clientId?: string;
+  // Кандидаты для ручной привязки
+  possibleClients?: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    middleName: string | null;
+  }>;
 }
 
 export interface ImportAttendanceSummary {
   total: number;
   imported: number;
   skipped: number;
+  conflicts: number;  // НОВОЕ ПОЛЕ
   clientNotFound: number;
   scheduleNotFound: number;
 }
@@ -177,6 +189,27 @@ export interface ImportAttendanceResult {
   success: boolean;
   summary: ImportAttendanceSummary;
   results: ImportAttendanceRowResult[];
+}
+
+// Новые типы для разрешения конфликтов
+export type ConflictResolutionType = 'keep_crm' | 'use_file' | 'skip';
+
+export interface ConflictResolutionItem {
+  attendanceId?: string;
+  scheduleId?: string;
+  clientId: string;
+  status: 'PRESENT' | 'ABSENT' | 'EXCUSED';
+  resolution: ConflictResolutionType;
+}
+
+export interface ResolveImportConflictsDto {
+  resolutions: ConflictResolutionItem[];
+}
+
+export interface ResolveImportConflictsResult {
+  updated: number;
+  created: number;
+  skipped: number;
 }
 
 // Типы для детализации перерасчёта
