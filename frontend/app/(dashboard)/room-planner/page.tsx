@@ -17,6 +17,7 @@ import { ChessWeekView } from './components/chess-week-view';
 import { RoomDetailSheet } from './components/room-detail-sheet';
 import { CalendarEventDialog } from '../schedule/calendar-event-dialog';
 import { AttendanceSheet } from '../schedule/attendance-sheet';
+import { EventAttendanceSheet } from '../schedule/event-attendance-sheet';
 import { Button } from '@/components/ui/button';
 import { useRoomPlannerScaleStore } from '@/lib/stores/room-planner-scale-store';
 import { useRoomPlannerSortStore } from '@/lib/stores/room-planner-sort-store';
@@ -130,8 +131,11 @@ export default function RoomPlannerPage() {
   const [selectedEvent, setSelectedEvent] = useState<Event | undefined>(undefined);
   const [selectedReservation, setSelectedReservation] = useState<Reservation | undefined>(undefined);
 
-  // Состояние журнала посещаемости
+  // Состояние журнала посещаемости (для занятий групп)
   const [isAttendanceSheetOpen, setIsAttendanceSheetOpen] = useState(false);
+
+  // Состояние журнала посещаемости (для мероприятий)
+  const [isEventAttendanceSheetOpen, setIsEventAttendanceSheetOpen] = useState(false);
 
   // Масштаб для режима шахматки
   const { scale, increaseScale, decreaseScale } = useRoomPlannerScaleStore();
@@ -163,6 +167,10 @@ export default function RoomPlannerPage() {
     setSelectedRental(undefined);
     setSelectedEvent(undefined);
     setSelectedReservation(undefined);
+
+    // Закрываем журналы посещаемости
+    setIsAttendanceSheetOpen(false);
+    setIsEventAttendanceSheetOpen(false);
 
     // Устанавливаем нужный тип в зависимости от activity.type
     switch (activity.type) {
@@ -199,14 +207,20 @@ export default function RoomPlannerPage() {
     setIsCreateDialogOpen(true);
   };
 
+  // Флаг для отслеживания перехода в журнал посещаемости
+  const [isOpeningAttendance, setIsOpeningAttendance] = useState(false);
+
   // Закрытие диалога редактирования
   const handleEditDialogClose = (open: boolean) => {
     setIsEditDialogOpen(open);
-    if (!open) {
+    if (!open && !isOpeningAttendance) {
       setSelectedSchedule(undefined);
       setSelectedRental(undefined);
       setSelectedEvent(undefined);
       setSelectedReservation(undefined);
+    }
+    if (!open) {
+      setIsOpeningAttendance(false);
     }
   };
 
@@ -503,22 +517,53 @@ export default function RoomPlannerPage() {
         reservation={selectedReservation}
         onOpenAttendance={() => {
           if (selectedSchedule) {
-            setIsEditDialogOpen(false);
+            setIsOpeningAttendance(true);
             setIsAttendanceSheetOpen(true);
+            setIsEditDialogOpen(false);
+          }
+        }}
+        onOpenEventAttendance={() => {
+          if (selectedEvent) {
+            setIsOpeningAttendance(true);
+            setIsEventAttendanceSheetOpen(true);
+            setIsEditDialogOpen(false);
           }
         }}
       />
 
-      {/* Журнал посещаемости */}
+      {/* Журнал посещаемости (для занятий групп) */}
       {selectedSchedule && selectedSchedule.group && (
         <AttendanceSheet
           open={isAttendanceSheetOpen}
-          onOpenChange={setIsAttendanceSheetOpen}
+          onOpenChange={(open) => {
+            setIsAttendanceSheetOpen(open);
+            if (!open) {
+              setSelectedSchedule(undefined);
+            }
+          }}
           scheduleId={selectedSchedule.id}
           groupId={selectedSchedule.group.id}
           groupName={selectedSchedule.group.name}
           startTime={selectedSchedule.startTime}
           scheduleDate={selectedSchedule.date}
+        />
+      )}
+
+      {/* Журнал посещаемости (для мероприятий) */}
+      {selectedEvent && (
+        <EventAttendanceSheet
+          open={isEventAttendanceSheetOpen}
+          onOpenChange={(open) => {
+            setIsEventAttendanceSheetOpen(open);
+            if (!open) {
+              setSelectedEvent(undefined);
+            }
+          }}
+          eventId={selectedEvent.id}
+          eventName={selectedEvent.name}
+          eventDate={selectedEvent.date}
+          startTime={selectedEvent.startTime}
+          timepadLink={selectedEvent.timepadLink}
         />
       )}
 

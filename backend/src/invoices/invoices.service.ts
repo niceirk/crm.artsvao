@@ -210,11 +210,45 @@ export class InvoicesService {
           where.issuedAt.lte = new Date(filter.issuedBefore);
         }
       }
+      if (filter.clientSearch) {
+        const searchTerms = filter.clientSearch.trim().split(/\s+/);
+        where.client = {
+          OR: searchTerms.flatMap(term => [
+            { lastName: { contains: term, mode: 'insensitive' } },
+            { firstName: { contains: term, mode: 'insensitive' } },
+            { middleName: { contains: term, mode: 'insensitive' } },
+          ]),
+        };
+      }
     }
 
     const page = filter?.page || 1;
     const limit = filter?.limit || 20;
     const skip = (page - 1) * limit;
+
+    // Build orderBy clause
+    let orderBy: Prisma.InvoiceOrderByWithRelationInput | Prisma.InvoiceOrderByWithRelationInput[] = { createdAt: 'desc' };
+    if (filter?.sortBy) {
+      const sortOrder = filter.sortOrder || 'desc';
+      switch (filter.sortBy) {
+        case 'clientName':
+          orderBy = [
+            { client: { lastName: sortOrder } },
+            { client: { firstName: sortOrder } },
+          ];
+          break;
+        case 'totalAmount':
+          orderBy = { totalAmount: sortOrder };
+          break;
+        case 'issuedAt':
+          orderBy = { issuedAt: sortOrder };
+          break;
+        case 'createdAt':
+        default:
+          orderBy = { createdAt: sortOrder };
+          break;
+      }
+    }
 
     const [data, total] = await Promise.all([
       this.prisma.invoice.findMany({
@@ -243,9 +277,7 @@ export class InvoicesService {
             },
           },
         },
-        orderBy: {
-          createdAt: 'desc',
-        },
+        orderBy,
         skip,
         take: limit,
       }),

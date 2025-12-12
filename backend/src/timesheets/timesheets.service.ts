@@ -1136,6 +1136,7 @@ export class TimesheetsService {
   async getGroupsForFilter(studioId?: string) {
     const where: any = {
       status: 'ACTIVE',
+      isPaid: true,
     };
 
     if (studioId) {

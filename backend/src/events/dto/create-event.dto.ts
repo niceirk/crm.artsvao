@@ -89,4 +89,20 @@ export class CreateEventDto {
   @IsString()
   @IsOptional()
   eventFormat?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isHiddenFromWidget?: boolean;
+
+  @IsString()
+  @IsOptional()
+  ageRating?: string;
+
+  @IsString()
+  @IsOptional()
+  ageDescription?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isForChildren?: boolean;
 }

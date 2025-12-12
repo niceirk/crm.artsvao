@@ -14,9 +14,14 @@ export const invoicesApi = {
     if (filter?.issuedAfter) params.append('issuedAfter', filter.issuedAfter);
     if (filter?.issuedBefore) params.append('issuedBefore', filter.issuedBefore);
     if (filter?.invoiceNumber) params.append('invoiceNumber', filter.invoiceNumber);
+    if (filter?.clientSearch) params.append('clientSearch', filter.clientSearch);
+    if (filter?.sortBy) params.append('sortBy', filter.sortBy);
+    if (filter?.sortOrder) params.append('sortOrder', filter.sortOrder);
+    // Remove default 20 limit - fetch all invoices
+    params.append('limit', '1000');
 
     const query = params.toString();
-    const url = query ? `/invoices?${query}` : '/invoices';
+    const url = `/invoices?${query}`;
 
     const response = await apiClient.get<{ data: Invoice[]; meta: any }>(url);
     return response.data.data;

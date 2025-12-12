@@ -23,6 +23,7 @@ import {
 } from './dto/sync-conflicts.dto';
 import { CreateEventDto } from '../../events/dto/create-event.dto';
 import { EventsService } from '../../events/events.service';
+import { S3StorageService } from '../../common/services/s3-storage.service';
 
 /**
  * Вычисляет схожесть двух строк (0 = полностью разные, 1 = идентичные)
@@ -88,6 +89,7 @@ export class PyrusService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => EventsService))
     private readonly eventsService: EventsService,
+    private readonly s3Storage: S3StorageService,
   ) {}
 
   /**
@@ -311,6 +313,126 @@ export class PyrusService {
   }
 
   /**
+   * Скачивание файла из Pyrus
+   * @param fileId ID файла в Pyrus
+   * @returns Buffer с содержимым файла или null при ошибке
+   */
+  private async downloadPyrusFile(fileId: number): Promise<Buffer | null> {
+    const token = await this.getAccessToken();
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(
+          `${this.API_BASE_URL}/files/download/${fileId}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            responseType: 'arraybuffer',
+            timeout: this.API_TIMEOUT_MS,
+          }
+        ).pipe(
+          timeout(this.API_TIMEOUT_MS),
+          catchError((error) => {
+            if (error.name === 'TimeoutError') {
+              this.logger.error(`Pyrus file download timeout for file ${fileId}`);
+              return throwError(() => new Error('Timeout'));
+            }
+            return throwError(() => error);
+          }),
+        ),
+      );
+
+      return Buffer.from(response.data);
+    } catch (error) {
+      this.logger.error(`Failed to download file ${fileId} from Pyrus: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Определение MIME-типа по расширению файла
+   */
+  private getMimeTypeFromExtension(ext: string): string {
+    const mimeTypes: Record<string, string> = {
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      png: 'image/png',
+      gif: 'image/gif',
+      webp: 'image/webp',
+    };
+    return mimeTypes[ext] || 'image/jpeg';
+  }
+
+  /**
+   * Обработка поля "Фото для виджета" (поле 18)
+   * Может быть:
+   * - URL (string) - используем напрямую
+   * - Attachment (object с file_id) - скачиваем из Pyrus и загружаем в S3
+   * - Array of attachments - берём первый элемент
+   * - null/undefined - возвращаем null
+   */
+  private async processPyrusPhoto(photoFieldValue: any): Promise<string | null> {
+    if (!photoFieldValue) {
+      return null;
+    }
+
+    // Если это строка - считаем что это URL
+    if (typeof photoFieldValue === 'string') {
+      try {
+        new URL(photoFieldValue);
+        return photoFieldValue;
+      } catch {
+        this.logger.warn(`Поле 18 содержит невалидный URL: ${photoFieldValue}`);
+        return null;
+      }
+    }
+
+    // Если это массив - берём первый элемент
+    // Pyrus возвращает file поле как массив: [{id, name, size, md5, url}, ...]
+    if (Array.isArray(photoFieldValue) && photoFieldValue.length > 0) {
+      this.logger.log(`Поле 18 содержит массив из ${photoFieldValue.length} файлов, берём первый`);
+      return this.processPyrusPhoto(photoFieldValue[0]);
+    }
+
+    // Если это attachment объект (file type в Pyrus)
+    // Структура: { id: number, name: string, size: number, md5: string, url?: string }
+    if (typeof photoFieldValue === 'object' && photoFieldValue.id) {
+      try {
+        this.logger.log(`Скачивание фото из Pyrus (file_id: ${photoFieldValue.id}, name: ${photoFieldValue.name})`);
+
+        // Скачиваем файл из Pyrus
+        const fileBuffer = await this.downloadPyrusFile(photoFieldValue.id);
+        if (!fileBuffer) {
+          this.logger.warn(`Не удалось скачать файл ${photoFieldValue.id} из Pyrus`);
+          return null;
+        }
+
+        // Определяем имя файла и MIME-тип
+        const fileName = photoFieldValue.name || `pyrus-photo-${photoFieldValue.id}.jpg`;
+        const ext = fileName.split('.').pop()?.toLowerCase() || 'jpg';
+        const mimeType = this.getMimeTypeFromExtension(ext);
+
+        // Загружаем в S3 через существующий сервис
+        const result = await this.s3Storage.uploadImage(
+          {
+            buffer: fileBuffer,
+            originalname: fileName,
+            mimetype: mimeType,
+          } as Express.Multer.File,
+          'events' // папка в S3
+        );
+
+        this.logger.log(`Фото загружено из Pyrus в S3: ${result.imageUrl}`);
+        return result.imageUrl;
+      } catch (error) {
+        this.logger.error(`Ошибка при обработке фото из Pyrus (ID: ${photoFieldValue.id})`, error.message);
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Маппинг задачи Pyrus → Event
    */
   private async mapPyrusTaskToEvent(task: PyrusTask): Promise<CreateEventDto & { externalId: string }> {
@@ -334,6 +456,14 @@ export class PyrusService {
     const isGovernmentTaskValue = this.getFieldValue(fields, 15); // Государственное задание (flag)
     const responsiblePerson = this.getFieldValue(fields, 11); // Ответственный (person)
     const eventTypeValue = this.getFieldValue(fields, 36); // Тип мероприятия (catalog)
+
+    // === НОВЫЕ ПОЛЯ ДЛЯ ВИДЖЕТА ===
+    const isHiddenFromWidgetValue = this.getFieldValue(fields, 69); // Скрыть из виджета
+    const ageRatingValue = this.getFieldValue(fields, 14); // Возрастной ценз
+    const ageDescriptionValue = this.getFieldValue(fields, 54); // Возраст
+    const isForChildrenValue = this.getFieldValue(fields, 68); // Для детей
+    const photoForWidgetValue = this.getFieldValue(fields, 18); // Фото для виджета
+    const eventFormatValue = this.getFieldValue(fields, 67); // Формат для виджета (catalog или text)
 
     // Парсинг даты
     const dateObj = dateValue ? new Date(dateValue) : new Date();
@@ -367,6 +497,16 @@ export class PyrusService {
       this.logger.log(`Расчет (по умолчанию +1 час): ${startTime} -> ${endTime}`);
     }
     this.logger.log(`=== Итого: дата=${date}, время=${startTime}-${endTime} ===`);
+
+    // Логирование новых полей виджета
+    this.logger.log(`=== Новые поля виджета для задачи ${task.id} ===`);
+    this.logger.log(`Поле 69 (Скрыть из виджета): ${JSON.stringify(isHiddenFromWidgetValue)}`);
+    this.logger.log(`Поле 14 (Возрастной ценз): ${JSON.stringify(ageRatingValue)}`);
+    this.logger.log(`Поле 54 (Возраст): ${JSON.stringify(ageDescriptionValue)}`);
+    this.logger.log(`Поле 68 (Для детей): ${JSON.stringify(isForChildrenValue)}`);
+    this.logger.log(`Поле 18 (Фото для виджета): ${JSON.stringify(photoForWidgetValue)}`);
+    this.logger.log(`Поле 67 (Формат для виджета): ${JSON.stringify(eventFormatValue)}`);
+    this.logger.log(`=========================================`);
 
     // Обработка помещения (catalog поле)
     let roomId: string | null = null;
@@ -466,6 +606,36 @@ export class PyrusService {
     // Парсинг boolean полей (flag в Pyrus)
     const isPaid = this.parseBooleanField(isPaidValue);
     const isGovernmentTask = this.parseBooleanField(isGovernmentTaskValue);
+    const isHiddenFromWidget = this.parseBooleanField(isHiddenFromWidgetValue);
+    const isForChildren = this.parseBooleanField(isForChildrenValue);
+
+    // Парсинг catalog поля "Возрастной ценз" (поле 14)
+    // В Pyrus это catalog поле со структурой: { values: ["6+", ...] }
+    let ageRating: string | null = null;
+    if (ageRatingValue && typeof ageRatingValue === 'object' && ageRatingValue.values) {
+      ageRating = ageRatingValue.values[0] || null; // Берем первое значение
+    } else if (typeof ageRatingValue === 'string') {
+      ageRating = ageRatingValue; // На случай, если это текстовое поле
+    }
+
+    // Парсинг поля "Формат для виджета" (поле 67)
+    // Универсальная обработка: поддержка и catalog, и text полей
+    let eventFormat: string | null = null;
+    if (eventFormatValue) {
+      // Если это catalog поле (как поле 14 или 36)
+      if (typeof eventFormatValue === 'object' && eventFormatValue.values) {
+        eventFormat = eventFormatValue.values[0] || null;
+        this.logger.log(`Поле 67 обработано как catalog: "${eventFormat}"`);
+      }
+      // Если это текстовое поле
+      else if (typeof eventFormatValue === 'string') {
+        eventFormat = eventFormatValue;
+        this.logger.log(`Поле 67 обработано как text: "${eventFormat}"`);
+      }
+    }
+
+    // Обработка фото для виджета
+    const photoUrl = await this.processPyrusPhoto(photoForWidgetValue);
 
     return {
       name,
@@ -480,11 +650,17 @@ export class PyrusService {
       timepadLink: timepadLink || null,
       isPaid,
       isGovernmentTask,
-      eventFormat: null, // Это поле больше не используется, т.к. данные теперь в eventTypeId
+      eventFormat: eventFormat || null, // Формат для виджета (поле 67) - приоритет над eventTypeId
       participants: null, // Можно извлечь из отчётности если нужно
       budget: null, // Нет этого поля в форме Pyrus
       notes: null,
       responsibleUserId: responsibleUserId || undefined, // Ответственный из поля 11 (person)
+      // === НОВЫЕ ПОЛЯ ДЛЯ ВИДЖЕТА ===
+      photoUrl, // Фото для виджета (поле 18)
+      isHiddenFromWidget, // Скрыть из виджета (поле 69)
+      ageRating, // Возрастной ценз (поле 14) - извлечено из catalog
+      ageDescription: ageDescriptionValue || null, // Возраст (поле 54)
+      isForChildren, // Для детей (поле 68)
       externalId: task.id.toString(),
       status: 'PLANNED',
     };

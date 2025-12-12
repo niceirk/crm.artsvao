@@ -50,6 +50,8 @@ import { DataEventsModule } from './common/events/data-events.module';
 import { RentalApplicationsModule } from './rental-applications/rental-applications.module';
 import { WorkspacesModule } from './workspaces/workspaces.module';
 import { CacheModule } from './common/cache/cache.module';
+import { PublicWidgetModule } from './public-widget/public-widget.module';
+import { EventParticipantsModule } from './event-participants/event-participants.module';
 
 @Module({
   imports: [
@@ -109,6 +111,8 @@ import { CacheModule } from './common/cache/cache.module';
     DataEventsModule,
     RentalApplicationsModule,
     WorkspacesModule,
+    PublicWidgetModule,
+    EventParticipantsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -168,4 +168,7 @@ export interface InvoiceFilterDto {
   issuedAfter?: string;
   issuedBefore?: string;
   invoiceNumber?: string;
+  clientSearch?: string;
+  sortBy?: 'createdAt' | 'clientName' | 'totalAmount' | 'issuedAt';
+  sortOrder?: 'asc' | 'desc';
 }

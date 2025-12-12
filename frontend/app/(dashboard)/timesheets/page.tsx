@@ -18,6 +18,8 @@ import {
   Upload,
   FileHeart,
   XCircle,
+  ChevronsUpDown,
+  Search,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -41,13 +43,20 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   useTimesheet,
-  useTimesheetStudios,
   useTimesheetGroups,
 } from '@/hooks/use-timesheets';
 import { CompensationEditDialog } from './components/compensation-edit-dialog';
@@ -195,8 +204,8 @@ const AttendanceCell = memo(function AttendanceCell({
 });
 
 export default function TimesheetsPage() {
-  const [selectedStudioId, setSelectedStudioId] = useState<string>('');
   const [selectedGroupId, setSelectedGroupId] = useState<string>('');
+  const [groupComboboxOpen, setGroupComboboxOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState(() =>
     format(new Date(), 'yyyy-MM')
   );
@@ -216,10 +225,7 @@ export default function TimesheetsPage() {
   const updateAttendance = useUpdateAttendance();
   const deleteAttendance = useDeleteAttendance();
 
-  const { data: studios, isLoading: studiosLoading } = useTimesheetStudios();
-  const { data: groups, isLoading: groupsLoading } = useTimesheetGroups(
-    selectedStudioId || undefined
-  );
+  const { data: groups, isLoading: groupsLoading } = useTimesheetGroups();
 
   const { data: timesheet, isLoading: timesheetLoading } = useTimesheet({
     groupId: selectedGroupId,
@@ -314,15 +320,6 @@ export default function TimesheetsPage() {
 
   const handleNextMonth = () => {
     setSelectedMonth(format(addMonths(currentMonthDate, 1), 'yyyy-MM'));
-  };
-
-  const handleStudioChange = (value: string) => {
-    setSelectedStudioId(value === 'all' ? '' : value);
-    setSelectedGroupId('');
-  };
-
-  const handleGroupChange = (value: string) => {
-    setSelectedGroupId(value);
   };
 
   // Обработчик снятия статуса (удаление записи attendance)
@@ -442,45 +439,55 @@ export default function TimesheetsPage() {
     <div className="space-y-4">
       {/* Компактные фильтры */}
       <div className="flex flex-wrap items-center gap-3 p-3 bg-muted/30 rounded-lg">
-        <Select
-          value={selectedStudioId || 'all'}
-          onValueChange={handleStudioChange}
-          disabled={studiosLoading}
-        >
-          <SelectTrigger className="w-[180px] h-9">
-            <SelectValue placeholder="Все студии" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все студии</SelectItem>
-            {studios?.map((studio) => (
-              <SelectItem key={studio.id} value={studio.id}>
-                {studio.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          value={selectedGroupId}
-          onValueChange={handleGroupChange}
-          disabled={groupsLoading || !groups?.length}
-        >
-          <SelectTrigger className="w-[220px] h-9">
-            <SelectValue placeholder="Выберите группу" />
-          </SelectTrigger>
-          <SelectContent>
-            {groups?.map((group) => (
-              <SelectItem key={group.id} value={group.id}>
-                {group.name}
-                {!selectedStudioId && (
-                  <span className="ml-2 text-muted-foreground text-xs">
-                    ({group.studio.name})
-                  </span>
-                )}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Popover open={groupComboboxOpen} onOpenChange={setGroupComboboxOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              role="combobox"
+              aria-expanded={groupComboboxOpen}
+              className="w-[300px] h-9 justify-between"
+              disabled={groupsLoading}
+            >
+              {selectedGroupId
+                ? groups?.find((g) => g.id === selectedGroupId)?.name
+                : 'Выберите группу'}
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[300px] p-0">
+            <Command>
+              <CommandInput placeholder="Поиск группы..." />
+              <CommandList>
+                <CommandEmpty>Группы не найдены</CommandEmpty>
+                <CommandGroup>
+                  {groups?.map((group) => (
+                    <CommandItem
+                      key={group.id}
+                      value={`${group.name} ${group.studio.name}`}
+                      onSelect={() => {
+                        setSelectedGroupId(group.id);
+                        setGroupComboboxOpen(false);
+                      }}
+                    >
+                      <Check
+                        className={cn(
+                          'mr-2 h-4 w-4',
+                          selectedGroupId === group.id ? 'opacity-100' : 'opacity-0'
+                        )}
+                      />
+                      <div className="flex flex-col">
+                        <span>{group.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {group.studio.name}
+                        </span>
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
 
         <div className="flex items-center gap-1 ml-auto">
           <Button
@@ -559,8 +566,8 @@ export default function TimesheetsPage() {
           </CardContent>
         </Card>
       ) : timesheet ? (
-        <Card>
-          <CardHeader className="pb-4">
+        <Card className="flex flex-col h-[calc(100vh-200px)]">
+          <CardHeader className="pb-4 sticky top-0 z-30 bg-card shrink-0">
             <div className="flex items-center justify-between">
               <CardTitle>
                 {timesheet.group.name}
@@ -601,7 +608,7 @@ export default function TimesheetsPage() {
 
           {/* Панель действий при выделении */}
           {selectedClientIds.size > 0 && (
-            <div className="mx-6 mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg flex items-center justify-between">
+            <div className="mx-6 mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">
                   Выбрано клиентов: {selectedClientsWithSubscription.length}
@@ -625,25 +632,24 @@ export default function TimesheetsPage() {
             </div>
           )}
 
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
+          <CardContent className="p-0 overflow-y-scroll flex-1 min-h-0">
+            <table className="w-full caption-bottom text-sm">
+              <thead className="[&_tr]:border-b sticky top-0 z-20 bg-background">
                   <TableRow>
-                    <TableHead className="sticky left-0 z-10 bg-background w-[40px] text-center">
+                    <TableHead className="sticky left-0 z-30 bg-background w-[40px] text-center">
                       <Checkbox
                         checked={subscriptionClients.length > 0 && selectedClientIds.size === subscriptionClients.length}
                         onCheckedChange={toggleAllSubscriptionClients}
                         aria-label="Выбрать все"
                       />
                     </TableHead>
-                    <TableHead className="sticky left-[40px] z-10 bg-background min-w-[200px]">
+                    <TableHead className="sticky left-[40px] z-30 bg-background min-w-[200px]">
                       Клиент
                     </TableHead>
                     {timesheet.scheduleDates.map((date) => (
                       <TableHead
                         key={date.scheduleId}
-                        className="text-center min-w-[60px] p-1"
+                        className="text-center min-w-[60px] p-1 bg-background"
                       >
                         <button
                           onClick={() => setSelectedSchedule(date)}
@@ -662,22 +668,22 @@ export default function TimesheetsPage() {
                         </button>
                       </TableHead>
                     ))}
-                    <TableHead className="text-center min-w-[60px]">
+                    <TableHead className="text-center min-w-[60px] bg-background">
                       Был
                     </TableHead>
-                    <TableHead className="text-center min-w-[60px]">
+                    <TableHead className="text-center min-w-[60px] bg-background">
                       Ув.
                     </TableHead>
-                    <TableHead className="text-center min-w-[100px]">
+                    <TableHead className="text-center min-w-[100px] bg-background">
                       Перерасчёт
                     </TableHead>
-                    <TableHead className="text-center min-w-[100px]">
+                    <TableHead className="text-center min-w-[100px] bg-background">
                       Счет
                     </TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
+                    <TableHead className="w-[50px] bg-background"></TableHead>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
+              </thead>
+              <TableBody>
                   {/* Клиенты по абонементам */}
                   {subscriptionClients.length > 0 && (
                     <>
@@ -874,8 +880,7 @@ export default function TimesheetsPage() {
                     </>
                   )}
                 </TableBody>
-              </Table>
-            </div>
+            </table>
           </CardContent>
         </Card>
       ) : null}

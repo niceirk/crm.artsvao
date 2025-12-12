@@ -5,6 +5,7 @@ import { PyrusService } from './pyrus.service';
 import { PyrusController } from './pyrus.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { EventsModule } from '../../events/events.module';
+import { S3StorageService } from '../../common/services/s3-storage.service';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { EventsModule } from '../../events/events.module';
     forwardRef(() => EventsModule),
   ],
   controllers: [PyrusController],
-  providers: [PyrusService],
+  providers: [PyrusService, S3StorageService],
   exports: [PyrusService],
 })
 export class PyrusModule {}

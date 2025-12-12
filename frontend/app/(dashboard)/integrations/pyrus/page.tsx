@@ -168,6 +168,23 @@ export default function PyrusImportPage() {
     return null;
   };
 
+  // Получить формат мероприятия из поля 67
+  const getEventFormat = (task: PyrusTaskPreview): string | null => {
+    const formatValue = getFieldValue(task, 67); // Формат для виджета
+
+    // Обработка catalog поля (структура: { values: ["Концерт", ...] })
+    if (formatValue && typeof formatValue === 'object' && 'values' in formatValue) {
+      const values = formatValue.values as string[];
+      return values[0] || null;
+    }
+    // Обработка текстового поля
+    else if (typeof formatValue === 'string') {
+      return formatValue;
+    }
+
+    return null;
+  };
+
   // Получить дату мероприятия как Date объект
   const getEventDateObject = (task: PyrusTaskPreview): Date | null => {
     for (const field of task.fields) {
@@ -493,6 +510,7 @@ export default function PyrusImportPage() {
                     <TableHead>ID</TableHead>
                     <TableHead>Название мероприятия</TableHead>
                     <TableHead>Дата мероприятия</TableHead>
+                    <TableHead>Формат</TableHead>
                     <TableHead>Создано</TableHead>
                     <TableHead>Изменено</TableHead>
                   </TableRow>
@@ -528,6 +546,15 @@ export default function PyrusImportPage() {
                             <Badge variant="secondary">{eventDate}</Badge>
                           ) : (
                             <span className="text-sm text-muted-foreground">Не указана</span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {getEventFormat(task) ? (
+                            <Badge variant="outline" className="text-xs">
+                              {getEventFormat(task)}
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
                           )}
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground">

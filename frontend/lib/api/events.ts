@@ -30,6 +30,11 @@ export interface Event {
   isPaid?: boolean;
   isGovernmentTask?: boolean;
   eventFormat?: string;
+  // Новые поля для виджета
+  ageRating?: string | null;
+  ageDescription?: string | null;
+  isForChildren?: boolean;
+  isHiddenFromWidget?: boolean;
   eventType?: {
     id: string;
     name: string;

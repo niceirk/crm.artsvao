@@ -11,6 +11,30 @@ const nextConfig = {
     // your project has type errors.
     ignoreBuildErrors: true,
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**.s3.twcstorage.ru',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 's3.twcstorage.ru',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.amazonaws.com',
+        pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.digitaloceanspaces.com',
+        pathname: '/**',
+      },
+    ],
+  },
 };
 
 export default nextConfig;

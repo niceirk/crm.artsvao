@@ -187,6 +187,58 @@ export function EventInfoCard({ event }: EventInfoCardProps) {
               </div>
             </div>
           )}
+
+          {/* Age Rating */}
+          {event.ageRating && (
+            <div className="flex items-start gap-3">
+              <Tag className="h-5 w-5 text-muted-foreground mt-0.5" />
+              <div className="flex-1">
+                <dt className="text-sm font-medium text-muted-foreground">
+                  Возрастной ценз
+                </dt>
+                <dd className="text-sm mt-1">{event.ageRating}</dd>
+              </div>
+            </div>
+          )}
+
+          {/* Age Description */}
+          {event.ageDescription && (
+            <div className="flex items-start gap-3">
+              <Tag className="h-5 w-5 text-muted-foreground mt-0.5" />
+              <div className="flex-1">
+                <dt className="text-sm font-medium text-muted-foreground">
+                  Возраст
+                </dt>
+                <dd className="text-sm mt-1">{event.ageDescription}</dd>
+              </div>
+            </div>
+          )}
+
+          {/* For Children */}
+          {event.isForChildren && (
+            <div className="flex items-start gap-3">
+              <Tag className="h-5 w-5 text-muted-foreground mt-0.5" />
+              <div className="flex-1">
+                <dt className="text-sm font-medium text-muted-foreground">
+                  Для детей
+                </dt>
+                <dd className="text-sm mt-1">Да</dd>
+              </div>
+            </div>
+          )}
+
+          {/* Hidden from Widget */}
+          {event.isHiddenFromWidget && (
+            <div className="flex items-start gap-3">
+              <Tag className="h-5 w-5 text-muted-foreground mt-0.5" />
+              <div className="flex-1">
+                <dt className="text-sm font-medium text-muted-foreground">
+                  Скрыто из виджета
+                </dt>
+                <dd className="text-sm mt-1">Да</dd>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

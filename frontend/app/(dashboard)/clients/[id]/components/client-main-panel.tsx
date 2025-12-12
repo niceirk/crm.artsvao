@@ -9,6 +9,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { InvoiceStatusBadge, SubscriptionStatusBadge, AttendanceStatusBadge } from '@/components/ui/status-badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -46,8 +48,9 @@ import {
   Mail,
   Archive,
   Trash2,
+  Check,
 } from 'lucide-react';
-import { useClientInvoices } from '@/hooks/use-invoices';
+import { useClientInvoices, useMarkAsPaid } from '@/hooks/use-invoices';
 import { useClientSubscriptions } from '@/hooks/use-subscriptions';
 import { useAttendances } from '@/hooks/use-attendance';
 import { useClientRelations } from '@/hooks/useClients';
@@ -99,6 +102,7 @@ export function ClientMainPanel({
   const [invoiceSearch, setInvoiceSearch] = useState('');
   const [invoiceSort, setInvoiceSort] = useState<{ field: string; order: 'asc' | 'desc' }>({ field: 'issuedAt', order: 'desc' });
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState<string>('all');
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<Set<string>>(new Set());
 
   const [subscriptionSearch, setSubscriptionSearch] = useState('');
   const [subscriptionSort, setSubscriptionSort] = useState<{ field: string; order: 'asc' | 'desc' }>({ field: 'startDate', order: 'desc' });
@@ -111,6 +115,7 @@ export function ClientMainPanel({
 
   // Получаем данные
   const { data: invoices, isLoading: isLoadingInvoices } = useClientInvoices(client.id);
+  const markAsPaid = useMarkAsPaid();
   const { data: subscriptionsResponse, isLoading: isLoadingSubscriptions } = useClientSubscriptions(client.id);
   const { data: attendanceResponse, isLoading: isLoadingAttendance, refetch: refetchAttendance } = useAttendances({
     clientId: client.id,
@@ -177,6 +182,58 @@ export function ClientMainPanel({
 
     return result;
   }, [invoices, invoiceSearch, invoiceSort, invoiceStatusFilter]);
+
+  // Сумма всех выделенных счетов
+  const selectedInvoicesTotal = useMemo(() => {
+    if (!invoices || selectedInvoiceIds.size === 0) return 0;
+    return invoices
+      .filter(inv => selectedInvoiceIds.has(inv.id))
+      .reduce((sum, inv) => sum + Number(inv.totalAmount), 0);
+  }, [invoices, selectedInvoiceIds]);
+
+  // Количество неоплаченных среди выделенных (для кнопки массовой оплаты)
+  const selectedUnpaidCount = useMemo(() => {
+    if (!invoices || selectedInvoiceIds.size === 0) return 0;
+    return invoices.filter(
+      inv => selectedInvoiceIds.has(inv.id) && inv.status !== 'PAID'
+    ).length;
+  }, [invoices, selectedInvoiceIds]);
+
+  // Выбрать/снять все видимые счета
+  const handleSelectAllInvoices = (checked: boolean) => {
+    if (checked) {
+      const newSelected = new Set(selectedInvoiceIds);
+      filteredInvoices.forEach(inv => newSelected.add(inv.id));
+      setSelectedInvoiceIds(newSelected);
+    } else {
+      const newSelected = new Set(selectedInvoiceIds);
+      filteredInvoices.forEach(inv => newSelected.delete(inv.id));
+      setSelectedInvoiceIds(newSelected);
+    }
+  };
+
+  // Выбрать/снять один счет
+  const handleSelectInvoice = (invoiceId: string, checked: boolean) => {
+    const newSelected = new Set(selectedInvoiceIds);
+    checked ? newSelected.add(invoiceId) : newSelected.delete(invoiceId);
+    setSelectedInvoiceIds(newSelected);
+  };
+
+  // Проверка: все ли видимые счета выбраны
+  const isAllInvoicesSelected = filteredInvoices.length > 0 &&
+    filteredInvoices.every(inv => selectedInvoiceIds.has(inv.id));
+
+  // Массовая оплата выделенных счетов
+  const handleMarkSelectedAsPaid = async () => {
+    const unpaidIds = invoices
+      ?.filter(inv => selectedInvoiceIds.has(inv.id) && inv.status !== 'PAID')
+      .map(inv => inv.id) || [];
+
+    for (const id of unpaidIds) {
+      await markAsPaid.mutateAsync(id);
+    }
+    setSelectedInvoiceIds(new Set());
+  };
 
   // Фильтрация и сортировка абонементов
   const filteredSubscriptions = useMemo(() => {
@@ -393,6 +450,37 @@ export function ClientMainPanel({
               </Select>
             </div>
 
+            {/* Панель выделенных счетов */}
+            {selectedInvoiceIds.size > 0 && (
+              <div className="flex items-center justify-between bg-muted/50 rounded-lg px-4 py-2 mb-4">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm text-muted-foreground">
+                    Выбрано: <span className="font-medium text-foreground">{selectedInvoiceIds.size}</span>
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    Сумма: <span className="font-medium text-foreground">{formatCurrency(selectedInvoicesTotal)}</span>
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {selectedUnpaidCount > 0 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-green-600 border-green-600 hover:bg-green-50"
+                      onClick={handleMarkSelectedAsPaid}
+                      disabled={markAsPaid.isPending}
+                    >
+                      <Check className="h-4 w-4 mr-1" />
+                      Оплачено ({selectedUnpaidCount})
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => setSelectedInvoiceIds(new Set())}>
+                    Снять выбор
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {isLoadingInvoices ? (
               <div className="space-y-2">
                 <Skeleton className="h-10 w-full" />
@@ -406,6 +494,12 @@ export function ClientMainPanel({
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-[40px]">
+                        <Checkbox
+                          checked={isAllInvoicesSelected}
+                          onCheckedChange={handleSelectAllInvoices}
+                        />
+                      </TableHead>
                       <TableHead>
                         <Button
                           variant="ghost"
@@ -441,16 +535,25 @@ export function ClientMainPanel({
                           <SortIcon field="status" currentSort={invoiceSort} />
                         </Button>
                       </TableHead>
-                      <TableHead className="w-[50px]"></TableHead>
+                      <TableHead className="w-[80px]">Действия</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredInvoices.map((invoice) => (
                       <TableRow
                         key={invoice.id}
-                        className="cursor-pointer hover:bg-muted/50"
+                        className={cn(
+                          "cursor-pointer hover:bg-muted/50",
+                          selectedInvoiceIds.has(invoice.id) && "bg-muted/30"
+                        )}
                         onClick={() => router.push(`/invoices/${invoice.id}`)}
                       >
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={selectedInvoiceIds.has(invoice.id)}
+                            onCheckedChange={(checked) => handleSelectInvoice(invoice.id, !!checked)}
+                          />
+                        </TableCell>
                         <TableCell className="text-sm">
                           {format(new Date(invoice.issuedAt), 'dd.MM.yyyy', { locale: ru })}
                         </TableCell>
@@ -467,11 +570,28 @@ export function ClientMainPanel({
                           <InvoiceStatusBadge status={invoice.status} size="sm" />
                         </TableCell>
                         <TableCell>
-                          <Link href={`/invoices/${invoice.id}`}>
-                            <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
-                              <ExternalLink className="h-3.5 w-3.5" />
-                            </Button>
-                          </Link>
+                          <div className="flex items-center gap-1">
+                            {invoice.status !== 'PAID' && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  markAsPaid.mutate(invoice.id);
+                                }}
+                                disabled={markAsPaid.isPending}
+                                title="Отметить как оплаченный"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </Button>
+                            )}
+                            <Link href={`/invoices/${invoice.id}`}>
+                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                                <ExternalLink className="h-3.5 w-3.5" />
+                              </Button>
+                            </Link>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}

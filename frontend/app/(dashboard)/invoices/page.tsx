@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatDistance } from 'date-fns';
 import { ru } from 'date-fns/locale';
-import { Eye, FileText, Plus, Trash2 } from 'lucide-react';
+import { Eye, FileText, Plus, Trash2, Search, ArrowUpDown, ArrowUp, ArrowDown, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -29,7 +29,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useInvoices, useDeleteInvoice } from '@/hooks/use-invoices';
+import { Input } from '@/components/ui/input';
+import { useInvoices, useDeleteInvoice, useMarkAsPaid } from '@/hooks/use-invoices';
 import { useAuth } from '@/hooks/use-auth';
 import {
   AlertDialog,
@@ -42,19 +43,51 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { CreateInvoiceDialog } from './components/create-invoice-dialog';
-import type { InvoiceStatus } from '@/lib/types/invoices';
+import type { InvoiceStatus, InvoiceFilterDto } from '@/lib/types/invoices';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 export default function InvoicesPage() {
   const router = useRouter();
   const { user } = useAuth();
   const [statusFilter, setStatusFilter] = useState<InvoiceStatus | 'all'>('all');
+  const [clientSearch, setClientSearch] = useState('');
+  const [sortBy, setSortBy] = useState<InvoiceFilterDto['sortBy']>(undefined);
+  const [sortOrder, setSortOrder] = useState<InvoiceFilterDto['sortOrder']>('desc');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [invoiceToDelete, setInvoiceToDelete] = useState<{ id: string; number: string } | null>(null);
 
-  const { data: invoices, isLoading } = useInvoices(
-    statusFilter !== 'all' ? { status: statusFilter } : undefined
-  );
+  const debouncedClientSearch = useDebouncedValue(clientSearch, 300);
+
+  const filter = useMemo<InvoiceFilterDto | undefined>(() => {
+    const f: InvoiceFilterDto = {};
+    if (statusFilter !== 'all') f.status = statusFilter;
+    if (debouncedClientSearch) f.clientSearch = debouncedClientSearch;
+    if (sortBy) {
+      f.sortBy = sortBy;
+      f.sortOrder = sortOrder;
+    }
+    return Object.keys(f).length > 0 ? f : undefined;
+  }, [statusFilter, debouncedClientSearch, sortBy, sortOrder]);
+
+  const { data: invoices, isLoading } = useInvoices(filter);
   const deleteInvoice = useDeleteInvoice();
+  const markAsPaid = useMarkAsPaid();
+
+  const handleSort = (column: InvoiceFilterDto['sortBy']) => {
+    if (sortBy === column) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(column);
+      setSortOrder('asc');
+    }
+  };
+
+  const getSortIcon = (column: InvoiceFilterDto['sortBy']) => {
+    if (sortBy !== column) return <ArrowUpDown className="h-4 w-4 ml-1 opacity-50" />;
+    return sortOrder === 'asc'
+      ? <ArrowUp className="h-4 w-4 ml-1" />
+      : <ArrowDown className="h-4 w-4 ml-1" />;
+  };
 
   // Только nikita@artsvao.ru может удалять счета
   const canDeleteInvoices = user?.email === 'nikita@artsvao.ru';
@@ -92,27 +125,40 @@ export default function InvoicesPage() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Список счетов</CardTitle>
-              <CardDescription>
-                Всего счетов: {invoices?.length || 0}
-              </CardDescription>
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Список счетов</CardTitle>
+                <CardDescription>
+                  Всего счетов: {invoices?.length || 0}
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Поиск по ФИО клиента..."
+                    value={clientSearch}
+                    onChange={(e) => setClientSearch(e.target.value)}
+                    className="pl-8 w-[250px]"
+                  />
+                </div>
+                <Select
+                  value={statusFilter}
+                  onValueChange={(value) => setStatusFilter(value as InvoiceStatus | 'all')}
+                >
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Фильтр по статусу" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Все статусы</SelectItem>
+                    <SelectItem value="UNPAID">Не оплачен</SelectItem>
+                    <SelectItem value="PAID">Оплачен</SelectItem>
+                    <SelectItem value="PARTIALLY_PAID">Частично оплачен</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-            <Select
-              value={statusFilter}
-              onValueChange={(value) => setStatusFilter(value as InvoiceStatus | 'all')}
-            >
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Фильтр по статусу" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Все статусы</SelectItem>
-                <SelectItem value="UNPAID">Не оплачен</SelectItem>
-                <SelectItem value="PAID">Оплачен</SelectItem>
-                <SelectItem value="PARTIALLY_PAID">Частично оплачен</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </CardHeader>
         <CardContent>
@@ -123,7 +169,15 @@ export default function InvoicesPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Номер счета</TableHead>
-                  <TableHead>Клиент</TableHead>
+                  <TableHead>
+                    <button
+                      className="flex items-center hover:text-foreground transition-colors"
+                      onClick={() => handleSort('clientName')}
+                    >
+                      Клиент
+                      {getSortIcon('clientName')}
+                    </button>
+                  </TableHead>
                   <TableHead className="text-right">Сумма</TableHead>
                   <TableHead>Статус</TableHead>
                   <TableHead>Дата выставления</TableHead>
@@ -173,21 +227,35 @@ export default function InvoicesPage() {
                     <TableCell>{invoice.items.length}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
+                        {invoice.status !== 'PAID' && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              markAsPaid.mutate(invoice.id);
+                            }}
+                            disabled={markAsPaid.isPending}
+                            title="Отметить как оплаченный"
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost"
-                          size="sm"
+                          size="icon"
                           onClick={(e) => {
                             e.stopPropagation();
                             router.push(`/invoices/${invoice.id}`);
                           }}
                         >
-                          <Eye className="h-4 w-4 mr-2" />
-                          Просмотр
+                          <Eye className="h-4 w-4" />
                         </Button>
                         {canDeleteInvoices && (
                           <Button
                             variant="ghost"
-                            size="sm"
+                            size="icon"
                             className="text-destructive hover:text-destructive hover:bg-destructive/10"
                             onClick={(e) => {
                               e.stopPropagation();

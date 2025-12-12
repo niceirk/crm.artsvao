@@ -679,7 +679,11 @@ export class RentalApplicationsService {
         selectedDays: dto.selectedDays,
       });
 
-      quantity = dto.quantity ?? priceCalculation.quantity;
+      // Для MONTHLY типов всегда используем серверный расчёт quantity,
+      // чтобы избежать ошибок при передаче неправильного значения с frontend
+      const isMonthlyType = dto.rentalType === RentalType.ROOM_MONTHLY ||
+                             dto.rentalType === RentalType.WORKSPACE_MONTHLY;
+      quantity = isMonthlyType ? priceCalculation.quantity : (dto.quantity ?? priceCalculation.quantity);
       effectivePrice = dto.adjustedPrice ?? dto.basePrice ?? priceCalculation.basePrice;
       totalPrice = effectivePrice * quantity;
       startDateForApp = new Date(dto.startDate);
@@ -949,7 +953,20 @@ export class RentalApplicationsService {
       // Пересчет totalPrice
       if (dto.basePrice !== undefined || dto.adjustedPrice !== undefined || dto.quantity !== undefined) {
         const price = dto.adjustedPrice ?? dto.basePrice ?? Number(existing.adjustedPrice ?? existing.basePrice);
-        const qty = dto.quantity ?? Number(existing.quantity);
+        // Для MONTHLY типов используем серверный расчёт quantity
+        const isMonthlyType = existing.rentalType === RentalType.ROOM_MONTHLY ||
+                               existing.rentalType === RentalType.WORKSPACE_MONTHLY;
+        let qty: number;
+        if (isMonthlyType) {
+          // Пересчитываем quantity для MONTHLY типов
+          qty = this.calculateMonthsCount(
+            existing.periodType,
+            existing.startDate.toISOString().split('T')[0],
+            existing.endDate?.toISOString().split('T')[0],
+          );
+        } else {
+          qty = dto.quantity ?? Number(existing.quantity);
+        }
         updateData.totalPrice = price * qty;
       }
 

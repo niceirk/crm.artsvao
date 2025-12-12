@@ -19,10 +19,14 @@ import {
   DollarSign,
   Check,
   X,
+  Image as ImageIcon,
+  EyeOff,
+  Baby,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface EventMainInfoCardProps {
   event: Event;
@@ -101,6 +105,19 @@ export function EventMainInfoCard({ event }: EventMainInfoCardProps) {
 
   return (
     <Card>
+      {/* Фото мероприятия */}
+      {event.photoUrl && (
+        <div className="relative w-full h-64 overflow-hidden rounded-t-lg">
+          <Image
+            src={event.photoUrl}
+            alt={event.name}
+            fill
+            className="object-cover"
+            priority
+          />
+        </div>
+      )}
+
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Tag className="h-5 w-5" />
@@ -189,6 +206,67 @@ export function EventMainInfoCard({ event }: EventMainInfoCardProps) {
             </div>
           </div>
         </div>
+
+        {/* Настройки виджета и возраст */}
+        {(event.ageRating || event.ageDescription || event.isForChildren || event.isHiddenFromWidget) && (
+          <>
+            <Separator />
+            <div>
+              <h4 className="flex items-center gap-2 text-sm font-semibold mb-3">
+                <Baby className="h-4 w-4" />
+                Настройки отображения
+              </h4>
+              <div className="space-y-3">
+                {event.ageRating && (
+                  <div className="grid grid-cols-[120px_1fr] gap-2 items-start">
+                    <dt className="text-xs font-medium text-muted-foreground">
+                      Возрастной ценз
+                    </dt>
+                    <dd className="text-sm">
+                      <Badge variant="outline">{event.ageRating}</Badge>
+                    </dd>
+                  </div>
+                )}
+                {event.ageDescription && (
+                  <div className="grid grid-cols-[120px_1fr] gap-2 items-start">
+                    <dt className="text-xs font-medium text-muted-foreground">
+                      Возраст
+                    </dt>
+                    <dd className="text-sm">{event.ageDescription}</dd>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-[24px_1fr] gap-2 items-center">
+                    {event.isForChildren ? (
+                      <>
+                        <Check className="h-4 w-4 text-green-600" />
+                        <span className="text-sm">Для детей</span>
+                      </>
+                    ) : (
+                      <>
+                        <X className="h-4 w-4 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Не для детей</span>
+                      </>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-[24px_1fr] gap-2 items-center">
+                    {event.isHiddenFromWidget ? (
+                      <>
+                        <EyeOff className="h-4 w-4 text-amber-600" />
+                        <span className="text-sm">Скрыто из виджета</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4 text-green-600" />
+                        <span className="text-sm">Виден в виджете</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
 
         <Separator />
 

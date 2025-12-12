@@ -78,3 +78,18 @@ export function useDeleteInvoice() {
     },
   });
 }
+
+export function useMarkAsPaid() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: invoicesApi.markAsPaid,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [INVOICES_QUERY_KEY] });
+      toast.success('Счет отмечен как оплаченный');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.message || 'Ошибка при обновлении статуса');
+    },
+  });
+}

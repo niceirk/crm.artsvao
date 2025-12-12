@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString, IsDateString, IsInt, Min, Max } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsDateString, IsInt, Min, Max, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 import { InvoiceStatus } from '@prisma/client';
 
@@ -23,6 +23,20 @@ export class InvoiceFilterDto {
   @IsOptional()
   invoiceNumber?: string;
 
+  @IsString()
+  @IsOptional()
+  clientSearch?: string;
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['createdAt', 'clientName', 'totalAmount', 'issuedAt'])
+  sortBy?: 'createdAt' | 'clientName' | 'totalAmount' | 'issuedAt';
+
+  @IsString()
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  sortOrder?: 'asc' | 'desc';
+
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -32,7 +46,7 @@ export class InvoiceFilterDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(100)
+  @Max(1000)
   @IsOptional()
-  limit?: number = 20;
+  limit?: number = 1000;
 }

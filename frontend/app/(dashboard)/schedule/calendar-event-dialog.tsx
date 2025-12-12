@@ -74,6 +74,7 @@ interface CalendarEventDialogProps {
   reservation?: Reservation;
   initialData?: { date: string; startTime: string; endTime: string; roomId?: string };
   onOpenAttendance?: () => void;
+  onOpenEventAttendance?: () => void;
 }
 
 const scheduleFormSchema = z.object({
@@ -213,6 +214,7 @@ export function CalendarEventDialog({
   reservation,
   initialData,
   onOpenAttendance,
+  onOpenEventAttendance,
 }: CalendarEventDialogProps) {
   const [selectedEventType, setSelectedEventType] = useState<EventType>(
     initialEventType || 'schedule'
@@ -1221,16 +1223,14 @@ export function CalendarEventDialog({
                     Удалить
                   </Button>
                 )}
-                {isEditing && selectedEventType === 'event' && event && (
+                {isEditing && selectedEventType === 'event' && event && onOpenEventAttendance && (
                   <>
                     <Button
                       type="button"
                       variant="outline"
-                      asChild
+                      onClick={onOpenEventAttendance}
                     >
-                      <Link href={`/admin/events/${event.id}`}>
-                        Журнал посещаемости
-                      </Link>
+                      Журнал посещаемости
                     </Button>
                     <Button
                       type="button"

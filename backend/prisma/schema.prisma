@@ -256,6 +256,7 @@ model Client {
   notifications     Notification[]
   medicalCertificates MedicalCertificate[]
   rentalApplications RentalApplication[]
+  eventParticipations EventParticipant[]
 
   @@index([phone])
   @@index([email])
@@ -684,6 +685,11 @@ model Event {
   maxCapacity       Int?                @map("max_capacity")
   responsibleUserId String?             @map("responsible_user_id")
   photoUrl          String?             @map("photo_url")
+  // Поля для виджета мероприятий
+  isHiddenFromWidget Boolean            @default(false) @map("is_hidden_from_widget")
+  ageRating          String?            @map("age_rating")
+  ageDescription     String?            @map("age_description")
+  isForChildren      Boolean            @default(false) @map("is_for_children")
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @updatedAt @map("updated_at")
   eventTypeId       String?             @map("event_type_id")
@@ -700,11 +706,13 @@ model Event {
   eventType         EventType?          @relation(fields: [eventTypeId], references: [id])
   responsibleUser   User?               @relation(fields: [responsibleUserId], references: [id])
   room              Room                @relation(fields: [roomId], references: [id])
+  eventParticipants EventParticipant[]
 
   @@index([date])
   @@index([eventTypeId])
   @@index([status])
   @@index([roomId])
+  @@index([isHiddenFromWidget, date])
   @@map("events")
 }
 
@@ -1105,6 +1113,12 @@ enum TelegramState {
   IDENTIFIED // Пользователь привязан к клиенту (client_id заполнен)
   GUEST // Отказался от идентификации, общение без привязки
   BOUND_MANUALLY // Привязка выполнена менеджером вручную
+  // Состояния для регистрации на мероприятия
+  EVENT_REGISTRATION_PHONE // Ожидание телефона для регистрации на событие
+  EVENT_REGISTRATION_NAME // Ожидание ФИО для нового клиента
+  EVENT_REGISTRATION_BIRTHDATE // Ожидание даты рождения
+  EVENT_REGISTRATION_EMAIL // Ожидание email (опционально)
+  EVENT_CHOOSING_CLIENT // Выбор клиента для регистрации на событие
 }
 
 enum MessageSource {
@@ -1195,6 +1209,7 @@ model TelegramAccount {
   photoUrl               String?        @map("photo_url")
   isNotificationsEnabled Boolean        @default(true) @map("is_notifications_enabled")
   state                  TelegramState  @default(NEW_USER)
+  registrationContext    Json?          @map("registration_context") // Контекст регистрации на событие
   createdAt              DateTime       @default(now()) @map("created_at")
   updatedAt              DateTime       @updatedAt @map("updated_at")
   client                 Client?        @relation(fields: [clientId], references: [id], onDelete: SetNull)
@@ -1679,4 +1694,49 @@ enum RentalApplicationStatus {
   ACTIVE            // Активна (период начался)
   COMPLETED         // Завершена
   CANCELLED         // Отменена
+}
+
+// ============================================
+// Event Participants (Участники мероприятий)
+// ============================================
+
+enum EventParticipantStatus {
+  REGISTERED        // Зарегистрирован
+  CONFIRMED         // Подтвержден (пришел)
+  CANCELLED         // Отменен
+  NO_SHOW           // Не пришел
+}
+
+enum EventRegistrationSource {
+  TELEGRAM          // Через Telegram бот
+  TIMEPAD           // Через Timepad
+  CRM               // Вручную из CRM
+  WIDGET            // Через виджет на сайте
+}
+
+model EventParticipant {
+  id              String                   @id @default(uuid())
+  eventId         String                   @map("event_id")
+  clientId        String                   @map("client_id")
+  status          EventParticipantStatus   @default(REGISTERED)
+  source          EventRegistrationSource
+  registeredAt    DateTime                 @default(now()) @map("registered_at")
+  confirmedAt     DateTime?                @map("confirmed_at")
+  cancelledAt     DateTime?                @map("cancelled_at")
+  telegramChatId  BigInt?                  @map("telegram_chat_id")
+  reminderSentAt  DateTime?                @map("reminder_sent_at")
+  notes           String?
+  createdAt       DateTime                 @default(now()) @map("created_at")
+  updatedAt       DateTime                 @updatedAt @map("updated_at")
+
+  event           Event                    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  client          Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, clientId])
+  @@index([eventId])
+  @@index([clientId])
+  @@index([status])
+  @@index([registeredAt])
+  @@index([eventId, status])
+  @@map("event_participants")
 }

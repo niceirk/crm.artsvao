@@ -19,7 +19,11 @@ import {
   Hash,
   ChevronDown,
   ChevronUp,
+  Clock,
+  Calendar,
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
 
 interface EventDetailsInfoCardProps {
   event: Event;
@@ -32,6 +36,14 @@ export function EventDetailsInfoCard({ event }: EventDetailsInfoCardProps) {
   const hasNotes = Boolean(event.notes);
   const hasLinks = Boolean(event.timepadLink || event.externalId);
   const hasAnyContent = hasDescription || hasNotes || hasLinks;
+
+  const formatDateTime = (dateString: string) => {
+    try {
+      return format(new Date(dateString), 'd MMMM yyyy, HH:mm', { locale: ru });
+    } catch {
+      return dateString;
+    }
+  };
 
   if (!hasAnyContent) {
     return null; // Не показываем карточку если нет данных
@@ -174,6 +186,32 @@ export function EventDetailsInfoCard({ event }: EventDetailsInfoCardProps) {
             </div>
           </div>
         )}
+
+        {(hasDescription || hasNotes || hasLinks) && <Separator />}
+
+        {/* Метаданные */}
+        <div>
+          <h4 className="flex items-center gap-2 text-sm font-semibold mb-3">
+            <Clock className="h-4 w-4" />
+            Метаданные
+          </h4>
+          <div className="space-y-2">
+            <div className="grid grid-cols-[100px_1fr] gap-2 items-start">
+              <dt className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                <Calendar className="h-3 w-3" />
+                Создано
+              </dt>
+              <dd className="text-sm">{formatDateTime(event.createdAt)}</dd>
+            </div>
+            <div className="grid grid-cols-[100px_1fr] gap-2 items-start">
+              <dt className="text-xs font-medium text-muted-foreground flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                Обновлено
+              </dt>
+              <dd className="text-sm">{formatDateTime(event.updatedAt)}</dd>
+            </div>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );
