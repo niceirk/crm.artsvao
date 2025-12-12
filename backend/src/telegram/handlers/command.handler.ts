@@ -8,6 +8,7 @@ import { TelegramStateService } from '../services/telegram-state.service';
 import { TelegramKeyboardService } from '../services/telegram-keyboard.service';
 import { TelegramIdentificationService } from '../services/telegram-identification.service';
 import { TelegramEventRegistrationService } from '../services/telegram-event-registration.service';
+import { formatClientName } from '../utils/format.util';
 
 /**
  * Обработчик команд бота (/start, /cancel, /stop_notifications, /start_notifications)
@@ -96,6 +97,8 @@ export class CommandHandler {
           id: true,
           firstName: true,
           lastName: true,
+          middleName: true,
+          dateOfBirth: true,
           status: true,
         },
       });
@@ -127,7 +130,12 @@ export class CommandHandler {
         clientId,
       );
 
-      const clientName = `${client.firstName} ${client.lastName}`;
+      const clientName = formatClientName(
+        client.firstName,
+        client.lastName,
+        client.middleName,
+        client.dateOfBirth
+      );
 
       await this.apiService.sendMessage(
         chatId,
@@ -143,7 +151,16 @@ export class CommandHandler {
       // Новый пользователь без автопривязки
       const existingAccount = await this.prisma.telegramAccount.findUnique({
         where: { telegramUserId: BigInt(telegramUserId) },
-        include: { client: { select: { firstName: true, lastName: true } } },
+        include: {
+          client: {
+            select: {
+              firstName: true,
+              lastName: true,
+              middleName: true,
+              dateOfBirth: true,
+            },
+          },
+        },
       });
 
       if (
@@ -151,7 +168,12 @@ export class CommandHandler {
         existingAccount.state === TelegramState.IDENTIFIED &&
         existingAccount.client
       ) {
-        const clientName = `${existingAccount.client.firstName} ${existingAccount.client.lastName}`;
+        const clientName = formatClientName(
+          existingAccount.client.firstName,
+          existingAccount.client.lastName,
+          existingAccount.client.middleName,
+          existingAccount.client.dateOfBirth
+        );
 
         const keyboard = this.keyboardService.buildIdentifiedUserKeyboard();
 

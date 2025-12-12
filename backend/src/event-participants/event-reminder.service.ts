@@ -154,14 +154,14 @@ export class EventReminderService implements OnModuleInit {
     const clientName = [client.firstName, client.lastName].filter(Boolean).join(' ') || 'Участник';
 
     const message =
-      `🔔 <b>Напоминание о мероприятии!</b>\n\n` +
+      `<b>Напоминание о мероприятии</b>\n\n` +
       `Завтра состоится мероприятие, на которое вы зарегистрированы:\n\n` +
-      `🎭 <b>${event.name}</b>\n` +
-      `👤 ${clientName}\n` +
-      `📅 ${dateStr}\n` +
-      `⏰ ${startTime} - ${endTime}\n` +
-      `📍 ${location}\n\n` +
-      `Ждём вас! До встречи! 🎉`;
+      `<b>${event.name}</b>\n` +
+      `Участник: ${clientName}\n` +
+      `Дата: ${dateStr}\n` +
+      `Время: ${startTime} - ${endTime}\n` +
+      `Место: ${location}\n\n` +
+      `Ждём вас!`;
 
     try {
       await this.telegramService.sendMessage(chatId, message, { parse_mode: 'HTML' } as any);

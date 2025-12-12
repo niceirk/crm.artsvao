@@ -4,6 +4,7 @@ import {
   TelegramInlineKeyboardButton,
 } from '../interfaces/telegram-api.interface';
 import { ClientSelectionInfo, ParticipantOption } from '../interfaces/state-context.interface';
+import { formatClientName, escapeHtml, formatDate, formatTime } from '../utils/format.util';
 
 /**
  * Сервис для построения клавиатур Telegram
@@ -62,15 +63,12 @@ export class TelegramKeyboardService {
    */
   buildClientSelectionKeyboard(clients: ClientSelectionInfo[]): TelegramInlineKeyboardButton[][] {
     const keyboard: TelegramInlineKeyboardButton[][] = clients.map((client) => {
-      const fullName = [client.lastName, client.firstName, client.middleName]
-        .filter(Boolean)
-        .join(' ');
-
-      let displayText = fullName;
-      if (client.dateOfBirth) {
-        const birthYear = new Date(client.dateOfBirth).getFullYear();
-        displayText += ` (${birthYear} г.р.)`;
-      }
+      const displayText = formatClientName(
+        client.firstName,
+        client.lastName,
+        client.middleName,
+        client.dateOfBirth
+      );
 
       return [
         {
@@ -80,10 +78,10 @@ export class TelegramKeyboardService {
       ];
     });
 
-    // Добавляем кнопку "Это не я"
+    // Добавляем кнопку "Это не я" БЕЗ эмодзи
     keyboard.push([
       {
-        text: '❌ Нет моего имени в списке',
+        text: 'Нет моего имени в списке',
         callback_data: 'skip_identification',
       },
     ]);
@@ -116,10 +114,8 @@ export class TelegramKeyboardService {
    */
   buildEventParticipantKeyboard(participants: ParticipantOption[]): TelegramInlineKeyboardButton[][] {
     const keyboard: TelegramInlineKeyboardButton[][] = participants.map((p) => {
+      // Имя уже отформатировано в вызывающем коде через formatClientName
       let displayText = p.name;
-      if (p.birthYear) {
-        displayText += ` (${p.birthYear} г.р.)`;
-      }
       if (p.label) {
         displayText += ` — ${p.label}`;
       }
@@ -132,18 +128,18 @@ export class TelegramKeyboardService {
       ];
     });
 
-    // Добавляем кнопку "Новый участник"
+    // Добавляем кнопку "Новый участник" БЕЗ эмодзи
     keyboard.push([
       {
-        text: '➕ Другой участник',
+        text: 'Другой участник',
         callback_data: 'new_participant',
       },
     ]);
 
-    // Добавляем кнопку отмены
+    // Добавляем кнопку отмены БЕЗ эмодзи
     keyboard.push([
       {
-        text: '❌ Отмена',
+        text: 'Отмена',
         callback_data: 'cancel_event_reg',
       },
     ]);
@@ -180,27 +176,26 @@ export class TelegramKeyboardService {
   }
 
   /**
-   * Экранирование специальных символов Markdown
+   * Экранирование специальных символов HTML
+   * @deprecated Используйте escapeHtml из utils/format.util.ts
    */
-  escapeMarkdown(text: string): string {
-    return text.replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&');
+  escapeHtml(text: string): string {
+    return escapeHtml(text);
   }
 
   /**
    * Форматирование даты для отображения
+   * @deprecated Используйте formatDate из utils/format.util.ts
    */
   formatDate(date: Date): string {
-    return date.toLocaleDateString('ru-RU', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
+    return formatDate(date);
   }
 
   /**
    * Форматирование времени для отображения
+   * @deprecated Используйте formatTime из utils/format.util.ts
    */
   formatTime(date: Date): string {
-    return date.toISOString().substr(11, 5);
+    return formatTime(date);
   }
 }

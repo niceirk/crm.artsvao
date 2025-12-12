@@ -75,3 +75,11 @@ temp/
 
 # Test files
 test-db-connection.js
+
+# Backups
+.next_backup*/
+
+# Screenshots and documents
+screen/
+*.xlsx
+*.pdf

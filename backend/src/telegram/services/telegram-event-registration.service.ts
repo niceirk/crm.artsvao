@@ -18,6 +18,7 @@ import {
 import { TelegramApiService } from './telegram-api.service';
 import { TelegramStateService } from './telegram-state.service';
 import { TelegramKeyboardService } from './telegram-keyboard.service';
+import { formatClientName, escapeHtml, formatDate, formatTime } from '../utils/format.util';
 
 /**
  * Сервис регистрации на мероприятия через Telegram
@@ -85,22 +86,22 @@ export class TelegramEventRegistrationService {
 
     await this.stateService.getOrCreateAccount(message.from, chatId);
 
-    const dateStr = this.keyboardService.formatDate(event.date);
-    const startTimeStr = this.keyboardService.formatTime(event.startTime);
-    const endTimeStr = this.keyboardService.formatTime(event.endTime);
+    const dateStr = formatDate(event.date);
+    const startTimeStr = formatTime(event.startTime);
+    const endTimeStr = formatTime(event.endTime);
 
-    let eventMessage = `🎭 *${this.keyboardService.escapeMarkdown(event.name)}*\n\n`;
-    eventMessage += `📅 ${dateStr}\n`;
-    eventMessage += `⏰ ${startTimeStr} - ${endTimeStr}\n`;
-    eventMessage += `📍 ${this.keyboardService.escapeMarkdown(event.room?.name || 'Не указано')}\n`;
+    let eventMessage = `<b>${escapeHtml(event.name)}</b>\n\n`;
+    eventMessage += `Дата: ${dateStr}\n`;
+    eventMessage += `Время: ${startTimeStr} - ${endTimeStr}\n`;
+    eventMessage += `Место: ${escapeHtml(event.room?.name || 'Не указано')}\n`;
 
     if (availability.hasLimit) {
-      eventMessage += `👥 Свободных мест: ${availability.available}\n`;
+      eventMessage += `Свободных мест: ${availability.available}\n`;
     }
 
     if (availability.hasLimit && availability.available !== null && availability.available <= 0) {
-      eventMessage += '\n⚠️ *К сожалению, все места заняты.*';
-      await this.apiService.sendMessage(chatId, eventMessage, { parse_mode: 'Markdown' } as any);
+      eventMessage += '\n⚠️ К сожалению, все места заняты.';
+      await this.apiService.sendMessage(chatId, eventMessage, { parse_mode: 'HTML' } as any);
       return;
     }
 
@@ -157,30 +158,36 @@ export class TelegramEventRegistrationService {
 
     const participants: ParticipantOption[] = [];
 
-    const clientName = [client.lastName, client.firstName, client.middleName]
-      .filter(Boolean)
-      .join(' ');
-    const clientBirthYear = client.dateOfBirth
-      ? new Date(client.dateOfBirth).getFullYear()
-      : undefined;
+    // Добавить логирование для диагностики
+    this.logger.log(`Client ${client.id} has ${client.relations?.length || 0} relations`);
+
+    // Использовать formatClientName
+    const clientName = formatClientName(
+      client.firstName,
+      client.lastName,
+      client.middleName,
+      client.dateOfBirth
+    );
 
     participants.push({
       id: client.id,
       name: clientName,
-      birthYear: clientBirthYear,
       label: 'вы',
     });
 
+    // При обработке родственников добавить логирование
     if (client.relations && client.relations.length > 0) {
       for (const relation of client.relations) {
         const related = relation.relatedClient;
+        this.logger.log(`Processing relation: ${relation.relationType}, client: ${related?.id}, status: ${related?.status}`);
+
         if (related && related.status !== ClientStatus.INACTIVE) {
-          const relatedName = [related.lastName, related.firstName, related.middleName]
-            .filter(Boolean)
-            .join(' ');
-          const relatedBirthYear = related.dateOfBirth
-            ? new Date(related.dateOfBirth).getFullYear()
-            : undefined;
+          const relatedName = formatClientName(
+            related.firstName,
+            related.lastName,
+            related.middleName,
+            related.dateOfBirth
+          );
 
           let relationLabel = '';
           switch (relation.relationType) {
@@ -203,18 +210,20 @@ export class TelegramEventRegistrationService {
           participants.push({
             id: related.id,
             name: relatedName,
-            birthYear: relatedBirthYear,
             label: relationLabel,
           });
         }
       }
     }
 
+    this.logger.log(`Showing ${participants.length} participants for selection`);
+
     const keyboard = this.keyboardService.buildEventParticipantKeyboard(participants);
 
+    // Изменить текст вопроса - без эмодзи
     await this.apiService.sendMessageWithInlineKeyboard(
       chatId,
-      '👤 Кого хотите зарегистрировать на мероприятие?',
+      'Кого хотите зарегистрировать на мероприятие?',
       keyboard,
     );
   }
@@ -337,7 +346,7 @@ export class TelegramEventRegistrationService {
 
     await this.apiService.sendMessageWithInlineKeyboard(
       chatId,
-      '📝 Введите ФИО участника (Фамилия Имя Отчество):',
+      'Введите ФИО участника (Фамилия Имя Отчество):',
       keyboard,
     );
   }
@@ -349,18 +358,21 @@ export class TelegramEventRegistrationService {
     chatId: number,
     telegramUserId: number,
   ): Promise<void> {
-    const telegramAccount = await this.stateService.getAccount(BigInt(telegramUserId));
+    const telegramAccount = await this.stateService.getAccountWithClient(BigInt(telegramUserId));
 
     const context = this.stateService.getRegistrationContext(telegramAccount);
     if (!context?.eventId) {
       await this.apiService.sendMessage(
         chatId,
-        '❌ Ошибка: контекст регистрации не найден. Попробуйте заново.',
+        '⚠️ Ошибка: контекст регистрации не найден. Попробуйте заново.',
       );
       return;
     }
 
-    await this.startNewClientFlow(chatId, telegramUserId, context.eventId);
+    // ИСПРАВЛЕНИЕ: извлечь телефон из клиента
+    const phone = telegramAccount?.client?.phone || undefined;
+
+    await this.startNewClientFlow(chatId, telegramUserId, context.eventId, phone);
   }
 
   /**
@@ -465,7 +477,7 @@ export class TelegramEventRegistrationService {
 
     await this.apiService.sendMessageWithInlineKeyboard(
       chatId,
-      '📅 Введите дату рождения в формате ДД.ММ.ГГГГ (например, 15.03.1990):',
+      'Введите дату рождения в формате ДД.ММ.ГГГГ (например, 15.03.1990):',
       keyboard,
     );
   }
@@ -529,7 +541,7 @@ export class TelegramEventRegistrationService {
 
     await this.apiService.sendMessageWithInlineKeyboard(
       chatId,
-      '📧 Введите email для получения уведомлений (или нажмите "Пропустить"):',
+      'Введите email для получения уведомлений (или нажмите "Пропустить"):',
       keyboard,
     );
   }
@@ -719,20 +731,25 @@ export class TelegramEventRegistrationService {
     const event = participant.event;
     const client = participant.client;
 
-    const dateStr = this.keyboardService.formatDate(new Date(event.date));
-    const startTimeStr = this.keyboardService.formatTime(new Date(event.startTime));
+    const dateStr = formatDate(new Date(event.date));
+    const startTimeStr = formatTime(new Date(event.startTime));
 
-    const clientName = [client.lastName, client.firstName].filter(Boolean).join(' ');
+    const clientName = formatClientName(
+      client.firstName,
+      client.lastName,
+      client.middleName,
+      client.dateOfBirth
+    );
     const roomName = event.room?.name || 'Не указано';
 
-    let message = '✅ *Регистрация подтверждена!*\n\n';
-    message += `🎭 ${this.keyboardService.escapeMarkdown(event.name)}\n`;
-    message += `👤 ${this.keyboardService.escapeMarkdown(clientName)}\n`;
-    message += `📅 ${dateStr}, ${startTimeStr}\n`;
-    message += `📍 ${this.keyboardService.escapeMarkdown(roomName)}\n\n`;
-    message += '💡 _Мы напомним о мероприятии за день до начала._';
+    let message = '✅ <b>Регистрация подтверждена!</b>\n\n';
+    message += `${escapeHtml(event.name)}\n`;
+    message += `Участник: ${escapeHtml(clientName)}\n`;
+    message += `Дата: ${dateStr}, ${startTimeStr}\n`;
+    message += `Место: ${escapeHtml(roomName)}\n\n`;
+    message += '<i>Мы напомним о мероприятии за день до начала.</i>';
 
-    await this.apiService.sendMessage(chatId, message, { parse_mode: 'Markdown' } as any);
+    await this.apiService.sendMessage(chatId, message, { parse_mode: 'HTML' } as any);
   }
 
   /**

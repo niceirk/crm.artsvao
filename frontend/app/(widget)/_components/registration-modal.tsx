@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { ExternalLink, MessageCircle, X } from 'lucide-react';
+import { ExternalLink, Send, X, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -55,7 +55,7 @@ export function RegistrationModal({
           <div className="space-y-3">
             <div className="text-center">
               <h3 className="font-semibold text-lg flex items-center justify-center gap-2">
-                <MessageCircle className="h-5 w-5 text-[#0088cc]" />
+                <Zap className="h-5 w-5 text-[#0088cc]" />
                 Быстрая регистрация
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
@@ -71,7 +71,7 @@ export function RegistrationModal({
                 asChild
               >
                 <a href={telegramDeepLink} target="_blank" rel="noopener noreferrer">
-                  <MessageCircle className="mr-2 h-5 w-5" />
+                  <Send className="mr-2 h-5 w-5" />
                   Открыть в Telegram
                 </a>
               </Button>
@@ -103,7 +103,7 @@ export function RegistrationModal({
             )}
 
             <p className="text-xs text-muted-foreground text-center">
-              Бот найдет вас по номеру телефона и поможет быстро зарегистрироваться
+              Найдем вас по номеру телефона и быстро зарегистрируем
             </p>
           </div>
 

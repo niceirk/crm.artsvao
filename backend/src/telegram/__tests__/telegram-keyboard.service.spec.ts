@@ -88,12 +88,12 @@ describe('TelegramKeyboardService', () => {
     });
   });
 
-  describe('escapeMarkdown', () => {
-    it('should escape special markdown characters', () => {
-      const text = 'Hello *world* [test]';
-      const escaped = service.escapeMarkdown(text);
+  describe('escapeHtml', () => {
+    it('should escape special HTML characters', () => {
+      const text = 'Hello <script> & "test"';
+      const escaped = service.escapeHtml(text);
 
-      expect(escaped).toBe('Hello \\*world\\* \\[test\\]');
+      expect(escaped).toBe('Hello &lt;script&gt; &amp; &quot;test&quot;');
     });
   });
 

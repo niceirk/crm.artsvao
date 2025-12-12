@@ -7,6 +7,7 @@ import { ClientSelectionInfo } from '../interfaces/state-context.interface';
 import { TelegramApiService } from './telegram-api.service';
 import { TelegramStateService } from './telegram-state.service';
 import { TelegramKeyboardService } from './telegram-keyboard.service';
+import { formatClientName, escapeHtml } from '../utils/format.util';
 
 /**
  * Сервис идентификации пользователей по номеру телефона
@@ -226,7 +227,12 @@ export class TelegramIdentificationService {
   ): Promise<void> {
     const client = await this.prisma.client.findUnique({
       where: { id: clientId },
-      select: { firstName: true, lastName: true },
+      select: {
+        firstName: true,
+        lastName: true,
+        middleName: true,
+        dateOfBirth: true,
+      },
     });
 
     if (!client) {
@@ -235,10 +241,15 @@ export class TelegramIdentificationService {
 
     await this.stateService.linkToClient(BigInt(telegramUserId), clientId);
 
-    const clientName = `${client.firstName} ${client.lastName}`;
+    const clientName = formatClientName(
+      client.firstName,
+      client.lastName,
+      client.middleName,
+      client.dateOfBirth
+    );
     await this.apiService.sendMessage(
       chatId,
-      `✅ Отлично, ${clientName}!\n\n` +
+      `✅ Отлично, ${escapeHtml(clientName)}!\n\n` +
         'Добро пожаловать в артсвао.ру.\n' +
         'Теперь мы на связи - доступны сообщения и уведомления.',
       { remove_keyboard: true },
